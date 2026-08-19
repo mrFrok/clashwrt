@@ -1,0 +1,15 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Persist the sysctl that NAT-to-loopback depends on. Without route_localnet
+# the martian filter drops packets DNAT'ed to 127.0.0.1, which is exactly what
+# redirect_tun mode does for TCP.
+
+[ -f /etc/sysctl.d/99-clashwrt.conf ] || cat > /etc/sysctl.d/99-clashwrt.conf <<'EOF'
+net.ipv4.conf.all.route_localnet=1
+net.ipv4.conf.default.route_localnet=1
+EOF
+
+sysctl -p /etc/sysctl.d/99-clashwrt.conf >/dev/null 2>&1
+
+exit 0

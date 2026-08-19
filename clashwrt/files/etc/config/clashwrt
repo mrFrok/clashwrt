@@ -1,0 +1,64 @@
+config clashwrt 'config'
+	option enabled '0'
+
+	# tproxy       - TCP+UDP through nft tproxy into mihomo's tproxy-port.
+	#                Fastest and most correct, but silently broken on some
+	#                kernels (rule matches, socket never receives).
+	# tproxy_tun   - TCP through tproxy, UDP through the tun device.
+	#                For kernels where tproxy works for TCP only.
+	# tun          - TCP+UDP both through the tun device. Works everywhere,
+	#                costs throughput.
+	# redirect_tun - TCP through a NAT redirect, UDP through the tun device.
+	#                The portable fallback when tproxy is unusable: NAT always
+	#                works, but cannot carry UDP, so UDP takes the tun.
+	option mode 'redirect_tun'
+
+	# 'auto' asks netifd which device currently backs lan/wan. Set a device
+	# name explicitly to override.
+	option lan_device 'auto'
+	option wan_device 'auto'
+	option tun_device 'clash-tun'
+	option mihomo_dir '/etc/mihomo'
+	option list_subdir 'lst'
+
+	# mihomo tags its own outbound sockets with this mark (routing-mark in
+	# config.yaml). Traffic carrying it is never re-intercepted, otherwise
+	# mihomo's own connections loop back into mihomo.
+	option self_mark '2'
+
+	# Ports are read from mihomo's config.yaml so the firewall cannot drift
+	# from the daemon. Set them here only to override that.
+	# option tproxy_port '7894'
+	# option redir_port '7893'
+	option dns_port '1053'
+	option api_port '9090'
+
+	# Reject QUIC (UDP/443) so browsers fall back to TCP. Only worth enabling
+	# when UDP is not proxied well.
+	option block_quic '0'
+
+	# Force LAN DNS into mihomo's resolver. Leave off if dnsmasq already
+	# forwards to mihomo.
+	option dns_hijack '0'
+
+	# Manage a fw4 zone for the tun device automatically. Without it,
+	# forwarded traffic to/from the tun is rejected by fw4's own forward
+	# chain regardless of what any other table accepts.
+	option manage_zone '1'
+
+	option mark_tproxy '1'
+	option mark_tun '3'
+	option table_tproxy '100'
+	option table_tun '151'
+	option rule_pref '1002'
+	option tun_wait '10'
+
+	list bypass_net '0.0.0.0/8'
+	list bypass_net '10.0.0.0/8'
+	list bypass_net '100.64.0.0/10'
+	list bypass_net '127.0.0.0/8'
+	list bypass_net '169.254.0.0/16'
+	list bypass_net '172.16.0.0/12'
+	list bypass_net '192.168.0.0/16'
+	list bypass_net '224.0.0.0/4'
+	list bypass_net '240.0.0.0/4'

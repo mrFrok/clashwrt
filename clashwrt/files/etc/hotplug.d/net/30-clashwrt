@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Re-apply the tun policy route the moment mihomo creates its tun device.
+#
+# The route is interface-scoped ("default dev clash-tun table 151"), so the
+# kernel deletes it along with the device every time mihomo restarts. Nothing
+# reports an error when that happens: marked packets just fall through to the
+# main routing table and leave the router unproxied, which from the client
+# side is indistinguishable from working. Hotplug is the exact signal for
+# repairing it -- far better than polling on a timer.
+#
+# This also covers boot, where mihomo (START=99) necessarily starts after
+# clashwrt (START=98), so the device cannot exist during our own start.
+
+[ "$ACTION" = "add" ] || exit 0
+
+DEV="${INTERFACE:-$DEVICENAME}"
+[ -n "$DEV" ] || exit 0
+
+WANT="$(uci -q get clashwrt.config.tun_device)" || exit 0
+[ -n "$WANT" ] || exit 0
+[ "$DEV" = "$WANT" ] || exit 0
+
+[ "$(uci -q get clashwrt.config.enabled)" = "1" ] || exit 0
+
+/usr/libexec/clashwrt/fw.sh check

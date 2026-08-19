@@ -1,0 +1,92 @@
+{
+	"luci-app-clashwrt": {
+		"description": "Grant access to mihomo transparent proxy settings",
+		"read": {
+			"file": {
+				"/usr/libexec/clashwrt/fw.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/confctl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/filectl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/uictl.sh": [
+					"exec"
+				],
+				"/etc/init.d/clashwrt": [
+					"exec"
+				],
+				"/etc/init.d/mihomo": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/logctl.sh": [
+					"exec"
+				]
+			},
+			"ubus": {
+				"file": [
+					"exec",
+					"read",
+					"stat"
+				],
+				"uci": [
+					"get"
+				],
+				"service": [
+					"list"
+				]
+			},
+			"uci": [
+				"clashwrt"
+			]
+		},
+		"write": {
+			"file": {
+				"/etc/init.d/clashwrt": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/fw.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/confctl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/filectl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/uictl.sh": [
+					"exec"
+				],
+				"/tmp/clashwrt-staging": [
+					"write"
+				],
+				"/etc/init.d/mihomo": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/logctl.sh": [
+					"exec"
+				]
+			},
+			"ubus": {
+				"file": [
+					"exec",
+					"write"
+				],
+				"uci": [
+					"set",
+					"commit",
+					"add",
+					"delete",
+					"order",
+					"apply"
+				]
+			},
+			"uci": [
+				"clashwrt",
+				"firewall"
+			]
+		}
+	}
+}

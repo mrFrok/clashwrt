@@ -1,0 +1,451 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Status unavailable."
+msgstr ""
+
+msgid "Mode"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "yes"
+msgstr ""
+
+msgid "no"
+msgstr ""
+
+msgid "Firewall ruleset"
+msgstr ""
+
+msgid "mihomo daemon"
+msgstr ""
+
+msgid "Tun device"
+msgstr ""
+
+msgid "Tun route"
+msgstr ""
+
+msgid "TPROXY port"
+msgstr ""
+
+msgid "Redirect port"
+msgstr ""
+
+msgid "ClashWrt — transparent proxy"
+msgstr ""
+
+msgid "Intercepts LAN traffic and hands it to mihomo. Pick the interception mode that your kernel actually honours — see the mode descriptions below."
+msgstr ""
+
+msgid "Testing, this takes a few seconds…"
+msgstr ""
+
+msgid "No output."
+msgstr ""
+
+msgid "Test TPROXY support"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "Checks whether this kernel actually delivers TPROXY packets to a transparent socket, and recommends a mode. Requires socat. Briefly attaches a test interface to the LAN."
+msgstr ""
+
+msgid "enabled"
+msgstr ""
+
+msgid "disabled"
+msgstr ""
+
+msgid "Regenerating configuration…"
+msgstr ""
+
+msgid "Disable protocol split"
+msgstr ""
+
+msgid "Enable protocol split"
+msgstr ""
+
+msgid "TCP / UDP protocol split"
+msgstr ""
+
+msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently "
+msgstr ""
+
+msgid "Run the setup wizard once first — the split is applied by regenerating the configuration from its answers."
+msgstr ""
+
+msgid "General"
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "Build the ruleset and policy routing. Disabling tears both down and leaves traffic direct."
+msgstr ""
+
+msgid "Interception mode"
+msgstr ""
+
+msgid "TPROXY — TCP + UDP"
+msgstr ""
+
+msgid "TPROXY for TCP + tun for UDP"
+msgstr ""
+
+msgid "Tun — TCP + UDP"
+msgstr ""
+
+msgid "NAT redirect for TCP + tun for UDP"
+msgstr ""
+
+msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket. "
+msgstr ""
+
+msgid "LAN device"
+msgstr ""
+
+msgid "Only traffic arriving on this device is intercepted."
+msgstr ""
+
+msgid "Must match <code>tun.device</code> in mihomo's config.yaml."
+msgstr ""
+
+msgid "Mihomo directory"
+msgstr ""
+
+msgid "Where config.yaml lives. Listening ports are read from it, so the firewall cannot drift from the daemon."
+msgstr ""
+
+msgid "Behaviour"
+msgstr ""
+
+msgid "Manage firewall zone"
+msgstr ""
+
+msgid "Create and maintain an fw4 zone for the tun device. Without it fw4's own forward chain rejects forwarded tun traffic no matter what any other table accepts."
+msgstr ""
+
+msgid "Block QUIC"
+msgstr ""
+
+msgid "Reject UDP/443 so browsers fall back to TCP. Only useful when UDP is not proxied well."
+msgstr ""
+
+msgid "Hijack LAN DNS"
+msgstr ""
+
+msgid "Redirect port 53 from the LAN into mihomo's resolver. Leave off if dnsmasq already forwards to mihomo."
+msgstr ""
+
+msgid "Bypass destinations"
+msgstr ""
+
+msgid "Destination networks that are never proxied."
+msgstr ""
+
+msgid "Bypass clients"
+msgstr ""
+
+msgid "LAN source addresses that are never proxied."
+msgstr ""
+
+msgid "Advanced"
+msgstr ""
+
+msgid "Leave empty to read <code>tproxy-port</code> from config.yaml."
+msgstr ""
+
+msgid "Leave empty to read <code>redir-port</code> from config.yaml."
+msgstr ""
+
+msgid "Mihomo DNS port"
+msgstr ""
+
+msgid "Mihomo API port"
+msgstr ""
+
+msgid "Mihomo routing mark"
+msgstr ""
+
+msgid "Must match <code>routing-mark</code> in config.yaml. Traffic carrying it is never re-intercepted, otherwise mihomo's own connections loop back into mihomo."
+msgstr ""
+
+msgid "TCP fwmark"
+msgstr ""
+
+msgid "Tun fwmark"
+msgstr ""
+
+msgid "TPROXY routing table"
+msgstr ""
+
+msgid "Tun routing table"
+msgstr ""
+
+msgid "Rule preference"
+msgstr ""
+
+msgid "Tun wait (seconds)"
+msgstr ""
+
+msgid "How long to wait for the tun device at startup. It is created by mihomo, so it may not exist yet; hotplug re-applies the route regardless once it appears."
+msgstr ""
+
+msgid "Downloading and installing…"
+msgstr ""
+
+msgid "Install selected"
+msgstr ""
+
+msgid "Enter a URL first."
+msgstr ""
+
+msgid "Install from URL"
+msgstr ""
+
+msgid "Web dashboard"
+msgstr ""
+
+msgid "The panel mihomo serves at its API port. Any of these can be swapped at any time; the previous one is only removed once the new copy has been checked."
+msgstr ""
+
+msgid "Currently installed: "
+msgstr ""
+
+msgid "Dashboard:"
+msgstr ""
+
+msgid "Or install any other dashboard from a .tar.gz archive containing index.html. Note that .zip is not supported: OpenWrt images routinely ship without unzip."
+msgstr ""
+
+msgid "Checking…"
+msgstr ""
+
+msgid "Check syntax"
+msgstr ""
+
+msgid "Save and apply"
+msgstr ""
+
+msgid "The configuration will be checked, backed up and installed, then mihomo will be restarted. If the check fails nothing is changed."
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Applying…"
+msgstr ""
+
+msgid "Reloaded from disk."
+msgstr ""
+
+msgid "Discard changes"
+msgstr ""
+
+msgid "Backups:"
+msgstr ""
+
+msgid "Restoring…"
+msgstr ""
+
+msgid "Restore selected"
+msgstr ""
+
+msgid "Mihomo configuration"
+msgstr ""
+
+msgid "Direct editor for config.yaml. Nothing is installed until mihomo has accepted it, and the previous version is kept as a backup."
+msgstr ""
+
+msgid "nothing open"
+msgstr ""
+
+msgid "Delete file"
+msgstr ""
+
+msgid "Delete %s? A config that still refers to it will fail to load."
+msgstr ""
+
+msgid "Deleted."
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "File"
+msgstr ""
+
+msgid "Lines"
+msgstr ""
+
+msgid "Bytes"
+msgstr ""
+
+msgid "Enter a file name first."
+msgstr ""
+
+msgid "New file staged. It is created on the router when you save."
+msgstr ""
+
+msgid "New file"
+msgstr ""
+
+msgid "Open or create a file first."
+msgstr ""
+
+msgid "Saved."
+msgstr ""
+
+msgid "Save file"
+msgstr ""
+
+msgid "Rule files"
+msgstr ""
+
+msgid "Hand-maintained lists that a config refers to as file-backed rule providers, for example <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. One rule per line, such as <code>DOMAIN-SUFFIX,example.com</code>."
+msgstr ""
+
+msgid "Files in %s"
+msgstr ""
+
+msgid "Editing: "
+msgstr ""
+
+msgid "Everything direct, except the selected lists"
+msgstr ""
+
+msgid "Everything through the proxy, except Russia"
+msgstr ""
+
+msgid "empty = all nodes"
+msgstr ""
+
+msgid "No nodes yet."
+msgstr ""
+
+msgid "Parsed %d node(s): %d UDP-native (%s), %d TCP-based."
+msgstr ""
+
+msgid "Splitting will have nothing to send UDP through."
+msgstr ""
+
+msgid "Subscription only — node protocols are unknown until it is fetched, so the split relies on the name filters below."
+msgstr ""
+
+msgid "%d line(s) could not be parsed."
+msgstr ""
+
+msgid "Add a subscription URL or at least one working node link first."
+msgstr ""
+
+msgid "Generated. Review it below, then apply."
+msgstr ""
+
+msgid "Generate"
+msgstr ""
+
+msgid "Replace configuration"
+msgstr ""
+
+msgid "This replaces mihomo's config.yaml. The current one is backed up first, and nothing is installed unless mihomo accepts the new file."
+msgstr ""
+
+msgid "Replace and apply"
+msgstr ""
+
+msgid "Apply configuration"
+msgstr ""
+
+msgid "Setup wizard"
+msgstr ""
+
+msgid "Builds a working config.yaml from a subscription or node links. Inbound settings are generated to match the interception mode currently selected on the Settings page, so the firewall and mihomo always agree."
+msgstr ""
+
+msgid "Subscription URLs"
+msgstr ""
+
+msgid "One per line. Each becomes a proxy-provider."
+msgstr ""
+
+msgid "Node links"
+msgstr ""
+
+msgid "vless://, vmess://, trojan://, ss://, hysteria2://, tuic:// — one per line."
+msgstr ""
+
+msgid "DNS"
+msgstr ""
+
+msgid "Custom servers, one per line. If filled, these win over the preset."
+msgstr ""
+
+msgid "Routing strategy"
+msgstr ""
+
+msgid "Lists"
+msgstr ""
+
+msgid "Used by the \"everything direct, except…\" strategy."
+msgstr ""
+
+msgid "Split TCP and UDP across protocols"
+msgstr ""
+
+msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and leaves everything else on the TCP-based ones. Worth doing when a subscription carries both: the QUIC protocols handle datagrams natively instead of tunnelling them."
+msgstr ""
+
+msgid "UDP node filter (regex, Go RE2 — no lookahead):"
+msgstr ""
+
+msgid "TCP node filter:"
+msgstr ""
+
+msgid "Preview"
+msgstr ""
+
+msgid "Settings"
+msgstr ""
+
+msgid "Configuration"
+msgstr ""
+
+msgid "ClashWrt"
+msgstr ""
+
+msgid "checking…"
+msgstr ""
+
+msgid "unknown"
+msgstr ""
+
+msgid "Applies to the configuration that is installed now, whether the wizard wrote it or you did. The result is checked before it replaces anything."
+msgstr ""
+
+msgid "unavailable"
+msgstr ""
+
+msgid "No dashboard list available."
+msgstr ""
+
+msgid "Restarting mihomo…"
+msgstr ""
+
+msgid "mihomo restarted."
+msgstr ""
+
+msgid "Restart mihomo"
+msgstr ""
+
+msgid "Open dashboard"
+msgstr ""
+
+msgid "Address: "
+msgstr ""

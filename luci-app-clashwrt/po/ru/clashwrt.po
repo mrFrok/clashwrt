@@ -1,0 +1,538 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-clashwrt\n"
+"MIME-Version: 1.0\n"
+"Last-Translator: ClashWrt\n"
+"Language-Team: Russian\n"
+"Language: ru\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Status unavailable."
+msgstr "Состояние недоступно."
+
+msgid "Mode"
+msgstr "Режим"
+
+msgid "Enabled"
+msgstr "Включено"
+
+msgid "yes"
+msgstr "да"
+
+msgid "no"
+msgstr "нет"
+
+msgid "Firewall ruleset"
+msgstr "Правила файрвола"
+
+msgid "mihomo daemon"
+msgstr "Служба mihomo"
+
+msgid "Tun device"
+msgstr "Tun-интерфейс"
+
+msgid "Tun route"
+msgstr "Маршрут в tun"
+
+msgid "TPROXY port"
+msgstr "Порт TPROXY"
+
+msgid "Redirect port"
+msgstr "Порт redirect"
+
+msgid "ClashWrt — transparent proxy"
+msgstr "ClashWrt — прозрачный прокси"
+
+msgid "Intercepts LAN traffic and hands it to mihomo. Pick the interception mode that your kernel actually honours — see the mode descriptions below."
+msgstr "Перехватывает трафик локальной сети и передаёт его в mihomo. Выберите режим перехвата, который действительно поддерживает ваше ядро — см. описания ниже."
+
+msgid "Testing, this takes a few seconds…"
+msgstr "Проверка, это займёт несколько секунд…"
+
+msgid "No output."
+msgstr "Нет вывода."
+
+msgid "Test TPROXY support"
+msgstr "Проверить поддержку TPROXY"
+
+msgid "Status"
+msgstr "Состояние"
+
+msgid "Checks whether this kernel actually delivers TPROXY packets to a transparent socket, and recommends a mode. Requires socat. Briefly attaches a test interface to the LAN."
+msgstr "Проверяет, действительно ли ядро доставляет TPROXY-пакеты в прозрачный сокет, и советует режим. Нужен socat. На короткое время подключает к сети тестовый интерфейс."
+
+msgid "enabled"
+msgstr "включено"
+
+msgid "disabled"
+msgstr "выключено"
+
+msgid "Regenerating configuration…"
+msgstr "Перегенерация конфигурации…"
+
+msgid "Disable protocol split"
+msgstr "Выключить разделение протоколов"
+
+msgid "Enable protocol split"
+msgstr "Включить разделение протоколов"
+
+msgid "TCP / UDP protocol split"
+msgstr "Разделение протоколов TCP и UDP"
+
+msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently "
+msgstr "Направляет UDP на узлы поверх QUIC (Hysteria2, TUIC), а остальное — на узлы поверх TCP. Сейчас "
+
+msgid "Run the setup wizard once first — the split is applied by regenerating the configuration from its answers."
+msgstr "Сначала пройдите мастер настройки — разделение применяется перегенерацией конфигурации по его ответам."
+
+msgid "General"
+msgstr "Основное"
+
+msgid "Enable"
+msgstr "Включить"
+
+msgid "Build the ruleset and policy routing. Disabling tears both down and leaves traffic direct."
+msgstr "Создать правила и маршрутизацию. При выключении всё снимается, трафик идёт напрямую."
+
+msgid "Interception mode"
+msgstr "Режим перехвата"
+
+msgid "TPROXY — TCP + UDP"
+msgstr "TPROXY — TCP + UDP"
+
+msgid "TPROXY for TCP + tun for UDP"
+msgstr "TPROXY для TCP + tun для UDP"
+
+msgid "Tun — TCP + UDP"
+msgstr "Tun — TCP + UDP"
+
+msgid "NAT redirect for TCP + tun for UDP"
+msgstr "NAT-redirect для TCP + tun для UDP"
+
+msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket. "
+msgstr "<strong>TPROXY</strong> — правильный механизм прозрачного проксирования и единственный, который сохраняет исходное назначение UDP без tun-интерфейса. Но на некоторых ядрах он незаметно сломан: правило срабатывает и помечает пакет, однако в прозрачный сокет он так и не попадает. "
+
+msgid "LAN device"
+msgstr "Интерфейс локальной сети"
+
+msgid "Only traffic arriving on this device is intercepted."
+msgstr "Перехватывается только трафик, приходящий с этого интерфейса."
+
+msgid "Must match <code>tun.device</code> in mihomo's config.yaml."
+msgstr "Должно совпадать с <code>tun.device</code> в config.yaml mihomo."
+
+msgid "Mihomo directory"
+msgstr "Каталог mihomo"
+
+msgid "Where config.yaml lives. Listening ports are read from it, so the firewall cannot drift from the daemon."
+msgstr "Где лежит config.yaml. Порты прослушивания читаются оттуда, поэтому файрвол не может разойтись с демоном."
+
+msgid "Behaviour"
+msgstr "Поведение"
+
+msgid "Manage firewall zone"
+msgstr "Управлять зоной файрвола"
+
+msgid "Create and maintain an fw4 zone for the tun device. Without it fw4's own forward chain rejects forwarded tun traffic no matter what any other table accepts."
+msgstr "Создавать и поддерживать зону fw4 для tun-интерфейса. Без неё цепочка forward самого fw4 отклоняет проходящий трафик tun, что бы ни разрешали другие таблицы."
+
+msgid "Block QUIC"
+msgstr "Блокировать QUIC"
+
+msgid "Reject UDP/443 so browsers fall back to TCP. Only useful when UDP is not proxied well."
+msgstr "Отклонять UDP/443, чтобы браузеры откатывались на TCP. Полезно, только если UDP проксируется плохо."
+
+msgid "Hijack LAN DNS"
+msgstr "Перехватывать DNS локальной сети"
+
+msgid "Redirect port 53 from the LAN into mihomo's resolver. Leave off if dnsmasq already forwards to mihomo."
+msgstr "Перенаправлять порт 53 из локальной сети в резолвер mihomo. Оставьте выключенным, если dnsmasq уже пересылает запросы в mihomo."
+
+msgid "Bypass destinations"
+msgstr "Исключённые назначения"
+
+msgid "Destination networks that are never proxied."
+msgstr "Сети назначения, которые никогда не проксируются."
+
+msgid "Bypass clients"
+msgstr "Исключённые клиенты"
+
+msgid "LAN source addresses that are never proxied."
+msgstr "Адреса в локальной сети, которые никогда не проксируются."
+
+msgid "Advanced"
+msgstr "Дополнительно"
+
+msgid "Leave empty to read <code>tproxy-port</code> from config.yaml."
+msgstr "Оставьте пустым, чтобы прочитать <code>tproxy-port</code> из config.yaml."
+
+msgid "Leave empty to read <code>redir-port</code> from config.yaml."
+msgstr "Оставьте пустым, чтобы прочитать <code>redir-port</code> из config.yaml."
+
+msgid "Mihomo DNS port"
+msgstr "DNS-порт mihomo"
+
+msgid "Mihomo API port"
+msgstr "API-порт mihomo"
+
+msgid "Mihomo routing mark"
+msgstr "Метка маршрутизации mihomo"
+
+msgid "Must match <code>routing-mark</code> in config.yaml. Traffic carrying it is never re-intercepted, otherwise mihomo's own connections loop back into mihomo."
+msgstr "Должно совпадать с <code>routing-mark</code> в config.yaml. Трафик с этой меткой никогда не перехватывается повторно, иначе собственные соединения mihomo зациклятся на нём же."
+
+msgid "TCP fwmark"
+msgstr "Метка fwmark для TCP"
+
+msgid "Tun fwmark"
+msgstr "Метка fwmark для tun"
+
+msgid "TPROXY routing table"
+msgstr "Таблица маршрутизации TPROXY"
+
+msgid "Tun routing table"
+msgstr "Таблица маршрутизации tun"
+
+msgid "Rule preference"
+msgstr "Приоритет правила"
+
+msgid "Tun wait (seconds)"
+msgstr "Ожидание tun (секунды)"
+
+msgid "How long to wait for the tun device at startup. It is created by mihomo, so it may not exist yet; hotplug re-applies the route regardless once it appears."
+msgstr "Сколько ждать появления tun-интерфейса при запуске. Его создаёт mihomo, поэтому его может ещё не быть; когда он появится, hotplug всё равно восстановит маршрут."
+
+msgid "Downloading and installing…"
+msgstr "Загрузка и установка…"
+
+msgid "Install selected"
+msgstr "Установить выбранную"
+
+msgid "Enter a URL first."
+msgstr "Сначала укажите ссылку."
+
+msgid "Install from URL"
+msgstr "Установить по ссылке"
+
+msgid "Web dashboard"
+msgstr "Веб-панель"
+
+msgid "The panel mihomo serves at its API port. Any of these can be swapped at any time; the previous one is only removed once the new copy has been checked."
+msgstr "Панель, которую mihomo отдаёт на своём API-порту. Любую можно заменить в любой момент: старая удаляется только после проверки новой."
+
+msgid "Currently installed: "
+msgstr "Сейчас установлена: "
+
+msgid "Dashboard:"
+msgstr "Панель:"
+
+msgid "Or install any other dashboard from a .tar.gz archive containing index.html. Note that .zip is not supported: OpenWrt images routinely ship without unzip."
+msgstr "Либо установите любую другую панель из архива .tar.gz с файлом index.html. Формат .zip не поддерживается: в образах OpenWrt обычно нет unzip."
+
+msgid "Checking…"
+msgstr "Проверка…"
+
+msgid "Check syntax"
+msgstr "Проверить синтаксис"
+
+msgid "Save and apply"
+msgstr "Сохранить и применить"
+
+msgid "The configuration will be checked, backed up and installed, then mihomo will be restarted. If the check fails nothing is changed."
+msgstr "Конфигурация будет проверена, сохранена в резервную копию и установлена, затем mihomo перезапустится. Если проверка не пройдёт, ничего не изменится."
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Applying…"
+msgstr "Применение…"
+
+msgid "Reloaded from disk."
+msgstr "Перечитано с диска."
+
+msgid "Discard changes"
+msgstr "Отменить изменения"
+
+msgid "Backups:"
+msgstr "Резервные копии:"
+
+msgid "Restoring…"
+msgstr "Восстановление…"
+
+msgid "Restore selected"
+msgstr "Восстановить выбранную"
+
+msgid "Mihomo configuration"
+msgstr "Конфигурация Mihomo"
+
+msgid "Direct editor for config.yaml. Nothing is installed until mihomo has accepted it, and the previous version is kept as a backup."
+msgstr "Прямой редактор config.yaml. Ничего не устанавливается, пока mihomo не примет файл; предыдущая версия сохраняется в резервной копии."
+
+msgid "nothing open"
+msgstr "ничего не открыто"
+
+msgid "Delete file"
+msgstr "Удалить файл"
+
+msgid "Delete %s? A config that still refers to it will fail to load."
+msgstr "Удалить %s? Конфигурация, которая на него ссылается, перестанет загружаться."
+
+msgid "Deleted."
+msgstr "Удалено."
+
+msgid "Delete"
+msgstr "Удалить"
+
+msgid "File"
+msgstr "Файл"
+
+msgid "Lines"
+msgstr "Строк"
+
+msgid "Bytes"
+msgstr "Байт"
+
+msgid "Enter a file name first."
+msgstr "Сначала укажите имя файла."
+
+msgid "New file staged. It is created on the router when you save."
+msgstr "Новый файл подготовлен. Он будет создан на роутере при сохранении."
+
+msgid "New file"
+msgstr "Новый файл"
+
+msgid "Open or create a file first."
+msgstr "Сначала откройте или создайте файл."
+
+msgid "Saved."
+msgstr "Сохранено."
+
+msgid "Save file"
+msgstr "Сохранить файл"
+
+msgid "Rule files"
+msgstr "Файлы правил"
+
+msgid "Hand-maintained lists that a config refers to as file-backed rule providers, for example <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. One rule per line, such as <code>DOMAIN-SUFFIX,example.com</code>."
+msgstr "Списки, которые вы ведёте вручную и на которые конфигурация ссылается как на файловые rule-provider, например <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. По одному правилу в строке, вида <code>DOMAIN-SUFFIX,example.com</code>."
+
+msgid "Files in %s"
+msgstr "Файлы в %s"
+
+msgid "Editing: "
+msgstr "Редактируется: "
+
+msgid "Everything direct, except the selected lists"
+msgstr "Всё напрямую, кроме выбранных списков"
+
+msgid "Everything through the proxy, except Russia"
+msgstr "Всё через прокси, кроме России"
+
+msgid "empty = all nodes"
+msgstr "пусто = все узлы"
+
+msgid "No nodes yet."
+msgstr "Узлов пока нет."
+
+msgid "Parsed %d node(s): %d UDP-native (%s), %d TCP-based."
+msgstr "Разобрано узлов: %d. Из них с родным UDP — %d (%s), поверх TCP — %d."
+
+msgid "Splitting will have nothing to send UDP through."
+msgstr "Разделять нечем: не найдено ни одного узла с родным UDP."
+
+msgid "Subscription only — node protocols are unknown until it is fetched, so the split relies on the name filters below."
+msgstr "Только подписка — протоколы узлов неизвестны, пока она не загружена, поэтому разделение опирается на фильтры имён ниже."
+
+msgid "%d line(s) could not be parsed."
+msgstr "Не удалось разобрать строк: %d."
+
+msgid "Add a subscription URL or at least one working node link first."
+msgstr "Сначала добавьте ссылку на подписку или хотя бы одну рабочую ссылку узла."
+
+msgid "Generated. Review it below, then apply."
+msgstr "Сгенерировано. Просмотрите ниже и примените."
+
+msgid "Generate"
+msgstr "Сгенерировать"
+
+msgid "Replace configuration"
+msgstr "Заменить конфигурацию"
+
+msgid "This replaces mihomo's config.yaml. The current one is backed up first, and nothing is installed unless mihomo accepts the new file."
+msgstr "Это заменит config.yaml mihomo. Текущий файл сначала копируется в резерв, и ничего не устанавливается, пока mihomo не примет новый."
+
+msgid "Replace and apply"
+msgstr "Заменить и применить"
+
+msgid "Apply configuration"
+msgstr "Применить конфигурацию"
+
+msgid "Setup wizard"
+msgstr "Мастер настройки"
+
+msgid "Builds a working config.yaml from a subscription or node links. Inbound settings are generated to match the interception mode currently selected on the Settings page, so the firewall and mihomo always agree."
+msgstr "Собирает рабочий config.yaml из подписки или ссылок на узлы. Входящие настройки генерируются под режим перехвата, выбранный на странице настроек, поэтому файрвол и mihomo всегда согласованы."
+
+msgid "Subscription URLs"
+msgstr "Ссылки на подписки"
+
+msgid "One per line. Each becomes a proxy-provider."
+msgstr "По одной в строке. Каждая станет proxy-provider."
+
+msgid "Node links"
+msgstr "Ссылки узлов"
+
+msgid "vless://, vmess://, trojan://, ss://, hysteria2://, tuic:// — one per line."
+msgstr "vless://, vmess://, trojan://, ss://, hysteria2://, tuic:// — по одной в строке."
+
+msgid "DNS"
+msgstr "DNS"
+
+msgid "Custom servers, one per line. If filled, these win over the preset."
+msgstr "Свои серверы, по одному в строке. Если поле заполнено, оно важнее пресета."
+
+msgid "Routing strategy"
+msgstr "Стратегия маршрутизации"
+
+msgid "Lists"
+msgstr "Списки"
+
+msgid "Used by the \"everything direct, except…\" strategy."
+msgstr "Используются стратегией «всё напрямую, кроме…»."
+
+msgid "Split TCP and UDP across protocols"
+msgstr "Разделить TCP и UDP по протоколам"
+
+msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and leaves everything else on the TCP-based ones. Worth doing when a subscription carries both: the QUIC protocols handle datagrams natively instead of tunnelling them."
+msgstr "Направляет UDP на узлы поверх QUIC (Hysteria2, TUIC), а остальное оставляет на узлах поверх TCP. Имеет смысл, когда в подписке есть и те и другие: протоколы поверх QUIC работают с датаграммами напрямую, а не тоннелируют их."
+
+msgid "UDP node filter (regex, Go RE2 — no lookahead):"
+msgstr "Фильтр UDP-узлов (регулярное выражение, Go RE2 — без опережающих проверок):"
+
+msgid "TCP node filter:"
+msgstr "Фильтр TCP-узлов:"
+
+msgid "Preview"
+msgstr "Предпросмотр"
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Configuration"
+msgstr "Конфигурация"
+
+msgid "ClashWrt"
+msgstr "ClashWrt"
+
+msgid "checking…"
+msgstr "проверка…"
+
+msgid "unknown"
+msgstr "неизвестно"
+
+msgid "Applies to the configuration that is installed now, whether the wizard wrote it or you did. The result is checked before it replaces anything."
+msgstr "Применяется к той конфигурации, которая установлена сейчас — неважно, написал её мастер или вы сами. Результат проверяется перед заменой."
+
+msgid "unavailable"
+msgstr "недоступно"
+
+msgid "No dashboard list available."
+msgstr "Список панелей недоступен."
+
+msgid "Restarting mihomo…"
+msgstr "Перезапуск mihomo…"
+
+msgid "mihomo restarted."
+msgstr "mihomo перезапущен."
+
+msgid "Restart mihomo"
+msgstr "Перезапустить mihomo"
+
+msgid "Open dashboard"
+msgstr "Открыть панель"
+
+msgid "Address: "
+msgstr "Адрес: "
+
+msgid "If the panel still looks unchanged, reload its tab once — the previous dashboard holds it in the browser cache until then."
+msgstr "Если панель выглядит по-прежнему, перезагрузите её вкладку один раз — до этого предыдущая панель держит её в кеше браузера."
+
+msgid "filter, e.g. an IP or a domain"
+msgstr "фильтр, например IP или домен"
+
+msgid "%d line(s)"
+msgstr "строк: %d"
+
+msgid "connecting to %s"
+msgstr "подключение к %s"
+
+msgid "this browser cannot read a streaming response"
+msgstr "этот браузер не умеет читать потоковый ответ"
+
+msgid "stream ended"
+msgstr "поток завершён"
+
+msgid "stream error: %s"
+msgstr "ошибка потока: %s"
+
+msgid "If mihomo is running, check that its API is reachable at %s."
+msgstr "Если mihomo запущен, проверьте доступность его API по адресу %s."
+
+msgid "nothing logged yet"
+msgstr "записей пока нет"
+
+msgid "proxy-related"
+msgstr "связанное с прокси"
+
+msgid "everything"
+msgstr "всё"
+
+msgid "kernel"
+msgstr "ядро"
+
+msgid "mihomo (live)"
+msgstr "mihomo (в реальном времени)"
+
+msgid "system log"
+msgstr "системный журнал"
+
+msgid "Level:"
+msgstr "Уровень:"
+
+msgid "Show:"
+msgstr "Показывать:"
+
+msgid "Resume"
+msgstr "Продолжить"
+
+msgid "Pause"
+msgstr "Пауза"
+
+msgid "Clear"
+msgstr "Очистить"
+
+msgid "Copied"
+msgstr "Скопировано"
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgid "Logs"
+msgstr "Логи"
+
+msgid "The live view is mihomo's own log, read straight from its API — this is where you see which rule matched a connection and which node carried it. The system log shows everything around it: the firewall engine, hotplug and the daemon being restarted."
+msgstr "В реальном времени показывается собственный лог mihomo, читаемый прямо из его API: здесь видно, какое правило сработало для соединения и через какой узел оно пошло. Системный журнал показывает всё вокруг: движок файрвола, hotplug и перезапуски службы."
+
+msgid "Source:"
+msgstr "Источник:"
+
+msgid "Filter:"
+msgstr "Фильтр:"
+
+msgid "Auto-scroll"
+msgstr "Автопрокрутка"
+
+msgid "reading from %s"
+msgstr "источник: %s"

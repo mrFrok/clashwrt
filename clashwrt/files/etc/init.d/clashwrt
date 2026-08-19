@@ -1,0 +1,44 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Late enough that mihomo (START=99 in its own init script) and the tun
+# device it creates normally exist by the time we look for them; the engine
+# waits and hotplug re-applies anyway if they do not.
+START=98
+STOP=05
+USE_PROCD=1
+
+FW=/usr/libexec/clashwrt/fw.sh
+
+boot() {
+	# On boot, mihomo has not started yet, so the tun device cannot exist.
+	# Skip the wait here and let hotplug apply the routing once it appears.
+	start
+}
+
+start_service() {
+	$FW apply
+}
+
+stop_service() {
+	$FW flush
+}
+
+reload_service() {
+	$FW apply
+}
+
+service_triggers() {
+	procd_add_reload_trigger "clashwrt"
+}
+
+status() {
+	$FW status
+}
+
+check() {
+	$FW check
+}
+
+extra_command "status" "Show current mode and live firewall/routing state"
+extra_command "check"  "Repair routing that went stale (tun device recreated)"
