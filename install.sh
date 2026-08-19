@@ -78,14 +78,49 @@ else
 	die "neither apk nor opkg found"
 fi
 
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# Package names are not stable across releases and some are virtual: nftables
+# is provided by nftables-nojson / nftables-json rather than existing under
+# that name, so a single hardcoded name fails on opkg systems. Try candidates
+# until one takes.
+need_pkg() {
+	for _cand in "$@"; do
+		$PKG_ADD "$_cand" >/dev/null 2>&1 && return 0
+	done
+	return 1
+}
+
+# ClashWrt builds nftables rules and relies on fw4 zones to let forwarded tun
+# traffic through. On fw3/iptables systems (21.02 and older) the rules would be
+# installed and then silently ignored, which is a worse failure than refusing.
+if ! have_cmd fw4 && [ ! -x /sbin/fw4 ]; then
+	die "this needs OpenWrt's fw4 firewall (22.03 or newer); fw3/iptables is not supported"
+fi
+
 say "refreshing the package index"
 $PKG_UPDATE >/dev/null 2>&1 || warn "package index refresh failed; continuing with what is installed"
 
-# socat is only needed by the TPROXY selftest, so a failure there is not fatal
-for p in nftables ip-full kmod-nft-tproxy kmod-nft-nat kmod-tun curl ca-bundle; do
-	$PKG_ADD "$p" >/dev/null 2>&1 || warn "could not install $p (may already be present)"
+# Only install what is actually missing -- on a stock image most of this is
+# already there, pulled in by firewall4.
+have_cmd nft   || need_pkg nftables nftables-nojson nftables-json || warn "could not install nftables"
+have_cmd curl  || need_pkg curl || die "curl is required and could not be installed"
+[ -f /etc/ssl/certs/ca-certificates.crt ] || need_pkg ca-bundle >/dev/null 2>&1
+
+# `ip rule` and `ip route ... table N` need the real iproute2, not busybox ip
+ip rule show >/dev/null 2>&1 || need_pkg ip-full ip || warn "could not install ip-full; policy routing may not work"
+
+# kmod names are stable, but they live in a per-kernel feed and a mismatched
+# index makes them unavailable; none of these is fatal at install time
+for p in kmod-nft-nat kmod-tun; do
+	need_pkg "$p" || warn "could not install $p (may already be built in)"
 done
-$PKG_ADD socat >/dev/null 2>&1 || warn "socat not installed -- the TPROXY selftest will be unavailable"
+
+# only the two TPROXY modes need this one
+need_pkg kmod-nft-tproxy || warn "kmod-nft-tproxy unavailable -- the tproxy modes may not work; the other two are unaffected"
+
+# socat is only used by the TPROXY selftest
+need_pkg socat || warn "socat not installed -- the TPROXY selftest will be unavailable"
 
 # --------------------------------------------------------------------------
 # mihomo core

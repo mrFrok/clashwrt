@@ -30,10 +30,14 @@ ClashWrt owns the firewall and routing layer only. Your `config.yaml`, your prox
 
 ## Requirements
 
-- OpenWrt 23.05 or newer with **fw4/nftables** (developed and tested on 25.12 on a BananaPi BPI-R4, `mediatek/filogic`).
-- `nftables`, `ip-full`, `kmod-nft-nat`, `kmod-nft-tproxy`, `kmod-tun`, `curl` — the installer pulls these in.
+- **OpenWrt 22.03 or newer**, because ClashWrt needs the **fw4/nftables** firewall. Both package managers are supported: `apk` on 25.12+ and `opkg` on 23.05/24.10.
+  On 21.02 and older, which use fw3/iptables, the installer refuses rather than installing rules the firewall would silently ignore.
+- `nftables`, `ip-full`, `kmod-nft-nat`, `kmod-tun`, `curl` — the installer adds whatever is missing. Most stock images already have them, pulled in by `firewall4`.
+- `kmod-nft-tproxy`, only for the two TPROXY modes; the other two work without it.
 - `socat`, optional, only for the TPROXY selftest.
-- The mihomo core, which the installer downloads for your architecture.
+- The mihomo core, which the installer downloads for your architecture (arm64, armv5/6/7, x86_64, i386, mips/mipsel, mips64/mips64el, riscv64).
+
+Developed and tested on OpenWrt 25.12 on a BananaPi BPI-R4 (`mediatek/filogic`). The 23.05 and 24.10 package feeds and LuCI APIs were checked for compatibility, but if you hit something on those releases, please open an issue.
 
 ## Install
 
