@@ -126,21 +126,84 @@ need_pkg socat || warn "socat not installed -- the TPROXY selftest will be unava
 # mihomo core
 # --------------------------------------------------------------------------
 
-map_arch() {
+# `uname -m` reports plain "mips" on both big- and little-endian MIPS, so it
+# cannot tell mips-softfloat from mipsle-softfloat -- and installing the wrong
+# endianness gives a binary that will not run. OpenWrt states the endianness
+# in DISTRIB_ARCH (mipsel_24kc vs mips_24kc), so that is the primary source,
+# with the ELF header as the fallback for anything that lacks it.
+
+map_openwrt_arch() {
+	case "$1" in
+		aarch64_*)      echo "arm64" ;;
+		x86_64)         echo "amd64-compatible" ;;
+		i386_*)         echo "386" ;;
+		mipsel_*)       echo "mipsle-softfloat" ;;
+		mips_*)         echo "mips-softfloat" ;;
+		mips64el_*)     echo "mips64le" ;;
+		mips64_*)       echo "mips64" ;;
+		riscv64_*)      echo "riscv64" ;;
+		loongarch64_*)  echo "loong64-abi2" ;;
+		arm_cortex-a5*|arm_cortex-a7*|arm_cortex-a8*|arm_cortex-a9*|arm_cortex-a1*)
+		                echo "armv7" ;;
+		arm_arm1176*|arm_mpcore*)
+		                echo "armv6" ;;
+		arm_*)          echo "armv5" ;;
+		*) return 1 ;;
+	esac
+}
+
+# EI_DATA, the sixth byte of any ELF file: 1 = little-endian, 2 = big-endian.
+#
+# Read without od or hexdump, neither of which is guaranteed on OpenWrt (this
+# router has hexdump but no od at all). Deleting the candidate byte and
+# measuring what is left identifies it using only tr and wc, which busybox
+# always provides.
+elf_endian() {
+	for _probe in /bin/busybox /bin/sh /sbin/init /bin/cat; do
+		[ -r "$_probe" ] || continue
+		[ "$(dd if="$_probe" bs=1 skip=5 count=1 2>/dev/null | tr -d '\001' | wc -c | tr -d ' ')" = "0" ] && {
+			echo "le"; return 0; }
+		[ "$(dd if="$_probe" bs=1 skip=5 count=1 2>/dev/null | tr -d '\002' | wc -c | tr -d ' ')" = "0" ] && {
+			echo "be"; return 0; }
+	done
+	return 1
+}
+
+map_uname_arch() {
+	_end="$(elf_endian 2>/dev/null)"
 	case "$(uname -m)" in
 		aarch64)         echo "arm64" ;;
 		x86_64)          echo "amd64-compatible" ;;
 		armv7l|armv7)    echo "armv7" ;;
 		armv6l)          echo "armv6" ;;
 		armv5*)          echo "armv5" ;;
-		mips)            echo "mips-softfloat" ;;
-		mipsel)          echo "mipsle-softfloat" ;;
-		mips64)          echo "mips64" ;;
+		mips64)          [ "$_end" = "le" ] && echo "mips64le" || echo "mips64" ;;
 		mips64el)        echo "mips64le" ;;
+		mips)            [ "$_end" = "le" ] && echo "mipsle-softfloat" || echo "mips-softfloat" ;;
+		mipsel)          echo "mipsle-softfloat" ;;
 		riscv64)         echo "riscv64" ;;
+		loongarch64)     echo "loong64-abi2" ;;
 		i386|i686)       echo "386" ;;
 		*) return 1 ;;
 	esac
+}
+
+map_arch() {
+	# an explicit override always wins, for anything guessed wrong
+	if [ -n "${MIHOMO_ARCH:-}" ]; then
+		echo "$MIHOMO_ARCH"
+		return 0
+	fi
+
+	_oa=""
+	if [ -f /etc/openwrt_release ]; then
+		_oa="$(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'$/\\1/p" /etc/openwrt_release | head -n1)"
+	fi
+	if [ -n "$_oa" ] && map_openwrt_arch "$_oa"; then
+		return 0
+	fi
+
+	map_uname_arch
 }
 
 install_core() {

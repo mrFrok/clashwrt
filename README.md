@@ -48,10 +48,16 @@ wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | sh
 This installs the mihomo core, ClashWrt, the LuCI pages and a dashboard, then stops. **Nothing is intercepted until you enable it**, so a bad install cannot take the network down. Re-running upgrades in place and keeps your configuration.
 
 ```sh
-SKIP_CORE=1 sh install.sh          # keep an existing mihomo binary
-MIHOMO_VERSION=v1.19.30 sh install.sh   # pin a core version
-SKIP_UI=1 sh install.sh            # skip the dashboard
+SKIP_CORE=1 sh install.sh                 # keep an existing mihomo binary
+MIHOMO_VERSION=v1.19.30 sh install.sh     # pin a core version
+SKIP_UI=1 sh install.sh                   # skip the dashboard
+MIHOMO_ARCH=mipsle-softfloat sh install.sh  # force a core build
 ```
+
+The architecture is taken from OpenWrt's own `DISTRIB_ARCH`, because `uname -m`
+reports plain `mips` on both big- and little-endian MIPS and cannot tell
+`mips-softfloat` from `mipsle-softfloat`. If that ever picks wrong, name the
+build yourself with `MIHOMO_ARCH`.
 
 Then open **Services → ClashWrt**, run the setup wizard, and enable the proxy on the Settings page.
 
