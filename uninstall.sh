@@ -27,12 +27,26 @@ warn() { echo "[!] $*" >&2; }
 [ "$(id -u)" = "0" ] || { echo "run this as root" >&2; exit 1; }
 
 if [ "${ASSUME_YES:-0}" != "1" ]; then
-	printf 'Remove clashwrt'
-	[ "${KEEP_CORE:-0}" = "1" ]   || printf ', the mihomo core'
-	[ "${KEEP_CONFIG:-0}" = "1" ] || printf ", and %s" "$MIHOMO_DIR"
-	printf '? [y/N] '
-	read -r ans
-	case "$ans" in y|Y|yes|YES) ;; *) echo "aborted"; exit 0 ;; esac
+	# The documented way to run this is `wget -qO- .../uninstall.sh | sh`, which
+	# makes the script's own text the shell's stdin. A plain `read` there does
+	# not reach the user at all -- it hits EOF, the answer comes back empty, and
+	# the uninstall always "aborts". So ask on the terminal directly.
+	# Test by actually opening it: the device node exists with usable
+	# permissions even in a session that has no controlling terminal, so
+	# `[ -w /dev/tty ]` says yes and the open then fails.
+	if { true > /dev/tty; } 2>/dev/null; then
+		{
+			printf 'Remove clashwrt'
+			[ "${KEEP_CORE:-0}" = "1" ]   || printf ', the mihomo core'
+			[ "${KEEP_CONFIG:-0}" = "1" ] || printf ', and %s' "$MIHOMO_DIR"
+			printf '? [y/N] '
+		} > /dev/tty
+		read -r ans < /dev/tty
+		case "$ans" in y|Y|yes|YES) ;; *) echo "aborted"; exit 0 ;; esac
+	else
+		echo "no terminal available to confirm on; re-run with ASSUME_YES=1" >&2
+		exit 1
+	fi
 fi
 
 # --------------------------------------------------------------------------
