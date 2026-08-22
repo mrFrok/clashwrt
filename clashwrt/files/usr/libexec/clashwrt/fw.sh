@@ -106,13 +106,24 @@ resolve_devices() {
 	fi
 }
 
-# Read a *top-level* scalar out of mihomo's config.yaml. Nested keys are not
-# supported and not needed -- redir-port/tproxy-port/mixed-port all live at
-# the top level. Strips quotes and trailing comments.
+# Read a *top-level* scalar out of mihomo's config.yaml. Strips quotes and
+# trailing comments. redir-port/tproxy-port/routing-mark all live at this level.
 yaml_top() {
 	[ -f "$MIHOMO_CONF" ] || return 1
 	sed -n "s/^${1}:[[:space:]]*\([^#]*\).*/\1/p" "$MIHOMO_CONF" \
 		| head -n1 | tr -d "\"' \t\r"
+}
+
+# Read one key from inside a top-level block, e.g. `device` under `tun:`.
+# Good enough for the flat, two-level blocks mihomo uses; a config that nests
+# deeper simply yields nothing, and the caller treats that as "unknown".
+yaml_in() {
+	[ -f "$MIHOMO_CONF" ] || return 1
+	awk -v sect="$1:" -v key="$2:" '
+		$1 == sect { inside = 1; next }
+		inside && /^[^[:space:]#]/ { inside = 0 }
+		inside && $1 == key { sub(/#.*/, "", $2); print $2; exit }
+	' "$MIHOMO_CONF" | tr -d "\"' \t\r"
 }
 
 # mihomo's config.yaml is the source of truth for which ports it listens on,
@@ -177,6 +188,44 @@ check_prereq() {
 		# Only a hint: the key lives under tun: and a flat grep cannot prove
 		# which block it belongs to. Wrong-looking configs still get to try.
 		log "warning: mode '$mode' needs a tun inbound; no 'enable: true' found in $MIHOMO_CONF"
+	fi
+
+	check_config_agrees
+	return 0
+}
+
+# A config written for another package usually *looks* fine and then does
+# nothing, because the two settings that have to agree with the firewall are
+# invisible in the symptom. Say so precisely instead of leaving it to guesswork.
+check_config_agrees() {
+	local conf_mark conf_tun
+
+	# routing-mark is the one that fails silently and total: mihomo tags its
+	# own outbound sockets with it, and the marking chain returns early on
+	# that mark. Get it wrong and mihomo's connection to the proxy server is
+	# itself intercepted and fed back into mihomo, so nothing works at all.
+	conf_mark="$(yaml_top routing-mark)"
+	if [ -z "$conf_mark" ]; then
+		die "$MIHOMO_CONF has no 'routing-mark'. Add 'routing-mark: $self_mark' — without it mihomo's own outbound traffic is intercepted and looped back into mihomo, and nothing works. (OpenClash and ssclash set this for you; here it lives in your config.)"
+	fi
+	if [ "$conf_mark" != "$self_mark" ]; then
+		die "routing-mark in $MIHOMO_CONF is '$conf_mark' but the firewall excludes mark '$self_mark'. Make them match: either set 'routing-mark: $self_mark' in the config, or set self_mark='$conf_mark' in /etc/config/clashwrt."
+	fi
+
+	if mode_needs_tun; then
+		conf_tun="$(yaml_in tun device)"
+		if [ -n "$conf_tun" ] && [ "$conf_tun" != "$tun_device" ]; then
+			die "tun.device in $MIHOMO_CONF is '$conf_tun' but /etc/config/clashwrt expects '$tun_device'. Make them match, or UDP is routed to a device that does not exist."
+		fi
+	fi
+
+	# A stray inbound is not fatal, but it explains "it worked in the other
+	# package": those drive mihomo through a different port than this mode does.
+	if [ "$mode" = redirect_tun ] && [ -n "$(yaml_top tproxy-port)" ]; then
+		log "note: config also has a tproxy-port; mode '$mode' uses redir-port $redir_port"
+	fi
+	if mode_needs_tproxy_port && [ -n "$(yaml_top redir-port)" ]; then
+		log "note: config also has a redir-port; mode '$mode' uses tproxy-port $tproxy_port"
 	fi
 	return 0
 }

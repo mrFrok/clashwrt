@@ -96,11 +96,38 @@ return view.extend({
 				}
 			}, _('Test TPROXY support'));
 
+			/* Restarting the core is the first thing anyone reaches for after
+			 * editing a config or swapping a dashboard, so it belongs here
+			 * rather than only on the page that happens to need it. */
+			var btnRestart = E('button', {
+				'class': 'cbi-button cbi-button-reset',
+				'style': 'margin-left:6px',
+				'click': function (ev) {
+					var b = ev.target;
+					var out = document.getElementById('clashwrt-selftest-out');
+					b.disabled = true;
+					dom.content(out, E('em', {}, _('Restarting mihomo…')));
+					fs.exec('/etc/init.d/mihomo', ['restart']).then(function (res) {
+						dom.content(out, E('div', {
+							'class': 'alert-message success',
+							'style': 'white-space:pre-wrap;margin-top:6px'
+						}, (res.stdout || '') + (res.stderr || '') || _('mihomo restarted.')));
+						b.disabled = false;
+					}).catch(function (e) {
+						dom.content(out, E('div', {
+							'class': 'alert-message warning',
+							'style': 'white-space:pre-wrap;margin-top:6px'
+						}, (e.stdout || '') + (e.stderr || '') || String(e.message || e)));
+						b.disabled = false;
+					});
+				}
+			}, _('Restart mihomo'));
+
 			var node = E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('Status')),
 				E('div', { 'id': 'clashwrt-status' }, renderStatus(statusText)),
 				E('div', { 'style': 'margin-top:1em' }, [
-					btn,
+					btn, btnRestart,
 					E('div', {
 						'style': 'font-size:90%;opacity:0.8;margin-top:4px'
 					}, _('Checks whether this kernel actually delivers TPROXY packets to a transparent socket, and recommends a mode. Requires socat. Briefly attaches a test interface to the LAN.')),
