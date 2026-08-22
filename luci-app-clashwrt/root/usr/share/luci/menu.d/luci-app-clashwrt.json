@@ -19,7 +19,7 @@
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "clashwrt/config"
+			"path": "clashwrt/settings"
 		}
 	},
 	"admin/services/clashwrt/wizard": {

@@ -9,6 +9,8 @@
 'require dom';
 'require clashwrt.gen as gen';
 
+var UI_VERSION = '0.1.1';
+
 var callStatus = function () {
 	return fs.exec('/usr/libexec/clashwrt/fw.sh', ['status'])
 		.then(function (res) { return (res && res.stdout) ? res.stdout : ''; })
@@ -123,8 +125,17 @@ return view.extend({
 				}
 			}, _('Restart mihomo'));
 
+			/* Browsers cache view scripts by a URL that never changes, so after
+			 * an update it is otherwise impossible to tell from the page
+			 * whether you are looking at the new code or a cached copy.
+			 * This stamp makes that a single glance. */
 			var node = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Status')),
+				E('h3', {}, [
+					_('Status'),
+					E('span', {
+						'style': 'font-size:65%;font-weight:normal;opacity:0.6;margin-left:8px'
+					}, 'ui ' + UI_VERSION)
+				]),
 				E('div', { 'id': 'clashwrt-status' }, renderStatus(statusText)),
 				E('div', { 'style': 'margin-top:1em' }, [
 					btn, btnRestart,
