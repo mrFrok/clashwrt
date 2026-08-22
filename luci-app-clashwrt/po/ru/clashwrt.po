@@ -536,3 +536,12 @@ msgstr "Автопрокрутка"
 
 msgid "reading from %s"
 msgstr "источник: %s"
+
+msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device. "
+msgstr "<strong>NAT-redirect</strong> работает всегда, но совсем не умеет UDP: для датаграмм нет SO_ORIGINAL_DST, поэтому его приходится дополнять tun-интерфейсом. "
+
+msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput. "
+msgstr "<strong>Tun</strong> работает везде, но каждый пакет проходит через пространство пользователя, что снижает пропускную способность. "
+
+msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
+msgstr "Если не уверены, начните с TPROXY, а при проблемах переходите на NAT-redirect + tun."

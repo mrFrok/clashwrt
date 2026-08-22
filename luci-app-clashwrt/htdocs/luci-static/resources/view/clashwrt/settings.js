@@ -249,11 +249,15 @@ return view.extend({
 		o.value('tun', _('Tun — TCP + UDP'));
 		o.value('redirect_tun', _('NAT redirect for TCP + tun for UDP'));
 		o.default = 'redirect_tun';
-		o.description = _(
-			'<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket. ' +
-			'<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device. ' +
-			'<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput. ' +
-			'If unsure, try TPROXY first and fall back to NAT redirect + tun.');
+		/* Joined outside the _() calls, not inside them: concatenating literals
+		 * within one _() makes the runtime msgid the whole joined string,
+		 * while every extractor sees four separate literals -- so the lookup
+		 * misses and the text renders untranslated. */
+		o.description =
+			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket. ') +
+			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device. ') +
+			_('<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput. ') +
+			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.');
 
 		o = s.option(form.Value, 'lan_device', _('LAN device'),
 			_('Only traffic arriving on this device is intercepted.'));
