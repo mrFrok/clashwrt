@@ -195,6 +195,56 @@ do_core_status() {
 	fi
 }
 
+# Available kilobytes on the filesystem holding $1. The device column wraps
+# onto its own line when the name is long, so the Available column is found
+# relative to the field ending in "%" rather than by a fixed position.
+avail_kb() {
+	df -k "$1" 2>/dev/null |
+		awk 'END { for (i = 1; i <= NF; i++) if ($i ~ /%$/) { print $(i-1); exit } }'
+}
+
+# Replacing /usr/bin/mihomo cannot be a plain write while the daemon is up:
+# the kernel returns ETXTBSY for an open-for-write on a running executable.
+# There are two ways past that and neither is free.
+#
+# Staging a copy alongside and renaming over the target is atomic -- either
+# the old core or the new one is there, never neither -- but it needs room for
+# a second copy on the same filesystem. On an OpenWrt overlay that is the
+# unusual case, not the usual one: 46 MB of core against 41 MB free is what a
+# BPI-R4 with a full-ish overlay actually looks like.
+#
+# `cp -f` needs no extra room, because it unlinks the destination and
+# recreates it in place, but that leaves a moment with no core at all -- and
+# if the write then fails, the router stays that way.
+#
+# So: rename when the filesystem can hold the second copy, in-place when it
+# cannot, and say which one happened.
+install_core_binary() {
+	local src="$1"
+	local staged="/usr/bin/.mihomo.clashwrt-new"
+	local size_kb avail
+
+	size_kb=$(( $(wc -c < "$src") / 1024 ))
+	avail="$(avail_kb /usr/bin)"
+	case "$avail" in ''|*[!0-9]*) avail=0 ;; esac
+
+	rm -f "$staged"
+
+	# 1 MB of slack, so a swap does not fill the overlay to the last block
+	if [ "$avail" -gt $((size_kb + 1024)) ]; then
+		if cp -f "$src" "$staged" && chmod 0755 "$staged" && mv -f "$staged" /usr/bin/mihomo; then
+			return 0
+		fi
+		rm -f "$staged"
+		echo "could not stage a copy in /usr/bin, replacing in place instead" >&2
+	else
+		echo "not enough room in /usr/bin for a second copy (${avail}K free, needs ${size_kb}K); replacing in place"
+	fi
+
+	cp -f "$src" /usr/bin/mihomo || { echo "ERROR: could not install /usr/bin/mihomo" >&2; return 1; }
+	chmod 0755 /usr/bin/mihomo
+}
+
 do_core_install() {
 	local want="$1"
 	local arch ver url tmp running
@@ -208,44 +258,35 @@ do_core_install() {
 	fi
 	[ -n "$ver" ] || die "could not determine the mihomo version (pass it as an argument, or set MIHOMO_VERSION)"
 
+	# Unpacked in /tmp, which is tmpfs: the overlay is the scarce filesystem
+	# on these boxes and the core is ~46 MB, so it is not the place to be
+	# holding a working copy.
 	tmp="/tmp/clashwrt-core.$$"
 	rm -rf "$tmp"; mkdir -p "$tmp" || die "cannot create $tmp"
-
-	# The new binary is staged next to the one it replaces, not in /tmp, and
-	# swapped in with mv.
-	#
-	# Copying onto it directly cannot be done as a plain write: the kernel
-	# returns ETXTBSY for an open-for-write on a file that is currently being
-	# executed, which /usr/bin/mihomo is whenever the proxy is up. `cp -f`
-	# gets past that by unlinking the destination and recreating it -- so it
-	# works, but it spends a moment with no /usr/bin/mihomo at all, and if the
-	# write then fails, which on an OpenWrt overlay means running out of
-	# space, the router is left with no core. rename() has no such window: it
-	# swaps the directory entry in one step, and the running process keeps the
-	# inode it started from until it is restarted, which is the next thing
-	# that happens here. Staging on the same filesystem is what makes it a
-	# rename rather than a copy, so /tmp will not do.
-	local staged="/usr/bin/.mihomo.clashwrt-new"
-	rm -f "$staged"
 
 	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/mihomo-linux-${arch}-${ver}.gz"
 	echo "downloading mihomo ${ver} for ${arch}"
 	if ! curl -sSL --fail -m 300 -o "$tmp/mihomo.gz" "$url"; then
-		rm -rf "$tmp" "$staged"
+		rm -rf "$tmp"
 		die "download failed: $url"
 	fi
 
-	gzip -dc "$tmp/mihomo.gz" > "$staged" 2>/dev/null || {
-		rm -rf "$tmp" "$staged"
-		die "could not decompress the core (out of space on the overlay?)"
-	}
-	chmod 0755 "$staged"
+	# Report what gzip actually said rather than guessing at a cause. It
+	# opens with a blank line, so take the first line that has something on
+	# it rather than the first line.
+	if ! gzip -dc "$tmp/mihomo.gz" > "$tmp/mihomo" 2>"$tmp/gzip.err"; then
+		local why
+		why="$(awk 'NF { print; exit }' "$tmp/gzip.err" 2>/dev/null)"
+		rm -rf "$tmp"
+		die "could not decompress the core${why:+: $why}"
+	fi
+	chmod 0755 "$tmp/mihomo"
 
 	# A core that cannot run is worse than none, and this is the one check
 	# that catches a wrongly guessed architecture before it takes the proxy
 	# down rather than after.
-	"$staged" -v >/dev/null 2>&1 || {
-		rm -rf "$tmp" "$staged"
+	"$tmp/mihomo" -v >/dev/null 2>&1 || {
+		rm -rf "$tmp"
 		die "the downloaded core does not run on this system (wrong architecture? set MIHOMO_ARCH)"
 	}
 
@@ -253,7 +294,7 @@ do_core_install() {
 	running=0
 	pidof mihomo >/dev/null 2>&1 && running=1
 
-	mv -f "$staged" /usr/bin/mihomo || { rm -rf "$tmp" "$staged"; die "could not install /usr/bin/mihomo"; }
+	install_core_binary "$tmp/mihomo" || { rm -rf "$tmp"; exit 1; }
 	rm -rf "$tmp"
 
 	echo "installed $(/usr/bin/mihomo -v 2>&1 | head -n1)"
