@@ -143,6 +143,7 @@ rm -f  /usr/share/rpcd/acl.d/luci-app-clashwrt.json
 rm -f  /usr/lib/lua/luci/i18n/clashwrt.*.lmo
 
 rm -f /tmp/clashwrt-staging
+rm -f /tmp/clashwrt-update.log /tmp/clashwrt-selfupdate.sh /tmp/clashwrt-selfupdate-run.sh
 
 # --------------------------------------------------------------------------
 # core and configuration

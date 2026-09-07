@@ -14,6 +14,7 @@
 #   REPO_URL=...      source tarball (default: this project's main branch)
 #   MIHOMO_VERSION=   pin the core version instead of taking the latest
 #   SKIP_CORE=1       leave an existing mihomo binary alone
+#   MIHOMO_ARCH=      name the core build instead of detecting it
 #   SKIP_UI=1         do not download a dashboard
 
 set -e
@@ -123,125 +124,29 @@ need_pkg kmod-nft-tproxy || warn "kmod-nft-tproxy unavailable -- the tproxy mode
 need_pkg socat || warn "socat not installed -- the TPROXY selftest will be unavailable"
 
 # --------------------------------------------------------------------------
-# mihomo core
-# --------------------------------------------------------------------------
-
-# `uname -m` reports plain "mips" on both big- and little-endian MIPS, so it
-# cannot tell mips-softfloat from mipsle-softfloat -- and installing the wrong
-# endianness gives a binary that will not run. OpenWrt states the endianness
-# in DISTRIB_ARCH (mipsel_24kc vs mips_24kc), so that is the primary source,
-# with the ELF header as the fallback for anything that lacks it.
-
-map_openwrt_arch() {
-	case "$1" in
-		aarch64_*)      echo "arm64" ;;
-		x86_64)         echo "amd64-compatible" ;;
-		i386_*)         echo "386" ;;
-		mipsel_*)       echo "mipsle-softfloat" ;;
-		mips_*)         echo "mips-softfloat" ;;
-		mips64el_*)     echo "mips64le" ;;
-		mips64_*)       echo "mips64" ;;
-		riscv64_*)      echo "riscv64" ;;
-		loongarch64_*)  echo "loong64-abi2" ;;
-		arm_cortex-a5*|arm_cortex-a7*|arm_cortex-a8*|arm_cortex-a9*|arm_cortex-a1*)
-		                echo "armv7" ;;
-		arm_arm1176*|arm_mpcore*)
-		                echo "armv6" ;;
-		arm_*)          echo "armv5" ;;
-		*) return 1 ;;
-	esac
-}
-
-# EI_DATA, the sixth byte of any ELF file: 1 = little-endian, 2 = big-endian.
-#
-# Read without od or hexdump, neither of which is guaranteed on OpenWrt (this
-# router has hexdump but no od at all). Deleting the candidate byte and
-# measuring what is left identifies it using only tr and wc, which busybox
-# always provides.
-elf_endian() {
-	for _probe in /bin/busybox /bin/sh /sbin/init /bin/cat; do
-		[ -r "$_probe" ] || continue
-		[ "$(dd if="$_probe" bs=1 skip=5 count=1 2>/dev/null | tr -d '\001' | wc -c | tr -d ' ')" = "0" ] && {
-			echo "le"; return 0; }
-		[ "$(dd if="$_probe" bs=1 skip=5 count=1 2>/dev/null | tr -d '\002' | wc -c | tr -d ' ')" = "0" ] && {
-			echo "be"; return 0; }
-	done
-	return 1
-}
-
-map_uname_arch() {
-	_end="$(elf_endian 2>/dev/null)"
-	case "$(uname -m)" in
-		aarch64)         echo "arm64" ;;
-		x86_64)          echo "amd64-compatible" ;;
-		armv7l|armv7)    echo "armv7" ;;
-		armv6l)          echo "armv6" ;;
-		armv5*)          echo "armv5" ;;
-		mips64)          [ "$_end" = "le" ] && echo "mips64le" || echo "mips64" ;;
-		mips64el)        echo "mips64le" ;;
-		mips)            [ "$_end" = "le" ] && echo "mipsle-softfloat" || echo "mips-softfloat" ;;
-		mipsel)          echo "mipsle-softfloat" ;;
-		riscv64)         echo "riscv64" ;;
-		loongarch64)     echo "loong64-abi2" ;;
-		i386|i686)       echo "386" ;;
-		*) return 1 ;;
-	esac
-}
-
-map_arch() {
-	# an explicit override always wins, for anything guessed wrong
-	if [ -n "${MIHOMO_ARCH:-}" ]; then
-		echo "$MIHOMO_ARCH"
-		return 0
-	fi
-
-	_oa=""
-	if [ -f /etc/openwrt_release ]; then
-		_oa="$(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'$/\\1/p" /etc/openwrt_release | head -n1)"
-	fi
-	if [ -n "$_oa" ] && map_openwrt_arch "$_oa"; then
-		return 0
-	fi
-
-	map_uname_arch
-}
-
-install_core() {
-	if [ "${SKIP_CORE:-0}" = "1" ] && command -v mihomo >/dev/null 2>&1; then
-		say "keeping the existing mihomo core"
-		return 0
-	fi
-
-	local arch ver url
-	arch="$(map_arch)" || die "unsupported CPU architecture: $(uname -m)"
-
-	ver="${MIHOMO_VERSION:-}"
-	if [ -z "$ver" ]; then
-		say "looking up the latest mihomo release"
-		ver="$(curl -sSL -m 30 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
-			| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-	fi
-	[ -n "$ver" ] || die "could not determine the mihomo version (set MIHOMO_VERSION=vX.Y.Z)"
-
-	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/mihomo-linux-${arch}-${ver}.gz"
-	say "downloading mihomo ${ver} for ${arch}"
-	curl -sSL --fail -m 300 -o "$TMP/mihomo.gz" "$url" || die "download failed: $url"
-
-	gzip -dc "$TMP/mihomo.gz" > "$TMP/mihomo" || die "could not decompress the core"
-	chmod +x "$TMP/mihomo"
-
-	# a core that cannot run is worse than none: check before replacing
-	"$TMP/mihomo" -v >/dev/null 2>&1 || die "the downloaded core does not run on this system"
-
-	icp 0755 "$TMP/mihomo" /usr/bin/mihomo
-	say "installed $(/usr/bin/mihomo -v 2>&1 | head -n1)"
-}
-
-install_core
-
-# --------------------------------------------------------------------------
 # this package
 # --------------------------------------------------------------------------
+
+# Ask for the branch head *before* downloading the tarball, not after: a
+# commit landing in between would otherwise be recorded as installed, and the
+# update check would report the router as current while it is a commit behind.
+# Erring the other way merely offers an update that changes nothing.
+SRC_COMMIT=""
+case "$REPO_URL" in
+	https://github.com/*/archive/refs/heads/*.tar.gz)
+		_slug="${REPO_URL#https://github.com/}"; _slug="${_slug%%/archive/*}"
+		_ref="${REPO_URL##*/heads/}"; _ref="${_ref%.tar.gz}"
+		# `set -e` is on and an assignment carries its command's status, so
+		# an unreachable API would otherwise abort the whole install.
+		SRC_COMMIT="$(curl -sSL -m 25 -H 'Accept: application/vnd.github.sha' \
+			"https://api.github.com/repos/$_slug/commits/$_ref" 2>/dev/null)" \
+			|| SRC_COMMIT=""
+		# a rate-limit body or an error page is not a commit
+		case "$SRC_COMMIT" in
+			"" | *[!0-9a-f]*) SRC_COMMIT="" ;;
+		esac
+		;;
+esac
 
 say "fetching clashwrt"
 curl -sSL --fail -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
@@ -300,6 +205,32 @@ if [ -d "$SRC/luci-app-clashwrt/po" ]; then
 		[ -f "$lmo" ] || continue
 		icp 0644 "$lmo" /usr/lib/lua/luci/i18n/
 	done
+fi
+
+# What the Settings page compares against to tell whether an update is
+# waiting. A copy installed from the OpenWrt package feed has no such file and
+# simply reports its version as unknown.
+cat > /usr/libexec/clashwrt/.install-info <<EOF
+repo=$REPO_URL
+commit=$SRC_COMMIT
+date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+EOF
+chmod 0644 /usr/libexec/clashwrt/.install-info
+
+# --------------------------------------------------------------------------
+# mihomo core
+# --------------------------------------------------------------------------
+
+# Deliberately after the scripts are in place: updctl.sh is the single place
+# that knows how to pick a mihomo build for this CPU, and install.sh calls it
+# rather than carrying a second copy of that table for the two to drift apart.
+# It also means a core download that fails leaves a router that can retry from
+# the Settings page, instead of one with nothing installed at all.
+if [ "${SKIP_CORE:-0}" = "1" ] && command -v mihomo >/dev/null 2>&1; then
+	say "keeping the existing mihomo core"
+else
+	say "installing the mihomo core"
+	/usr/libexec/clashwrt/updctl.sh core-install || die "could not install the mihomo core"
 fi
 
 # --------------------------------------------------------------------------

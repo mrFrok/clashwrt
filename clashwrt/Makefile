@@ -52,6 +52,7 @@ define Package/clashwrt/install
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/filectl.sh $(1)/usr/libexec/clashwrt/filectl.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/uictl.sh $(1)/usr/libexec/clashwrt/uictl.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/logctl.sh $(1)/usr/libexec/clashwrt/logctl.sh
+	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/updctl.sh $(1)/usr/libexec/clashwrt/updctl.sh
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/clashwrt $(1)/etc/init.d/clashwrt
