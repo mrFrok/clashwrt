@@ -78,6 +78,18 @@ Either can be done from the shell instead:
 /usr/libexec/clashwrt/updctl.sh self-status
 ```
 
+#### Spare cores
+
+A mihomo binary is ~45 MB, because Go links its whole runtime into the file. On a 308 MB overlay, two copies kept by hand before an upgrade are most of the disk — and keeping one is the obvious thing to do by hand, so they accumulate.
+
+Updating the core removes the spares afterwards, once the new one is installed and known good. What it will remove is deliberately narrow: a file in `/usr/bin`, named `mihomo`-something, that is not the live `/usr/bin/mihomo`, is not executing, and identifies itself as Mihomo when run. A differently named proxy core next to it — `sing-box`, say — is never a candidate. Every deletion is printed with what it reclaimed.
+
+```sh
+/usr/libexec/clashwrt/updctl.sh cores        # what is there, and what is live
+/usr/libexec/clashwrt/updctl.sh prune-cores  # remove the spares now
+KEEP_OLD_CORES=1 ... core-install            # update without removing anything
+```
+
 ### Uninstall
 
 ```sh
@@ -241,6 +253,8 @@ Nothing reports an error when that happens. Marked packets simply fall through t
 /etc/init.d/mihomo start|stop|restart   # also Stop/Start on the Settings page
 /usr/libexec/clashwrt/updctl.sh core-status
 /usr/libexec/clashwrt/updctl.sh core-install [version]
+/usr/libexec/clashwrt/updctl.sh cores       # mihomo binaries in /usr/bin
+/usr/libexec/clashwrt/updctl.sh prune-cores # remove the unused ones
 /usr/libexec/clashwrt/updctl.sh self-status
 /usr/libexec/clashwrt/updctl.sh self-update
 /usr/libexec/clashwrt/updctl.sh log     # follow the last self-update

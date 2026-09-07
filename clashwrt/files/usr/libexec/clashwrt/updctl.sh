@@ -21,7 +21,8 @@
 # into its own session, points it at a log, and returns immediately; the page
 # follows the log.
 #
-# Usage: updctl.sh core-status|core-install [version]|self-status|self-update|log
+# Usage: updctl.sh core-status|core-install [version]|cores|prune-cores
+#        updctl.sh self-status|self-update|log
 
 REPO_DEFAULT="https://github.com/mrFrok/clashwrt/archive/refs/heads/main.tar.gz"
 INFO="/usr/libexec/clashwrt/.install-info"
@@ -245,6 +246,89 @@ install_core_binary() {
 	chmod 0755 /usr/bin/mihomo
 }
 
+# Is this exact file the binary behind a process that is running right now?
+# Unlinking one out from under a running process is survivable on Linux, but
+# it makes `restart` reach for a file that is no longer there, so it is not
+# something to do casually.
+core_in_use() {
+	local target="$1" p
+	for p in /proc/[0-9]*; do
+		[ "$(readlink "$p/exe" 2>/dev/null)" = "$target" ] && return 0
+	done
+	return 1
+}
+
+# Every mihomo binary sitting in /usr/bin, live one included.
+#
+# Prints: path, size in KB, version, and what it is. A file that will not run
+# or will not identify itself is listed as "not a mihomo binary" and, more to
+# the point, is never a candidate for removal.
+list_cores() {
+	local f sz ver what
+	for f in /usr/bin/mihomo*; do
+		[ -f "$f" ] || continue
+		case "$f" in /usr/bin/.*) continue ;; esac
+
+		sz=$(( $(wc -c < "$f") / 1024 ))
+		ver="$("$f" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
+
+		if "$f" -v 2>&1 | head -n1 | grep -qi mihomo; then
+			if [ "$f" = "/usr/bin/mihomo" ]; then
+				what="live"
+				core_in_use "$f" && what="live, running"
+			elif core_in_use "$f"; then
+				what="running"
+			else
+				what="unused"
+			fi
+		else
+			what="not a mihomo binary"
+			ver=""
+		fi
+
+		printf '%-34s %8sK  %-12s %s\n' "$f" "$sz" "${ver:-?}" "$what"
+	done
+}
+
+# Spare cores in /usr/bin are the single biggest thing on an OpenWrt overlay.
+# A Go binary carries its whole runtime, so each one is ~45 MB, and they
+# accumulate because keeping the old one before an upgrade is the obvious
+# thing to do by hand -- three spare copies is most of a 308 MB overlay.
+#
+# What this removes is deliberately narrow: the file must be in /usr/bin, be
+# named mihomo-something, not be the live /usr/bin/mihomo, not be executing,
+# and identify itself as Mihomo when asked. A differently named proxy core
+# next to it -- sing-box being the one people actually have -- is never a
+# candidate, whatever else is true of it. Nothing is removed silently: every
+# deletion is printed with what it reclaimed, and KEEP_OLD_CORES=1 turns the
+# whole thing off.
+prune_old_cores() {
+	local f sz n=0 freed=0
+
+	if [ "${KEEP_OLD_CORES:-0}" = "1" ]; then
+		return 0
+	fi
+
+	for f in /usr/bin/mihomo*; do
+		[ -f "$f" ] || continue
+		[ "$f" = "/usr/bin/mihomo" ] && continue
+		case "$f" in /usr/bin/.*) continue ;; esac
+
+		core_in_use "$f" && { echo "keeping $f: it is running"; continue; }
+		"$f" -v 2>&1 | head -n1 | grep -qi mihomo || continue
+
+		sz=$(( $(wc -c < "$f") / 1024 ))
+		if rm -f "$f"; then
+			n=$((n + 1))
+			freed=$((freed + sz))
+			echo "removed $f (${sz}K)"
+		fi
+	done
+
+	[ "$n" -gt 0 ] && echo "reclaimed ${freed}K from ${n} spare core(s)"
+	return 0
+}
+
 do_core_install() {
 	local want="$1"
 	local arch ver url tmp running
@@ -298,6 +382,10 @@ do_core_install() {
 	rm -rf "$tmp"
 
 	echo "installed $(/usr/bin/mihomo -v 2>&1 | head -n1)"
+
+	# Only once the new core is in place and known good. A download that
+	# failed must never have cost anyone the binaries they were keeping.
+	prune_old_cores
 
 	# The old binary keeps serving until the daemon is restarted, so leaving
 	# it running would report a version nothing is actually using. A core
@@ -394,11 +482,13 @@ do_log() {
 case "${1:-}" in
 	core-status)  do_core_status ;;
 	core-install) do_core_install "${2:-}" ;;
+	cores)        list_cores ;;
+	prune-cores)  prune_old_cores ;;
 	self-status)  do_self_status ;;
 	self-update)  do_self_update ;;
 	log)          do_log ;;
 	*)
-		echo "usage: $0 core-status|core-install [version]|self-status|self-update|log" >&2
+		echo "usage: $0 core-status|core-install [version]|cores|prune-cores|self-status|self-update|log" >&2
 		exit 1
 		;;
 esac
