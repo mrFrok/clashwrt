@@ -449,3 +449,150 @@ msgstr ""
 
 msgid "Address: "
 msgstr ""
+
+msgid "If the panel still looks unchanged, reload its tab once — the previous dashboard holds it in the browser cache until then."
+msgstr ""
+
+msgid "filter, e.g. an IP or a domain"
+msgstr ""
+
+msgid "%d line(s)"
+msgstr ""
+
+msgid "connecting to %s"
+msgstr ""
+
+msgid "this browser cannot read a streaming response"
+msgstr ""
+
+msgid "stream ended"
+msgstr ""
+
+msgid "stream error: %s"
+msgstr ""
+
+msgid "If mihomo is running, check that its API is reachable at %s."
+msgstr ""
+
+msgid "nothing logged yet"
+msgstr ""
+
+msgid "reading from %s"
+msgstr ""
+
+msgid "proxy-related"
+msgstr ""
+
+msgid "everything"
+msgstr ""
+
+msgid "kernel"
+msgstr ""
+
+msgid "mihomo (live)"
+msgstr ""
+
+msgid "system log"
+msgstr ""
+
+msgid "Level:"
+msgstr ""
+
+msgid "Show:"
+msgstr ""
+
+msgid "Resume"
+msgstr ""
+
+msgid "Pause"
+msgstr ""
+
+msgid "Clear"
+msgstr ""
+
+msgid "Copied"
+msgstr ""
+
+msgid "Copy"
+msgstr ""
+
+msgid "Logs"
+msgstr ""
+
+msgid "The live view is mihomo's own log, read straight from its API — this is where you see which rule matched a connection and which node carried it. The system log shows everything around it: the firewall engine, hotplug and the daemon being restarted."
+msgstr ""
+
+msgid "Source:"
+msgstr ""
+
+msgid "Filter:"
+msgstr ""
+
+msgid "Auto-scroll"
+msgstr ""
+
+msgid "update available"
+msgstr ""
+
+msgid "up to date"
+msgstr ""
+
+msgid "cannot tell"
+msgstr ""
+
+msgid "Stop mihomo"
+msgstr ""
+
+msgid "Start mihomo"
+msgstr ""
+
+msgid "Stopping mihomo…"
+msgstr ""
+
+msgid "mihomo stopped."
+msgstr ""
+
+msgid "Starting mihomo…"
+msgstr ""
+
+msgid "mihomo started."
+msgstr ""
+
+msgid "Stopping the core does not take the firewall rules down. In the TPROXY and NAT-redirect modes intercepted traffic then has nowhere to go and fails outright, so turn Enable off below as well if you want the LAN back on a direct path."
+msgstr ""
+
+msgid "Update core"
+msgstr ""
+
+msgid "Update ClashWrt"
+msgstr ""
+
+msgid "Downloading the core, this takes a while…"
+msgstr ""
+
+msgid "Update finished. Reload this page to load the new interface — you may have to log in again, because the update restarts rpcd."
+msgstr ""
+
+msgid "Lost contact with the router, which is what the last step of the update looks like: it restarts rpcd and ends this session. Log in again and reload the page."
+msgstr ""
+
+msgid "Starting the update…"
+msgstr ""
+
+msgid "Updates"
+msgstr ""
+
+msgid "mihomo core"
+msgstr ""
+
+msgid "Updating the core downloads the build for this CPU and restarts mihomo if it was running; your configuration is untouched. Updating ClashWrt re-runs the installer, which keeps /etc/config/clashwrt and config.yaml but replaces the LuCI pages — reload the page once it reports finished."
+msgstr ""
+
+msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device. "
+msgstr ""
+
+msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput. "
+msgstr ""
+
+msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
+msgstr ""

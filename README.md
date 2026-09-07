@@ -61,6 +61,23 @@ build yourself with `MIHOMO_ARCH`.
 
 Then open **Services → ClashWrt**, run the setup wizard, and enable the proxy on the Settings page.
 
+### Updating
+
+Two things update independently, and the Settings page has a button for each — it shows the installed mihomo version against the latest release, and the installed commit against the head of `main`.
+
+**Update core** downloads the mihomo build for this CPU and restarts the daemon if it was running. Your configuration is not touched.
+
+**Update ClashWrt** re-runs `install.sh`, which keeps `/etc/config/clashwrt` and `config.yaml` and leaves the core alone. It runs detached, with the log followed on the page, because it replaces the LuCI pages and restarts `rpcd` — the very thing carrying the request. Expect to be logged out at the end: log back in and reload the page.
+
+Either can be done from the shell instead:
+
+```sh
+/usr/libexec/clashwrt/updctl.sh core-status          # installed vs. latest
+/usr/libexec/clashwrt/updctl.sh core-install         # latest release
+/usr/libexec/clashwrt/updctl.sh core-install v1.19.30
+/usr/libexec/clashwrt/updctl.sh self-status
+```
+
 ### Uninstall
 
 ```sh
@@ -220,7 +237,16 @@ Nothing reports an error when that happens. Marked packets simply fall through t
 /usr/libexec/clashwrt/fw.sh check       # repair routing that went stale
 /usr/libexec/clashwrt/fw.sh detect      # what "auto" resolved lan/wan to
 /usr/libexec/clashwrt/fw.sh selftest    # does this kernel honour TPROXY?
+
+/etc/init.d/mihomo start|stop|restart   # also Stop/Start on the Settings page
+/usr/libexec/clashwrt/updctl.sh core-status
+/usr/libexec/clashwrt/updctl.sh core-install [version]
+/usr/libexec/clashwrt/updctl.sh self-status
+/usr/libexec/clashwrt/updctl.sh self-update
+/usr/libexec/clashwrt/updctl.sh log     # follow the last self-update
 ```
+
+Stopping mihomo leaves the ruleset up. In the TPROXY and NAT-redirect modes that means intercepted traffic is handed to a port with nothing behind it and fails outright rather than quietly going direct, so turn **Enable** off as well if what you want is the LAN back on a direct path.
 
 ## Troubleshooting
 
@@ -289,6 +315,7 @@ clashwrt/              base package — firewall engine, init script, UCI config
     filectl.sh         rule-list file manager (sandboxed)
     uictl.sh           dashboard installer
     logctl.sh          system log access
+    updctl.sh          mihomo build selection, core and self updates
 luci-app-clashwrt/     LuCI pages (client-side JS), menu, ACL, translations
 tools/po2lmo.py        dependency-free .po → .lmo compiler
 install.sh

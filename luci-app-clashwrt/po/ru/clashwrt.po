@@ -545,3 +545,60 @@ msgstr "<strong>Tun</strong> работает везде, но каждый па
 
 msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
 msgstr "Если не уверены, начните с TPROXY, а при проблемах переходите на NAT-redirect + tun."
+
+msgid "update available"
+msgstr "доступно обновление"
+
+msgid "up to date"
+msgstr "актуальная версия"
+
+msgid "cannot tell"
+msgstr "не удалось определить"
+
+msgid "Stop mihomo"
+msgstr "Остановить mihomo"
+
+msgid "Start mihomo"
+msgstr "Запустить mihomo"
+
+msgid "Stopping mihomo…"
+msgstr "Остановка mihomo…"
+
+msgid "mihomo stopped."
+msgstr "mihomo остановлен."
+
+msgid "Starting mihomo…"
+msgstr "Запуск mihomo…"
+
+msgid "mihomo started."
+msgstr "mihomo запущен."
+
+msgid "Stopping the core does not take the firewall rules down. In the TPROXY and NAT-redirect modes intercepted traffic then has nowhere to go and fails outright, so turn Enable off below as well if you want the LAN back on a direct path."
+msgstr "Остановка ядра не убирает правила файрвола. В режимах TPROXY и NAT-redirect перехваченному трафику после этого некуда идти, и он просто перестаёт проходить — если нужно вернуть локальную сеть на прямой маршрут, снимите ниже и галочку «Включить»."
+
+msgid "Update core"
+msgstr "Обновить ядро"
+
+msgid "Update ClashWrt"
+msgstr "Обновить ClashWrt"
+
+msgid "Downloading the core, this takes a while…"
+msgstr "Загрузка ядра, это займёт некоторое время…"
+
+msgid "Update finished. Reload this page to load the new interface — you may have to log in again, because the update restarts rpcd."
+msgstr "Обновление завершено. Перезагрузите страницу, чтобы получить новый интерфейс — возможно, придётся войти заново, так как обновление перезапускает rpcd."
+
+msgid "Lost contact with the router, which is what the last step of the update looks like: it restarts rpcd and ends this session. Log in again and reload the page."
+msgstr "Связь с роутером потеряна — именно так выглядит последний шаг обновления: он перезапускает rpcd и обрывает эту сессию. Войдите заново и перезагрузите страницу."
+
+msgid "Starting the update…"
+msgstr "Запуск обновления…"
+
+msgid "Updates"
+msgstr "Обновления"
+
+msgid "mihomo core"
+msgstr "ядро mihomo"
+
+msgid "Updating the core downloads the build for this CPU and restarts mihomo if it was running; your configuration is untouched. Updating ClashWrt re-runs the installer, which keeps /etc/config/clashwrt and config.yaml but replaces the LuCI pages — reload the page once it reports finished."
+msgstr "Обновление ядра скачивает сборку под этот процессор и перезапускает mihomo, если тот был запущен; конфигурация не затрагивается. Обновление ClashWrt заново запускает установщик: он сохраняет /etc/config/clashwrt и config.yaml, но заменяет страницы LuCI — после сообщения о завершении перезагрузите страницу."
