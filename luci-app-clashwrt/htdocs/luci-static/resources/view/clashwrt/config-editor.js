@@ -5,7 +5,7 @@
 'require ui';
 'require dom';
 
-var UI_VERSION = '0.1.3';
+var UI_VERSION = '0.1.4';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -30,11 +30,39 @@ function stage(text) {
  * affects glyph position — font, size, line height, padding, wrapping — or the
  * caret drifts away from the letters.
  */
-var HL_METRICS =
-	'font-family:monospace;font-size:12px;line-height:1.45;' +
-	'white-space:pre;overflow-wrap:normal;' +
-	'margin:0;padding:8px;border:1px solid transparent;' +
-	'tab-size:4;';
+/* Every metric that decides where a glyph lands must match between the two
+ * layers, or the caret drifts away from the letters. The theme fights for some
+ * of them -- proton2025 forces a proportional font onto textarea with
+ * !important when its system-font option is on -- and an ordinary inline style
+ * loses to that. Setting them as important inline properties wins, and does so
+ * whatever theme is installed. */
+var HL_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+
+var HL_METRICS = {
+	'font-family': HL_FONT,
+	'font-size': '12px',
+	'font-weight': '400',
+	'font-style': 'normal',
+	'line-height': '1.45',
+	'letter-spacing': '0',
+	'word-spacing': '0',
+	'text-transform': 'none',
+	'text-indent': '0',
+	'padding': '8px',
+	'margin': '0',
+	'border': '1px solid transparent',
+	'box-sizing': 'border-box',
+	'white-space': 'pre',
+	'overflow-wrap': 'normal',
+	'word-break': 'normal',
+	'tab-size': '4',
+	'max-width': 'none'
+};
+
+function applyMetrics(el) {
+	for (var k in HL_METRICS)
+		el.style.setProperty(k, HL_METRICS[k], 'important');
+}
 
 function esc(t) {
 	return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -101,16 +129,14 @@ return view.extend({
 
 		var hlPre = E('pre', {
 			'aria-hidden': 'true',
-			'style': HL_METRICS +
-				'position:absolute;inset:0;overflow:auto;pointer-events:none;' +
+			'style': 'position:absolute;inset:0;overflow:auto;pointer-events:none;' +
 				'border-radius:4px;background:var(--background-color-medium,rgba(127,127,127,0.08));'
 		});
 
 		var area = E('textarea', {
 			'id': 'clashwrt-config',
 			'spellcheck': 'false',
-			'style': HL_METRICS +
-				'position:absolute;inset:0;width:100%;height:100%;resize:none;' +
+			'style': 'position:absolute;inset:0;width:100%;height:100%;resize:none;' +
 				'overflow:auto;background:transparent;color:transparent;' +
 				'caret-color:var(--color-fg,#ccc);border-radius:4px;'
 		}, text);
@@ -143,6 +169,9 @@ return view.extend({
 		var editorBox = E('div', {
 			'style': 'position:relative;width:100%;height:60vh'
 		}, [ styleTag, hlPre, area ]);
+
+		applyMetrics(hlPre);
+		applyMetrics(area);
 
 		repaint();   /* the file is already loaded, so paint it once up front */
 
