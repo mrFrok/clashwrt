@@ -138,6 +138,7 @@ rm -f  /etc/uci-defaults/99-clashwrt
 
 rm -rf /www/luci-static/resources/view/clashwrt
 rm -rf /www/luci-static/resources/clashwrt
+rm -rf /usr/share/clashwrt
 rm -f  /usr/share/luci/menu.d/luci-app-clashwrt.json
 rm -f  /usr/share/rpcd/acl.d/luci-app-clashwrt.json
 rm -f  /usr/lib/lua/luci/i18n/clashwrt.*.lmo

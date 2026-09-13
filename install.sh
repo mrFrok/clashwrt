@@ -186,17 +186,24 @@ idir /etc/sysctl.d
 sh "$SRC/clashwrt/files/etc/uci-defaults/99-clashwrt" >/dev/null 2>&1 || true
 
 say "installing the LuCI pages"
-idir /www/luci-static/resources/view/clashwrt /www/luci-static/resources/clashwrt
+# The canonical copies live outside the web root; uistamp publishes them under
+# content-addressed names so that an update actually reaches the browser.
+idir /usr/share/clashwrt/ui/view /usr/share/clashwrt/ui/mod
 icp 0644 "$SRC"/luci-app-clashwrt/htdocs/luci-static/resources/view/clashwrt/*.js \
-	/www/luci-static/resources/view/clashwrt/
+	/usr/share/clashwrt/ui/view/
 icp 0644 "$SRC"/luci-app-clashwrt/htdocs/luci-static/resources/clashwrt/*.js \
-	/www/luci-static/resources/clashwrt/
-
-idir /usr/share/luci/menu.d /usr/share/rpcd/acl.d
+	/usr/share/clashwrt/ui/mod/
 icp 0644 "$SRC/luci-app-clashwrt/root/usr/share/luci/menu.d/luci-app-clashwrt.json" \
-	/usr/share/luci/menu.d/
+	/usr/share/clashwrt/ui/menu.json
+
+idir /usr/share/rpcd/acl.d
 icp 0644 "$SRC/luci-app-clashwrt/root/usr/share/rpcd/acl.d/luci-app-clashwrt.json" \
 	/usr/share/rpcd/acl.d/
+
+# anything published by an older layout, before stamping existed
+rm -f /www/luci-static/resources/view/clashwrt/*.js /www/luci-static/resources/clashwrt/*.js 2>/dev/null
+
+/usr/libexec/clashwrt/uistamp.sh apply >/dev/null 2>&1 || warn "could not publish the LuCI pages"
 
 # translations, if the build shipped any
 if [ -d "$SRC/luci-app-clashwrt/po" ]; then
