@@ -7,9 +7,9 @@
 'require uci';
 'require poll';
 'require dom';
-'require clashwrt.gen as gen';
+'require clashwrt.generator as gen';
 
-var UI_VERSION = '0.1.2';
+var UI_VERSION = '0.1.6';
 
 var callStatus = function () {
 	return fs.exec('/usr/libexec/clashwrt/fw.sh', ['status'])

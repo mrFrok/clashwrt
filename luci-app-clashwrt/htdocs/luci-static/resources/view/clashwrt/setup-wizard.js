@@ -5,7 +5,7 @@
 'require ui';
 'require uci';
 'require dom';
-'require clashwrt.gen as gen';
+'require clashwrt.generator as gen';
 
 var UI_VERSION = '0.1.5';
 
