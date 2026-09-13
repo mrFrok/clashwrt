@@ -297,6 +297,10 @@ function proxyToYaml(p) {
 
 var UDP_GROUP = 'ProxyUDP';
 
+/* Yandex public DNS over HTTPS. Used only for the RU domain set, never as
+ * the default resolver. */
+var YANDEX_DOH = 'https://common.dns.yandex.net/dns-query';
+
 function indentOf(line) {
 	var m = line.match(/^(\s*)/);
 	return m ? m[1].length : 0;
@@ -602,6 +606,15 @@ return baseclass.extend({
 			L.push('  direct-nameserver:');
 			o.directDns.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
 		}
+
+		/* Russian domains resolved by a Russian resolver over DoH. Worth
+		 * separating: a resolver abroad hands back whichever CDN node is
+		 * closest to *it*, so RU sites end up pointed at distant edges, and
+		 * the answers for them are the ones least in need of hiding. */
+		if (o.yandexDns) {
+			L.push('  nameserver-policy:');
+			L.push("    'rule-set:ru_domains': " + yamlScalar(YANDEX_DOH));
+		}
 		L.push('');
 
 		/* Sniffer: without it, traffic that arrives as a bare IP cannot be
@@ -682,6 +695,11 @@ return baseclass.extend({
 			if (!rs) return;
 			for (var pn in rs.providers) provs[pn] = rs.providers[pn];
 		});
+		/* nameserver-policy names this set, so it has to exist even when the
+		 * routing strategy would not have pulled it in. */
+		if (o.yandexDns)
+			provs['ru_domains'] = geosite('category-ru');
+
 		if (o.routing === 'proxy_except_ru') {
 			provs['ru_domains'] = geosite('category-ru');
 			provs['ru_ips'] = geoip('ru');

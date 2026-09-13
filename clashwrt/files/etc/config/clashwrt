@@ -53,6 +53,20 @@ config clashwrt 'config'
 	option rule_pref '1002'
 	option tun_wait '10'
 
+
+	# Skip the proxy entirely for a set of destinations, decided in the kernel
+	# before any marking happens. A DIRECT rule inside mihomo is not a fast
+	# path -- the connection still terminates on the router and is relayed
+	# through userspace.
+	#   off      intercept everything (then mihomo's rules decide)
+	#   exclude  listed destinations bypass; pair with "proxy except Russia"
+	#   include  only listed destinations are intercepted; pair with
+	#            "direct except the lists"
+	option bypass_set_mode 'off'
+	option bypass_set_source 'ru'
+	# option bypass_set_url ''
+	option bypass_set_interval '86400'
+
 	list bypass_net '0.0.0.0/8'
 	list bypass_net '10.0.0.0/8'
 	list bypass_net '100.64.0.0/10'

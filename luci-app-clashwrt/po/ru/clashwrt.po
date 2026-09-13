@@ -602,3 +602,81 @@ msgstr "ядро mihomo"
 
 msgid "Updating the core downloads the build for this CPU and restarts mihomo if it was running; your configuration is untouched. Updating ClashWrt re-runs the installer, which keeps /etc/config/clashwrt and config.yaml but replaces the LuCI pages — reload the page once it reports finished."
 msgstr "Обновление ядра скачивает сборку под этот процессор и перезапускает mihomo, если тот был запущен; конфигурация не затрагивается. Обновление ClashWrt заново запускает установщик: он сохраняет /etc/config/clashwrt и config.yaml, но заменяет страницы LuCI — после сообщения о завершении перезагрузите страницу."
+
+msgid "Kernel bypass set"
+msgstr "Обход на уровне ядра"
+
+msgid "Skip the proxy entirely for a set of destinations, decided in the kernel before any marking happens. A DIRECT rule inside mihomo is not a fast path — the connection still terminates on the router and is relayed through userspace, which costs throughput and makes every device look like one host to a shaper. Works in all four interception modes."
+msgstr "Полностью пропускать прокси для набора адресов — решение принимается в ядре до любой маркировки. Правило DIRECT внутри mihomo быстрым путём не является: соединение всё равно завершается на роутере и ретранслируется через пространство пользователя, что снижает скорость и превращает все устройства в один хост с точки зрения шейпера. Работает во всех четырёх режимах перехвата."
+
+msgid "Off — intercept everything"
+msgstr "Выключено — перехватывать всё"
+
+msgid "Listed destinations bypass the proxy"
+msgstr "Адреса из списка идут мимо прокси"
+
+msgid "Only listed destinations are intercepted"
+msgstr "Перехватывать только адреса из списка"
+
+msgid "Pair <em>exclude</em> with “everything through the proxy except Russia”, and <em>include</em> with “everything direct except the lists”."
+msgstr "Первый вариант сочетается со стратегией «всё через прокси, кроме России», второй — со «всё напрямую, кроме списков»."
+
+msgid "List"
+msgstr "Список"
+
+msgid "Russian networks (ipdeny)"
+msgstr "Российские сети (ipdeny)"
+
+msgid "Russian networks (meta-rules-dat)"
+msgstr "Российские сети (meta-rules-dat)"
+
+msgid "Re-filter blocked ranges"
+msgstr "Заблокированные диапазоны Re-filter"
+
+msgid "A URL of your own"
+msgstr "Своя ссылка"
+
+msgid "List URL"
+msgstr "Ссылка на список"
+
+msgid "Plain CIDR per line, or a YAML <code>payload:</code> list. Anything that is not an IPv4 network is ignored."
+msgstr "По одной сети CIDR в строке либо список YAML <code>payload:</code>. Всё, что не является сетью IPv4, игнорируется."
+
+msgid "Refresh interval (seconds)"
+msgstr "Интервал обновления (секунды)"
+
+msgid "Refresh now"
+msgstr "Обновить сейчас"
+
+msgid "Downloading…"
+msgstr "Загрузка…"
+
+msgid "Russian sites through Yandex DNS"
+msgstr "Российские сайты через Яндекс DNS"
+
+msgid "Resolves Russian domains with Yandex over DoH, and everything else with the resolver chosen above. A resolver abroad returns whichever CDN node is closest to itself, so RU sites end up pointed at distant edges — and those answers are the ones least in need of hiding."
+msgstr "Российские домены разрешаются через Яндекс по DoH, остальные — выбранным выше резолвером. Зарубежный резолвер возвращает тот узел CDN, который ближе к нему самому, поэтому российские сайты оказываются направлены на далёкие точки — а именно эти ответы скрывать нужно меньше всего."
+
+msgid "Use Yandex DNS for the Russian domain set"
+msgstr "Использовать Яндекс DNS для набора российских доменов"
+
+msgid "present"
+msgstr "есть"
+
+msgid "absent"
+msgstr "нет"
+
+msgid "running"
+msgstr "работает"
+
+msgid "stopped"
+msgstr "остановлен"
+
+msgid "up"
+msgstr "поднят"
+
+msgid "missing"
+msgstr "отсутствует"
+
+msgid "ok"
+msgstr "в порядке"

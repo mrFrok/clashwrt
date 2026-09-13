@@ -65,6 +65,19 @@ function shortId(id) {
 	return /^[0-9a-f]{12,}$/.test(id) ? id.slice(0, 7) : id;
 }
 
+/* The engine reports state as bare words on stdout. Passing them straight to
+ * the page leaves English sitting inside an otherwise translated table, so map
+ * the known ones and fall back to the raw value for anything new. */
+function stateWord(v) {
+	var known = {
+		present: _('present'), absent: _('absent'),
+		running: _('running'), stopped: _('stopped'),
+		up: _('up'), missing: _('missing'),
+		ok: _('ok'), unknown: _('unknown')
+	};
+	return known[v] || v || '?';
+}
+
 function renderStatus(text) {
 	var st = parseStatus(text);
 	if (!Object.keys(st).length)
@@ -73,10 +86,10 @@ function renderStatus(text) {
 	var rows = [
 		[_('Mode'), E('strong', {}, st['mode'] || '?')],
 		[_('Enabled'), badge(st['enabled'] === '1', st['enabled'] === '1' ? _('yes') : _('no'))],
-		[_('Firewall ruleset'), badge(st['nft_table'] === 'present', st['nft_table'] || '?')],
-		[_('mihomo daemon'), badge(st['mihomo'] === 'running', st['mihomo'] || '?')],
-		[_('Tun device'), badge(st['tun_link'] === 'up', (st['tun_device'] || '') + ' ' + (st['tun_link'] || '?'))],
-		[_('Tun route'), badge(st['tun_route'] === 'ok', st['tun_route'] || '?')],
+		[_('Firewall ruleset'), badge(st['nft_table'] === 'present', stateWord(st['nft_table']))],
+		[_('mihomo daemon'), badge(st['mihomo'] === 'running', stateWord(st['mihomo']))],
+		[_('Tun device'), badge(st['tun_link'] === 'up', (st['tun_device'] || '') + ' ' + stateWord(st['tun_link']))],
+		[_('Tun route'), badge(st['tun_route'] === 'ok', stateWord(st['tun_route']))],
 		[_('TPROXY port'), E('span', {}, st['tproxy_port'] || '-')],
 		[_('Redirect port'), E('span', {}, st['redir_port'] || '-')]
 	];
@@ -548,6 +561,53 @@ return view.extend({
 		o = s.option(form.DynamicList, 'bypass_src', _('Bypass clients'),
 			_('LAN source addresses that are never proxied.'));
 		o.datatype = 'ip4addr';
+
+		/* ---------------- kernel bypass set ---------------- */
+
+		s = m.section(form.NamedSection, 'config', 'clashwrt', _('Kernel bypass set'));
+		s.anonymous = true;
+		s.description = _('Skip the proxy entirely for a set of destinations, decided in the kernel before any marking happens. A DIRECT rule inside mihomo is not a fast path — the connection still terminates on the router and is relayed through userspace, which costs throughput and makes every device look like one host to a shaper. Works in all four interception modes.');
+
+		o = s.option(form.ListValue, 'bypass_set_mode', _('Mode'));
+		o.value('off', _('Off — intercept everything'));
+		o.value('exclude', _('Listed destinations bypass the proxy'));
+		o.value('include', _('Only listed destinations are intercepted'));
+		o.default = 'off';
+		o.description = _('Pair <em>exclude</em> with “everything through the proxy except Russia”, and <em>include</em> with “everything direct except the lists”.');
+
+		o = s.option(form.ListValue, 'bypass_set_source', _('List'));
+		o.value('ru', _('Russian networks (ipdeny)'));
+		o.value('ru-geoip', _('Russian networks (meta-rules-dat)'));
+		o.value('refilter', _('Re-filter blocked ranges'));
+		o.value('custom', _('A URL of your own'));
+		o.default = 'ru';
+		o.depends({ bypass_set_mode: 'off', '!reverse': true });
+
+		o = s.option(form.Value, 'bypass_set_url', _('List URL'),
+			_('Plain CIDR per line, or a YAML <code>payload:</code> list. Anything that is not an IPv4 network is ignored.'));
+		o.depends('bypass_set_source', 'custom');
+
+		o = s.option(form.Value, 'bypass_set_interval', _('Refresh interval (seconds)'));
+		o.datatype = 'uinteger';
+		o.default = '86400';
+		o.depends({ bypass_set_mode: 'off', '!reverse': true });
+
+		o = s.option(form.DummyValue, '_setstatus', _('Status'));
+		o.rawhtml = true;
+		o.cfgvalue = function () {
+			return E('div', { 'id': 'clashwrt-set-status' }, E('em', {}, _('checking…')));
+		};
+
+		o = s.option(form.Button, '_setupdate', _('Refresh now'));
+		o.inputstyle = 'action';
+		o.onclick = function (ev) {
+			var out = document.getElementById('clashwrt-set-status');
+			dom.content(out, E('em', {}, _('Downloading…')));
+			return fs.exec('/usr/libexec/clashwrt/setctl.sh', ['update', 'force'])
+				.then(function () { return fs.exec('/usr/libexec/clashwrt/setctl.sh', ['status']); })
+				.then(function (r) { dom.content(out, E('pre', { 'style': 'margin:0' }, r.stdout || '')); })
+				.catch(function (e) { dom.content(out, E('pre', {}, String(e.message || e))); });
+		};
 
 		/* ---------------- advanced ---------------- */
 

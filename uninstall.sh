@@ -143,6 +143,14 @@ rm -f  /usr/share/rpcd/acl.d/luci-app-clashwrt.json
 rm -f  /usr/lib/lua/luci/i18n/clashwrt.*.lmo
 
 rm -f /tmp/clashwrt-staging
+
+# the scheduled list refresh would otherwise keep firing at a missing script
+if [ -f /etc/crontabs/root ]; then
+	grep -v "clashwrt/setctl.sh" /etc/crontabs/root > /tmp/cron.clashwrt.$$ 2>/dev/null &&
+		cat /tmp/cron.clashwrt.$$ > /etc/crontabs/root
+	rm -f /tmp/cron.clashwrt.$$
+	/etc/init.d/cron restart >/dev/null 2>&1 || true
+fi
 rm -f /tmp/clashwrt-update.log /tmp/clashwrt-selfupdate.sh /tmp/clashwrt-selfupdate-run.sh
 
 # --------------------------------------------------------------------------

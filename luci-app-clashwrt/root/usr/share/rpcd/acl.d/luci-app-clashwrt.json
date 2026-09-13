@@ -26,6 +26,9 @@
 				],
 				"/usr/libexec/clashwrt/updctl.sh": [
 					"exec"
+				],
+				"/usr/libexec/clashwrt/setctl.sh": [
+					"exec"
 				]
 			},
 			"ubus": {
@@ -72,6 +75,9 @@
 					"exec"
 				],
 				"/usr/libexec/clashwrt/updctl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/setctl.sh": [
 					"exec"
 				]
 			},

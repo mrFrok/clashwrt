@@ -12,4 +12,12 @@ EOF
 
 sysctl -p /etc/sysctl.d/99-clashwrt.conf >/dev/null 2>&1
 
+# Refresh the bypass address list once a day. setctl honours its own interval,
+# so this only goes to the network when the list is actually stale.
+if ! grep -q "clashwrt/setctl.sh" /etc/crontabs/root 2>/dev/null; then
+	mkdir -p /etc/crontabs
+	echo "17 4 * * * /usr/libexec/clashwrt/setctl.sh update >/dev/null 2>&1" >> /etc/crontabs/root
+	/etc/init.d/cron restart >/dev/null 2>&1 || true
+fi
+
 exit 0

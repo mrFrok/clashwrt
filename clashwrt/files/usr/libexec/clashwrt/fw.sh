@@ -81,6 +81,7 @@ load_cfg() {
 	config_get bypass_net    config bypass_net    ""
 	config_get bypass_src    config bypass_src    ""
 	config_get extra_ports   config extra_ports   ""
+	config_get set_mode      config bypass_set_mode off
 
 	MIHOMO_CONF="$mihomo_dir/config.yaml"
 
@@ -339,6 +340,15 @@ build_bypass() {
 	srcs="$(nft_set $bypass_src)"
 	[ -n "$srcs" ] && nft add rule $TABLE mangle ip saddr "{ $srcs }" return
 
+	# The address set, if one is configured. This is the last thing before
+	# marking, so everything it matches is handled by the kernel alone and
+	# never reaches mihomo -- a DIRECT rule inside mihomo would still relay
+	# the connection through userspace.
+	case "$set_mode" in
+		exclude) nft add rule $TABLE mangle ip daddr @bypass4 return ;;
+		include) nft add rule $TABLE mangle ip daddr != @bypass4 return ;;
+	esac
+
 	# QUIC carries HTTP/3 over UDP/443. Rejecting it makes browsers fall back
 	# to TCP, which is worth doing only when UDP is not proxied well.
 	[ "$block_quic" = 1 ] && nft add rule $TABLE mangle meta l4proto udp udp dport 443 reject
@@ -356,6 +366,11 @@ build_bypass() {
 apply_nft() {
 	nft delete table $TABLE 2>/dev/null
 	nft add table $TABLE
+
+	# Declared even when unused: the rules referencing it are added
+	# conditionally, but a set that only sometimes exists makes every other
+	# command here need a guard. "interval" is what allows CIDRs as elements.
+	nft add set $TABLE bypass4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
 
 	# priority mangle(-150) so we see packets before conntrack/dstnat decide
 	nft add chain $TABLE mangle "{ type filter hook prerouting priority mangle ; }"
@@ -452,7 +467,12 @@ do_apply() {
 	ensure_fw4_zone
 	apply_nft
 	apply_routing
-	log "applied mode=$mode lan=$lan_device tun=$tun_device tproxy_port=${tproxy_port:-none} redir_port=${redir_port:-none}"
+
+	# The ruleset was just rebuilt, so the set is empty again; refill it from
+	# the cached list without going to the network.
+	[ "$set_mode" != "off" ] && /usr/libexec/clashwrt/setctl.sh load >/dev/null 2>&1
+
+	log "applied mode=$mode lan=$lan_device tun=$tun_device tproxy_port=${tproxy_port:-none} redir_port=${redir_port:-none} bypass_set=$set_mode"
 }
 
 do_flush_quiet() {

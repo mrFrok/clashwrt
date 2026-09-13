@@ -19,6 +19,64 @@ function stage(text) {
 	return fs.write(STAGING, text);
 }
 
+/* YAML highlighting without a library.
+ *
+ * A textarea cannot render styled text, and pulling in a real editor is not an
+ * option here: the page is served from the router and the CSP-free CDN route
+ * does not exist. So the textarea is made transparent and laid over a <pre>
+ * that holds the same text, tokenised. The two must agree on every metric that
+ * affects glyph position — font, size, line height, padding, wrapping — or the
+ * caret drifts away from the letters.
+ */
+var HL_METRICS =
+	'font-family:monospace;font-size:12px;line-height:1.45;' +
+	'white-space:pre;overflow-wrap:normal;' +
+	'margin:0;padding:8px;border:1px solid transparent;' +
+	'tab-size:4;';
+
+function esc(t) {
+	return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* Line-oriented on purpose: YAML's meaning is carried by indentation and the
+ * first token, which is exactly what a reader scans for. */
+function highlightYaml(text) {
+	return (text || '').split('\n').map(function (line) {
+		var m = line.match(/^(\s*)(#.*)$/);
+		if (m) return esc(m[1]) + '<span class="cw-c">' + esc(m[2]) + '</span>';
+
+		var out = '', rest = line;
+
+		var lead = rest.match(/^(\s*(?:-\s+)?)/)[1];
+		out += esc(lead);
+		rest = rest.slice(lead.length);
+
+		var kv = rest.match(/^([A-Za-z0-9_.\/-]+)(\s*:)(.*)$/);
+		if (kv) {
+			out += '<span class="cw-k">' + esc(kv[1]) + '</span>' + esc(kv[2]);
+			rest = kv[3];
+		}
+
+		/* a trailing comment is not part of the value */
+		var cmt = '';
+		var ci = rest.indexOf(' #');
+		if (ci >= 0) { cmt = rest.slice(ci); rest = rest.slice(0, ci); }
+
+		if (rest.length) {
+			var v = rest;
+			if (/^\s*(true|false|null|~)\s*$/i.test(v))
+				out += v.replace(/(\S+)/, '<span class="cw-b">$1</span>');
+			else if (/^\s*-?\d+(\.\d+)?\s*$/.test(v))
+				out += v.replace(/(\S+)/, '<span class="cw-n">$1</span>');
+            else
+				out += esc(v)
+					.replace(/(&#39;[^&]*?&#39;|&quot;[^&]*?&quot;|'[^']*'|"[^"]*")/g, '<span class="cw-s">$1</span>');
+		}
+		if (cmt) out += '<span class="cw-c">' + esc(cmt) + '</span>';
+		return out;
+	}).join('\n');
+}
+
 function say(node, ok, text) {
 	dom.content(node, E('div', {
 		'class': ok ? 'alert-message success' : 'alert-message warning',
@@ -39,11 +97,52 @@ return view.extend({
 		var backups = ((data[1] && data[1].stdout) ? data[1].stdout : '')
 			.split('\n').filter(function (s) { return s.trim().length; });
 
+		var hlPre = E('pre', {
+			'aria-hidden': 'true',
+			'style': HL_METRICS +
+				'position:absolute;inset:0;overflow:auto;pointer-events:none;' +
+				'border-radius:4px;background:var(--background-color-medium,rgba(127,127,127,0.08));'
+		});
+
 		var area = E('textarea', {
 			'id': 'clashwrt-config',
-			'style': 'width:100%;min-height:60vh;font-family:monospace;font-size:12px;white-space:pre;overflow-wrap:normal;overflow-x:auto',
-			'spellcheck': 'false'
+			'spellcheck': 'false',
+			'style': HL_METRICS +
+				'position:absolute;inset:0;width:100%;height:100%;resize:none;' +
+				'overflow:auto;background:transparent;color:transparent;' +
+				'caret-color:var(--color-fg,#ccc);border-radius:4px;'
 		}, text);
+
+		var styleTag = E('style', {}, [
+			'.cw-k{color:#7aa2f7}',
+			'.cw-s{color:#9ece6a}',
+			'.cw-n{color:#ff9e64}',
+			'.cw-b{color:#bb9af7}',
+			'.cw-c{color:#767b91;font-style:italic}',
+			':root[data-theme="light"] .cw-k{color:#1a56c4}',
+			':root[data-theme="light"] .cw-s{color:#2c7a2c}',
+			':root[data-theme="light"] .cw-n{color:#b05500}',
+			':root[data-theme="light"] .cw-b{color:#7c3aed}',
+			':root[data-theme="light"] .cw-c{color:#6b7280}'
+		].join('\n'));
+
+		function repaint() {
+			/* trailing newline keeps the last line scrollable into view */
+			hlPre.innerHTML = highlightYaml(area.value) + '\n';
+			hlPre.scrollTop = area.scrollTop;
+			hlPre.scrollLeft = area.scrollLeft;
+		}
+		area.addEventListener('input', repaint);
+		area.addEventListener('scroll', function () {
+			hlPre.scrollTop = area.scrollTop;
+			hlPre.scrollLeft = area.scrollLeft;
+		});
+
+		var editorBox = E('div', {
+			'style': 'position:relative;width:100%;height:60vh'
+		}, [ styleTag, hlPre, area ]);
+
+		repaint();   /* the file is already loaded, so paint it once up front */
 
 		var out = E('div', { 'id': 'clashwrt-editor-out' });
 
@@ -109,7 +208,7 @@ return view.extend({
 				var b = ev.target;
 				busy(b, true);
 				confctl(['read'])
-					.then(function (res) { area.value = res.stdout || ''; say(out, true, _('Reloaded from disk.')); })
+					.then(function (res) { area.value = res.stdout || ''; repaint(); say(out, true, _('Reloaded from disk.')); })
 					.finally(function () { busy(b, false); });
 			}
 		}, _('Discard changes'));
@@ -134,7 +233,7 @@ return view.extend({
 								say(out, true, (res.stdout || '') + (res.stderr || ''));
 								return confctl(['read']);
 							})
-							.then(function (res) { area.value = res.stdout || ''; })
+							.then(function (res) { area.value = res.stdout || ''; repaint(); })
 							.catch(function (e) {
 								say(out, false, (e.stdout || '') + (e.stderr || '') || String(e));
 							})
@@ -149,7 +248,7 @@ return view.extend({
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Direct editor for config.yaml. Nothing is installed until mihomo has accepted it, and the previous version is kept as a backup.')),
 			E('div', { 'class': 'cbi-section' }, [
-				area,
+				editorBox,
 				E('div', { 'style': 'margin-top:8px' }, [ btnValidate, btnSave, btnReload ]),
 				restoreRow || '',
 				out

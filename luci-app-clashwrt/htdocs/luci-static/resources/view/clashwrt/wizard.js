@@ -49,6 +49,7 @@ return view.extend({
 			routing: g('routing', 'direct_except_list'),
 			ruleSets: gl('ruleset'),
 			udpSplit: g('udp_split', '0') === '1',
+			yandexDns: g('yandex_dns', '0') === '1',
 			udpFilter: g('udp_filter', '(?i)(hysteria|hy2|tuic)'),
 			tcpFilter: g('tcp_filter', '')
 		};
@@ -107,6 +108,7 @@ return view.extend({
 		}));
 
 		var splitCb = E('input', { 'type': 'checkbox', 'checked': a.udpSplit ? '' : null });
+		var yandexCb = E('input', { 'type': 'checkbox', 'checked': a.yandexDns ? '' : null });
 		var udpFilter = E('input', {
 			'type': 'text', 'class': 'cbi-input-text', 'style': 'width:24em',
 			'value': a.udpFilter
@@ -150,6 +152,7 @@ return view.extend({
 				routing: routeSel.value,
 				ruleSets: sets,
 				udpSplit: splitCb.checked,
+				yandexDns: yandexCb.checked,
 				udpFilter: udpFilter.value,
 				tcpFilter: tcpFilter.value
 			};
@@ -181,6 +184,7 @@ return view.extend({
 				routing: ans.routing,
 				ruleSets: ans.ruleSets,
 				udpSplit: ans.udpSplit,
+				yandexDns: ans.yandexDns,
 				udpFilter: ans.udpFilter,
 				tcpFilter: ans.tcpFilter
 			};
@@ -202,6 +206,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'dns_preset', ans.dnsPreset);
 			uci.set('clashwrt', 'wizard', 'routing', ans.routing);
 			uci.set('clashwrt', 'wizard', 'udp_split', ans.udpSplit ? '1' : '0');
+			uci.set('clashwrt', 'wizard', 'yandex_dns', ans.yandexDns ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'udp_filter', ans.udpFilter);
 			uci.set('clashwrt', 'wizard', 'tcp_filter', ans.tcpFilter);
 			return uci.save().then(function () { return uci.apply(); });
@@ -279,6 +284,10 @@ return view.extend({
 
 				label(_('Lists'), _('Used by the "everything direct, except…" strategy.')),
 				setList,
+
+				label(_('Russian sites through Yandex DNS'),
+					_('Resolves Russian domains with Yandex over DoH, and everything else with the resolver chosen above. A resolver abroad returns whichever CDN node is closest to itself, so RU sites end up pointed at distant edges — and those answers are the ones least in need of hiding.')),
+				E('label', {}, [ yandexCb, ' ', _('Use Yandex DNS for the Russian domain set') ]),
 
 				label(_('Split TCP and UDP across protocols'),
 					_('Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and leaves everything else on the TCP-based ones. Worth doing when a subscription carries both: the QUIC protocols handle datagrams natively instead of tunnelling them.')),
