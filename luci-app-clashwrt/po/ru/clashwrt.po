@@ -81,8 +81,8 @@ msgstr "Включить разделение протоколов"
 msgid "TCP / UDP protocol split"
 msgstr "Разделение протоколов TCP и UDP"
 
-msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently "
-msgstr "Направляет UDP на узлы поверх QUIC (Hysteria2, TUIC), а остальное — на узлы поверх TCP. Сейчас "
+msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently"
+msgstr "Направляет UDP на узлы поверх QUIC (Hysteria2, TUIC), а остальное — на узлы поверх TCP. Сейчас"
 
 msgid "Run the setup wizard once first — the split is applied by regenerating the configuration from its answers."
 msgstr "Сначала пройдите мастер настройки — разделение применяется перегенерацией конфигурации по его ответам."
@@ -111,8 +111,8 @@ msgstr "Tun — TCP + UDP"
 msgid "NAT redirect for TCP + tun for UDP"
 msgstr "NAT-redirect для TCP + tun для UDP"
 
-msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket. "
-msgstr "<strong>TPROXY</strong> — правильный механизм прозрачного проксирования и единственный, который сохраняет исходное назначение UDP без tun-интерфейса. Но на некоторых ядрах он незаметно сломан: правило срабатывает и помечает пакет, однако в прозрачный сокет он так и не попадает. "
+msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket."
+msgstr "<strong>TPROXY</strong> — правильный механизм прозрачного проксирования и единственный, который сохраняет исходное назначение UDP без tun-интерфейса. Но на некоторых ядрах он незаметно сломан: правило срабатывает и помечает пакет, однако в прозрачный сокет он так и не попадает."
 
 msgid "LAN device"
 msgstr "Интерфейс локальной сети"
@@ -222,8 +222,8 @@ msgstr "Веб-панель"
 msgid "The panel mihomo serves at its API port. Any of these can be swapped at any time; the previous one is only removed once the new copy has been checked."
 msgstr "Панель, которую mihomo отдаёт на своём API-порту. Любую можно заменить в любой момент: старая удаляется только после проверки новой."
 
-msgid "Currently installed: "
-msgstr "Сейчас установлена: "
+msgid "Currently installed:"
+msgstr "Сейчас установлена:"
 
 msgid "Dashboard:"
 msgstr "Панель:"
@@ -321,8 +321,8 @@ msgstr "Списки, которые вы ведёте вручную и на к
 msgid "Files in %s"
 msgstr "Файлы в %s"
 
-msgid "Editing: "
-msgstr "Редактируется: "
+msgid "Editing:"
+msgstr "Редактируется:"
 
 msgid "Everything direct, except the selected lists"
 msgstr "Всё напрямую, кроме выбранных списков"
@@ -453,8 +453,8 @@ msgstr "Перезапустить mihomo"
 msgid "Open dashboard"
 msgstr "Открыть панель"
 
-msgid "Address: "
-msgstr "Адрес: "
+msgid "Address:"
+msgstr "Адрес:"
 
 msgid "If the panel still looks unchanged, reload its tab once — the previous dashboard holds it in the browser cache until then."
 msgstr "Если панель выглядит по-прежнему, перезагрузите её вкладку один раз — до этого предыдущая панель держит её в кеше браузера."
@@ -537,11 +537,11 @@ msgstr "Автопрокрутка"
 msgid "reading from %s"
 msgstr "источник: %s"
 
-msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device. "
-msgstr "<strong>NAT-redirect</strong> работает всегда, но совсем не умеет UDP: для датаграмм нет SO_ORIGINAL_DST, поэтому его приходится дополнять tun-интерфейсом. "
+msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device."
+msgstr "<strong>NAT-redirect</strong> работает всегда, но совсем не умеет UDP: для датаграмм нет SO_ORIGINAL_DST, поэтому его приходится дополнять tun-интерфейсом."
 
-msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput. "
-msgstr "<strong>Tun</strong> работает везде, но каждый пакет проходит через пространство пользователя, что снижает пропускную способность. "
+msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput."
+msgstr "<strong>Tun</strong> работает везде, но каждый пакет проходит через пространство пользователя, что снижает пропускную способность."
 
 msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
 msgstr "Если не уверены, начните с TPROXY, а при проблемах переходите на NAT-redirect + tun."
@@ -680,3 +680,15 @@ msgstr "отсутствует"
 
 msgid "ok"
 msgstr "в порядке"
+
+msgid "Russian networks (ipdeny) — for “bypass”"
+msgstr "Российские сети (ipdeny) — для «мимо прокси»"
+
+msgid "Russian networks (meta-rules-dat) — for “bypass”"
+msgstr "Российские сети (meta-rules-dat) — для «мимо прокси»"
+
+msgid "Re-filter blocked ranges — for “only these”"
+msgstr "Заблокированные диапазоны Re-filter — для «только эти»"
+
+msgid "The list has to match the direction. Russian networks are what should <em>skip</em> the proxy. Re-filter is the opposite — addresses blocked in Russia, so they are exactly what needs the proxy, and belong under “only these”. A mismatched pair is refused rather than quietly sending the wrong traffic out."
+msgstr "Список должен соответствовать направлению. Российские сети — это то, что должно идти <em>мимо</em> прокси. Re-filter наоборот: это адреса, заблокированные в России, то есть именно они нуждаются в прокси, и им место в варианте «только эти». Неверная пара отклоняется, а не отправляет тихо не тот трафик наружу."

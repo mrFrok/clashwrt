@@ -62,10 +62,36 @@ source_url() {
 }
 
 do_sources() {
-	echo "ru	Russian networks (ipdeny)"
-	echo "ru-geoip	Russian networks (meta-rules-dat geoip)"
-	echo "refilter	Re-filter blocked IP ranges"
-	echo "custom	A URL of your own"
+	echo "ru	exclude	Russian networks (ipdeny)"
+	echo "ru-geoip	exclude	Russian networks (meta-rules-dat geoip)"
+	echo "refilter	include	Re-filter blocked IP ranges"
+	echo "custom	any	A URL of your own"
+}
+
+# Which direction a list is meant for. Getting this backwards is not a subtle
+# misconfiguration: re-filter is a list of addresses that are *blocked* in
+# Russia, so putting it behind "exclude" would send exactly the traffic that
+# needs the proxy straight out the WAN instead. The reverse is just as wrong --
+# "include" on a list of Russian networks would proxy the one thing that has no
+# reason to be proxied and send everything else direct.
+intended_mode() {
+	case "$1" in
+		ru|ru-geoip) echo "exclude" ;;
+		refilter)    echo "include" ;;
+		*)           echo "any" ;;
+	esac
+}
+
+check_pairing() {
+	local want
+	want="$(intended_mode "$set_source")"
+	[ "$want" = "any" ] && return 0
+	[ "$want" = "$set_mode" ] && return 0
+
+	if [ "$set_source" = "refilter" ]; then
+		die "'refilter' lists addresses that are blocked in Russia, so they are what needs the proxy. Use it with mode 'include' (intercept only these), not '$set_mode'."
+	fi
+	die "'$set_source' lists Russian networks, which is what should skip the proxy. Use it with mode 'exclude' (these bypass), not '$set_mode'."
 }
 
 # Accepts both a bare CIDR list and a YAML "payload:" list, keeps only well
@@ -81,6 +107,8 @@ parse_list() {
 do_update() {
 	load_cfg
 	[ "$set_mode" = "off" ] && { log "bypass set disabled"; return 0; }
+
+	check_pairing
 
 	local url
 	url="$(source_url "$set_source")" || die "unknown source '$set_source'"
@@ -155,6 +183,12 @@ do_status() {
 	load_cfg
 	echo "mode:     $set_mode"
 	echo "source:   $set_source"
+	if [ "$set_mode" != "off" ]; then
+		want="$(intended_mode "$set_source")"
+		if [ "$want" != "any" ] && [ "$want" != "$set_mode" ]; then
+			echo "WARNING:  this list is meant for mode '$want' -- the current pairing sends the wrong traffic through the proxy"
+		fi
+	fi
 	echo "url:      $(source_url "$set_source" 2>/dev/null)"
 	echo "list:     $([ -s "$LIST" ] && grep -c . "$LIST" || echo 0) networks"
 	if [ -f "$STAMP" ]; then

@@ -178,7 +178,7 @@ return view.extend({
 			]),
 
 			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, [ _('Editing: '), current ]),
+				E('h3', {}, [ _('Editing:') + ' ', current ]),
 				area,
 				E('div', { 'style': 'margin-top:8px' }, [ btnSave ]),
 				out

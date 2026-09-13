@@ -488,7 +488,7 @@ return view.extend({
 			return E('div', { 'class': 'cbi-section' }, [
 				E('h3', {}, _('TCP / UDP protocol split')),
 				E('p', {}, [
-					_('Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently '),
+					_('Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently') + ' ',
 					state, '.'
 				]),
 				E('p', { 'style': 'font-size:90%;opacity:0.75' },
@@ -518,9 +518,9 @@ return view.extend({
 		 * while every extractor sees four separate literals -- so the lookup
 		 * misses and the text renders untranslated. */
 		o.description =
-			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket. ') +
-			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device. ') +
-			_('<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput. ') +
+			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket.') + ' ' +
+			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device.') + ' ' +
+			_('<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput.') + ' ' +
 			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.');
 
 		o = s.option(form.Value, 'lan_device', _('LAN device'),
@@ -573,12 +573,12 @@ return view.extend({
 		o.value('exclude', _('Listed destinations bypass the proxy'));
 		o.value('include', _('Only listed destinations are intercepted'));
 		o.default = 'off';
-		o.description = _('Pair <em>exclude</em> with “everything through the proxy except Russia”, and <em>include</em> with “everything direct except the lists”.');
+		o.description = _('The list has to match the direction. Russian networks are what should <em>skip</em> the proxy. Re-filter is the opposite — addresses blocked in Russia, so they are exactly what needs the proxy, and belong under “only these”. A mismatched pair is refused rather than quietly sending the wrong traffic out.');
 
 		o = s.option(form.ListValue, 'bypass_set_source', _('List'));
-		o.value('ru', _('Russian networks (ipdeny)'));
-		o.value('ru-geoip', _('Russian networks (meta-rules-dat)'));
-		o.value('refilter', _('Re-filter blocked ranges'));
+		o.value('ru', _('Russian networks (ipdeny) — for “bypass”'));
+		o.value('ru-geoip', _('Russian networks (meta-rules-dat) — for “bypass”'));
+		o.value('refilter', _('Re-filter blocked ranges — for “only these”'));
 		o.value('custom', _('A URL of your own'));
 		o.default = 'ru';
 		o.depends({ bypass_set_mode: 'off', '!reverse': true });

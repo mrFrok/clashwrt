@@ -135,9 +135,9 @@ return view.extend({
 				_('The panel mihomo serves at its API port. Any of these can be swapped at any time; the previous one is only removed once the new copy has been checked.')),
 
 			E('div', { 'class': 'cbi-section' }, [
-				E('p', {}, [ _('Currently installed: '), cur ]),
+				E('p', {}, [ _('Currently installed:') + ' ', cur ]),
 				E('p', {}, [
-					_('Address: '),
+					_('Address:') + ' ',
 					E('a', { 'href': uiUrl, 'target': '_blank', 'rel': 'noopener' }, uiUrl)
 				]),
 				E('div', {}, [ openLink, btnRestart ]),
