@@ -5,6 +5,8 @@
 'require ui';
 'require dom';
 
+var UI_VERSION = '0.1.3';
+
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
 
@@ -244,7 +246,11 @@ return view.extend({
 		}
 
 		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Mihomo configuration')),
+			E('h2', {}, [
+				_('Mihomo configuration'),
+				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' },
+					'ui ' + UI_VERSION)
+			]),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Direct editor for config.yaml. Nothing is installed until mihomo has accepted it, and the previous version is kept as a backup.')),
 			E('div', { 'class': 'cbi-section' }, [

@@ -68,6 +68,23 @@ validate_file() {
 	return 0
 }
 
+# Backups made by hand before this package existed, and by earlier versions of
+# it, sit next to config.yaml rather than in the rotated directory, so nothing
+# ever removes them. Once a new configuration has been installed and accepted,
+# they are strictly older than a verified backup and can go. The pattern is
+# deliberately narrow -- our own naming, in the mihomo directory, never
+# config.yaml itself.
+prune_legacy_backups() {
+	local f n=0 bytes=0
+	for f in "$MIHOMO_DIR"/config.yaml.bak-*; do
+		[ -f "$f" ] || continue
+		bytes=$((bytes + $(wc -c < "$f" 2>/dev/null || echo 0)))
+		rm -f "$f" && n=$((n + 1))
+	done
+	[ "$n" -gt 0 ] && echo "removed $n stray backup(s), $bytes bytes"
+	return 0
+}
+
 rotate_backups() {
 	mkdir -p "$BACKUP_DIR"
 	local n
@@ -108,6 +125,9 @@ do_apply() {
 	cat "$STAGING" > "$CONF"
 	rm -f "$STAGING"
 	echo "installed $CONF"
+
+	# only now, with a good config in place and a fresh backup beside it
+	prune_legacy_backups
 
 	if pidof mihomo >/dev/null 2>&1; then
 		/etc/init.d/mihomo restart >/dev/null 2>&1

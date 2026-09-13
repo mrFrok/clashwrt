@@ -35,7 +35,7 @@
 		"order": 30,
 		"action": {
 			"type": "view",
-			"path": "clashwrt/editor"
+			"path": "clashwrt/config-editor"
 		}
 	},
 	"admin/services/clashwrt/files": {
