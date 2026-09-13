@@ -24,7 +24,11 @@
 # Usage: updctl.sh core-status|core-install [version]|cores|prune-cores
 #        updctl.sh self-status|self-update|log
 
-REPO_DEFAULT="https://github.com/mrFrok/clashwrt/archive/refs/heads/main.tar.gz"
+SLUG_DEFAULT="mrFrok/clashwrt"
+# Releases are the default channel: a router should not pick up whatever landed
+# on the branch an hour ago. An install that came from a branch keeps tracking
+# that branch, because switching channels under someone is not an update.
+REPO_DEFAULT=""
 INFO="/usr/libexec/clashwrt/.install-info"
 LOG="/tmp/clashwrt-update.log"
 
@@ -40,13 +44,15 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 load_info() {
 	REPO="$REPO_DEFAULT"
 	INST_COMMIT=""
+	INST_VERSION=""
 	INST_DATE=""
 
 	[ -f "$INFO" ] || return 0
 	while IFS='=' read -r k v; do
 		case "$k" in
 			repo)   [ -n "$v" ] && REPO="$v" ;;
-			commit) INST_COMMIT="$v" ;;
+			commit)  INST_COMMIT="$v" ;;
+			version) INST_VERSION="$v" ;;
 			date)   INST_DATE="$v" ;;
 		esac
 	done < "$INFO"
@@ -56,14 +62,39 @@ load_info() {
 # the slug and ref the API needs. Anything else -- a private mirror, a local
 # file, a release tarball -- is updatable but not checkable, and says so.
 parse_repo() {
-	SLUG=""; REF=""
+	SLUG=""; REF=""; KIND=""
 	case "$REPO" in
-		https://github.com/*/archive/refs/heads/*.tar.gz) ;;
+		https://github.com/*/archive/refs/heads/*.tar.gz)
+			KIND="heads"
+			REF="${REPO##*/heads/}"; REF="${REF%.tar.gz}"
+			;;
+		https://github.com/*/archive/refs/tags/*.tar.gz)
+			KIND="tags"
+			REF="${REPO##*/tags/}"; REF="${REF%.tar.gz}"
+			;;
+		"")
+			# nothing recorded: this copy predates channels, or came from the
+			# package feed. Treat it as following releases.
+			SLUG="$SLUG_DEFAULT"; KIND="tags"; REF="${INST_VERSION:-unknown}"
+			return 0
+			;;
 		*) return 1 ;;
 	esac
 	SLUG="${REPO#https://github.com/}"; SLUG="${SLUG%%/archive/*}"
-	REF="${REPO##*/heads/}"; REF="${REF%.tar.gz}"
 	[ -n "$SLUG" ] && [ -n "$REF" ]
+}
+
+# The newest published release, by tag name. Anything that is not a plausible
+# tag -- a rate-limit body, an error page, a repository with no releases yet --
+# is discarded rather than shown as a version.
+remote_tag() {
+	local t
+	t="$(curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
+		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+	case "$t" in
+		"" | *[!A-Za-z0-9._-]*) return 1 ;;
+	esac
+	echo "$t"
 }
 
 # The commits endpoint returns the bare sha as text under this Accept header,
@@ -406,26 +437,35 @@ do_core_install() {
 do_self_status() {
 	load_info
 
-	echo "repo:      $REPO"
-	echo "installed: ${INST_COMMIT:-unknown}"
-	echo "date:      ${INST_DATE:-unknown}"
-
 	if ! parse_repo; then
-		echo "ref:       unknown"
+		echo "repo:      ${REPO:-unknown}"
+		echo "installed: ${INST_VERSION:-${INST_COMMIT:-unknown}}"
+		echo "date:      ${INST_DATE:-unknown}"
+		echo "channel:   unknown"
 		echo "latest:    unknown"
 		echo "update:    unknown"
 		return 0
 	fi
 
-	echo "ref:       $REF"
+	local installed latest
+	if [ "$KIND" = "tags" ]; then
+		echo "channel:   release"
+		installed="${INST_VERSION:-$REF}"
+		latest="$(remote_tag)" || latest=""
+	else
+		echo "channel:   $REF"
+		installed="$INST_COMMIT"
+		latest="$(remote_commit)" || latest=""
+	fi
 
-	local latest
-	latest="$(remote_commit)" || latest=""
+	echo "repo:      https://github.com/$SLUG"
+	echo "installed: ${installed:-unknown}"
+	echo "date:      ${INST_DATE:-unknown}"
 	echo "latest:    ${latest:-unknown}"
 
-	if [ -z "$latest" ] || [ -z "$INST_COMMIT" ]; then
+	if [ -z "$latest" ] || [ -z "$installed" ] || [ "$installed" = "unknown" ]; then
 		echo "update:    unknown"
-	elif [ "$latest" = "$INST_COMMIT" ]; then
+	elif [ "$latest" = "$installed" ]; then
 		echo "update:    current"
 	else
 		echo "update:    available"
@@ -436,7 +476,15 @@ do_self_update() {
 	load_info
 	parse_repo || die "cannot update automatically from $REPO -- re-run install.sh by hand"
 
-	local url="https://raw.githubusercontent.com/$SLUG/$REF/install.sh"
+	# On the release channel the point to install is the newest tag, not the
+	# one already on disk -- otherwise "update" would reinstall what is there.
+	local want="$REF" src="$REPO"
+	if [ "$KIND" = "tags" ]; then
+		want="$(remote_tag)" || die "could not find the latest release"
+		src="https://github.com/$SLUG/archive/refs/tags/$want.tar.gz"
+	fi
+
+	local url="https://raw.githubusercontent.com/$SLUG/$want/install.sh"
 	local script="/tmp/clashwrt-selfupdate.sh"
 	local runner="/tmp/clashwrt-selfupdate-run.sh"
 
@@ -455,7 +503,7 @@ do_self_update() {
 	cat > "$runner" <<RUNNER
 #!/bin/sh
 echo "=== clashwrt update started \$(date -u '+%Y-%m-%d %H:%M:%SZ') ==="
-SKIP_CORE=1 REPO_URL='$REPO' sh '$script'
+SKIP_CORE=1 REPO_URL='$src' sh '$script'
 _rc=\$?
 echo
 echo "=== clashwrt update finished, rc=\$_rc ==="

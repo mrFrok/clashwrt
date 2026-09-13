@@ -19,7 +19,32 @@
 
 set -e
 
-REPO_URL="${REPO_URL:-https://github.com/mrFrok/clashwrt/archive/refs/heads/main.tar.gz}"
+SLUG="${SLUG:-mrFrok/clashwrt}"
+
+# Two channels. "release" installs the newest tag and is the default, so a
+# router does not pick up whatever landed on the branch an hour ago; "main"
+# is the rolling one. An explicit REPO_URL overrides both and is left alone.
+CHANNEL="${CHANNEL:-release}"
+REPO_URL="${REPO_URL:-}"
+SRC_TAG=""
+
+if [ -z "$REPO_URL" ]; then
+	if [ "$CHANNEL" = "main" ]; then
+		REPO_URL="https://github.com/$SLUG/archive/refs/heads/main.tar.gz"
+	else
+		SRC_TAG="$(curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
+			| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)" || SRC_TAG=""
+		case "$SRC_TAG" in
+			"" | *[!A-Za-z0-9._-]*) SRC_TAG="" ;;
+		esac
+		if [ -n "$SRC_TAG" ]; then
+			REPO_URL="https://github.com/$SLUG/archive/refs/tags/$SRC_TAG.tar.gz"
+		else
+			# no release published yet, or the API is unreachable
+			REPO_URL="https://github.com/$SLUG/archive/refs/heads/main.tar.gz"
+		fi
+	fi
+fi
 MIHOMO_DIR="${MIHOMO_DIR:-/etc/mihomo}"
 TMP="/tmp/clashwrt-install.$$"
 
@@ -133,6 +158,11 @@ need_pkg socat || warn "socat not installed -- the TPROXY selftest will be unava
 # Erring the other way merely offers an update that changes nothing.
 SRC_COMMIT=""
 case "$REPO_URL" in
+	https://github.com/*/archive/refs/tags/*.tar.gz)
+		# a tag is already an exact point; take the name from the URL so an
+		# explicit REPO_URL records a version too
+		_t="${REPO_URL##*/tags/}"; SRC_TAG="${_t%.tar.gz}"
+		;;
 	https://github.com/*/archive/refs/heads/*.tar.gz)
 		_slug="${REPO_URL#https://github.com/}"; _slug="${_slug%%/archive/*}"
 		_ref="${REPO_URL##*/heads/}"; _ref="${_ref%.tar.gz}"
@@ -219,6 +249,7 @@ fi
 # simply reports its version as unknown.
 cat > /usr/libexec/clashwrt/.install-info <<EOF
 repo=$REPO_URL
+version=$SRC_TAG
 commit=$SRC_COMMIT
 date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
