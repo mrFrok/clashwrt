@@ -27,7 +27,7 @@
 		"order": 20,
 		"action": {
 			"type": "view",
-			"path": "clashwrt/wizard"
+			"path": "clashwrt/setup-wizard"
 		}
 	},
 	"admin/services/clashwrt/editor": {

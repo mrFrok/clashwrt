@@ -7,6 +7,8 @@
 'require dom';
 'require clashwrt.gen as gen';
 
+var UI_VERSION = '0.1.5';
+
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
 
@@ -259,7 +261,11 @@ return view.extend({
 		updateDetected();
 
 		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Setup wizard')),
+			E('h2', {}, [
+				_('Setup wizard'),
+				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' },
+					'ui ' + UI_VERSION)
+			]),
 			E('div', { 'class': 'cbi-map-descr' },
 				_('Builds a working config.yaml from a subscription or node links. Inbound settings are generated to match the interception mode currently selected on the Settings page, so the firewall and mihomo always agree.')),
 
