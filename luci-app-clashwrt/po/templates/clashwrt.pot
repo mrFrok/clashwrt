@@ -596,3 +596,129 @@ msgstr ""
 
 msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
 msgstr ""
+
+msgid "Currently installed:"
+msgstr ""
+
+msgid "Address:"
+msgstr ""
+
+msgid "Editing:"
+msgstr ""
+
+msgid "present"
+msgstr ""
+
+msgid "absent"
+msgstr ""
+
+msgid "running"
+msgstr ""
+
+msgid "stopped"
+msgstr ""
+
+msgid "up"
+msgstr ""
+
+msgid "missing"
+msgstr ""
+
+msgid "ok"
+msgstr ""
+
+msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently"
+msgstr ""
+
+msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket."
+msgstr ""
+
+msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device."
+msgstr ""
+
+msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput."
+msgstr ""
+
+msgid "Kernel bypass set"
+msgstr ""
+
+msgid "Decide in the kernel, before any marking happens, that a set of destinations skips the proxy — which is faster than reaching the same conclusion inside mihomo. Works in all four interception modes."
+msgstr ""
+
+msgid "Bypass"
+msgstr ""
+
+msgid "Off — intercept everything"
+msgstr ""
+
+msgid "Russian networks go direct (ipdeny)"
+msgstr ""
+
+msgid "Russian networks go direct (meta-rules-dat)"
+msgstr ""
+
+msgid "Intercept only what is blocked in Russia (Re-filter)"
+msgstr ""
+
+msgid "A list of your own"
+msgstr ""
+
+msgid "Direction"
+msgstr ""
+
+msgid "Work it out from mihomo's routing"
+msgstr ""
+
+msgid "The listed addresses go direct"
+msgstr ""
+
+msgid "Only the listed addresses are intercepted"
+msgstr ""
+
+msgid "List URL"
+msgstr ""
+
+msgid "Plain CIDR per line, or a YAML <code>payload:</code> list. Anything that is not an IPv4 network is ignored."
+msgstr ""
+
+msgid "Refresh interval (seconds)"
+msgstr ""
+
+msgid "Refresh now"
+msgstr ""
+
+msgid "Downloading…"
+msgstr ""
+
+msgid "Russian sites through Yandex DNS"
+msgstr ""
+
+msgid "Resolves Russian domains with Yandex over DoH, and everything else with the resolver chosen above. A resolver abroad returns whichever CDN node is closest to itself, so RU sites end up pointed at distant edges — and those answers are the ones least in need of hiding."
+msgstr ""
+
+msgid "Use Yandex DNS for the Russian domain set"
+msgstr ""
+
+msgid "Skip the proxy for"
+msgstr ""
+
+msgid "Nothing — everything goes to mihomo"
+msgstr ""
+
+msgid "Russian networks (ipdeny)"
+msgstr ""
+
+msgid "Russian networks (meta-rules-dat)"
+msgstr ""
+
+msgid "Everything except what is blocked in Russia (Re-filter)"
+msgstr ""
+
+msgid "Which way round"
+msgstr ""
+
+msgid "Skip the proxy for the listed addresses"
+msgstr ""
+
+msgid "Skip the proxy for everything except the listed addresses"
+msgstr ""

@@ -692,3 +692,51 @@ msgstr "Заблокированные диапазоны Re-filter — для �
 
 msgid "The list has to match the direction. Russian networks are what should <em>skip</em> the proxy. Re-filter is the opposite — addresses blocked in Russia, so they are exactly what needs the proxy, and belong under “only these”. A mismatched pair is refused rather than quietly sending the wrong traffic out."
 msgstr "Список должен соответствовать направлению. Российские сети — это то, что должно идти <em>мимо</em> прокси. Re-filter наоборот: это адреса, заблокированные в России, то есть именно они нуждаются в прокси, и им место в варианте «только эти». Неверная пара отклоняется, а не отправляет тихо не тот трафик наружу."
+
+msgid "Decide in the kernel, before any marking happens, that a set of destinations skips the proxy — which is faster than reaching the same conclusion inside mihomo. Works in all four interception modes."
+msgstr "Решать прямо в ядре, ещё до какой-либо маркировки, что набор адресов идёт мимо прокси — это быстрее, чем приходить к тому же выводу внутри mihomo. Работает во всех четырёх режимах перехвата."
+
+msgid "Bypass"
+msgstr "Обход"
+
+msgid "Russian networks go direct (ipdeny)"
+msgstr "Российские сети идут напрямую (ipdeny)"
+
+msgid "Russian networks go direct (meta-rules-dat)"
+msgstr "Российские сети идут напрямую (meta-rules-dat)"
+
+msgid "Intercept only what is blocked in Russia (Re-filter)"
+msgstr "Перехватывать только заблокированное в России (Re-filter)"
+
+msgid "A list of your own"
+msgstr "Свой список"
+
+msgid "Direction"
+msgstr "Направление"
+
+msgid "Work it out from mihomo's routing"
+msgstr "Определить по маршрутизации mihomo"
+
+msgid "The listed addresses go direct"
+msgstr "Адреса из списка идут напрямую"
+
+msgid "Only the listed addresses are intercepted"
+msgstr "Перехватываются только адреса из списка"
+
+msgid "Skip the proxy for"
+msgstr "Мимо прокси идёт"
+
+msgid "Nothing — everything goes to mihomo"
+msgstr "Ничего — весь трафик идёт в mihomo"
+
+msgid "Everything except what is blocked in Russia (Re-filter)"
+msgstr "Всё, кроме заблокированного в России (Re-filter)"
+
+msgid "Which way round"
+msgstr "В какую сторону"
+
+msgid "Skip the proxy for the listed addresses"
+msgstr "Мимо прокси идут адреса из списка"
+
+msgid "Skip the proxy for everything except the listed addresses"
+msgstr "Мимо прокси идёт всё, кроме адресов из списка"

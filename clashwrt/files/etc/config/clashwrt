@@ -62,6 +62,11 @@ config clashwrt 'config'
 	#   exclude  listed destinations bypass; pair with "proxy except Russia"
 	#   include  only listed destinations are intercepted; pair with
 	#            "direct except the lists"
+	#   auto     read the direction out of mihomo's terminal MATCH rule
+	#            instead of being told it -- the set holds the exceptions to
+	#            whatever mihomo does by default, so the default decides which
+	#            way round it goes. 'setctl.sh detect' shows the answer and
+	#            where it came from.
 	option bypass_set_mode 'off'
 	option bypass_set_source 'ru'
 	# option bypass_set_url ''

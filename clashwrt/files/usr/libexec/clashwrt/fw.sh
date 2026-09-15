@@ -85,6 +85,22 @@ load_cfg() {
 
 	MIHOMO_CONF="$mihomo_dir/config.yaml"
 
+	# 'auto' works the direction out from mihomo's own default routing.
+	# setctl.sh owns that, rather than a second copy of the same reading
+	# living here and drifting from it. An answer it cannot give leaves the
+	# set out of the ruleset entirely: a rule built on a guess would send the
+	# wrong half of the traffic past the proxy, which is worse than no rule.
+	if [ "$set_mode" = "auto" ]; then
+		set_mode="$(/usr/libexec/clashwrt/setctl.sh direction 2>/dev/null)" || set_mode=""
+		case "$set_mode" in
+			exclude|include|off) ;;
+			*)
+				log "bypass set is 'auto' but the direction could not be determined; leaving it out (run 'setctl.sh detect' to see why)"
+				set_mode="off"
+				;;
+		esac
+	fi
+
 	[ -n "$bypass_net" ] || bypass_net="0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4"
 
 	resolve_devices

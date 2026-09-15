@@ -566,40 +566,111 @@ return view.extend({
 
 		s = m.section(form.NamedSection, 'config', 'clashwrt', _('Kernel bypass set'));
 		s.anonymous = true;
-		s.description = _('Skip the proxy entirely for a set of destinations, decided in the kernel before any marking happens. A DIRECT rule inside mihomo is not a fast path — the connection still terminates on the router and is relayed through userspace, which costs throughput and makes every device look like one host to a shaper. Works in all four interception modes.');
+		s.description = _('Decide in the kernel, before any marking happens, that a set of destinations skips the proxy — which is faster than reaching the same conclusion inside mihomo. Works in all four interception modes.');
 
-		o = s.option(form.ListValue, 'bypass_set_mode', _('Mode'));
-		o.value('off', _('Off — intercept everything'));
-		o.value('exclude', _('Listed destinations bypass the proxy'));
-		o.value('include', _('Only listed destinations are intercepted'));
+		/* One question, not two.
+		 *
+		 * This used to ask for a direction and a list separately, which left
+		 * the reader holding a puzzle only the author knew the answer to: each
+		 * preset list makes sense in exactly one direction, and picking the
+		 * other one is not a preference but a mistake. setctl.sh knows the
+		 * same pairing and refuses a mismatch, so the second question could
+		 * only ever be answered wrongly or redundantly.
+		 *
+		 * The direction is a real question for a list of your own, and it is
+		 * asked there and nowhere else. */
+		/* Every line answers the same question -- what skips the proxy -- because
+		 * that is what the set is for. Saying "Russian networks go direct" next
+		 * to "intercept only what is blocked" describes one entry by what
+		 * bypasses and the next by what does not, and leaves the reader turning
+		 * every other line around in their head to compare them. */
+		o = s.option(form.ListValue, 'bypass_set_profile', _('Skip the proxy for'));
+		o.value('off', _('Nothing — everything goes to mihomo'));
+		o.value('ru', _('Russian networks (ipdeny)'));
+		o.value('ru-geoip', _('Russian networks (meta-rules-dat)'));
+		o.value('refilter', _('Everything except what is blocked in Russia (Re-filter)'));
+		o.value('custom', _('A list of your own'));
 		o.default = 'off';
-		o.description = _('The list has to match the direction. Russian networks are what should <em>skip</em> the proxy. Re-filter is the opposite — addresses blocked in Russia, so they are exactly what needs the proxy, and belong under “only these”. A mismatched pair is refused rather than quietly sending the wrong traffic out.');
 
-		o = s.option(form.ListValue, 'bypass_set_source', _('List'));
-		o.value('ru', _('Russian networks (ipdeny) — for “bypass”'));
-		o.value('ru-geoip', _('Russian networks (meta-rules-dat) — for “bypass”'));
-		o.value('refilter', _('Re-filter blocked ranges — for “only these”'));
-		o.value('custom', _('A URL of your own'));
-		o.default = 'ru';
-		o.depends({ bypass_set_mode: 'off', '!reverse': true });
+		/* A virtual option: it carries no UCI key of its own and instead reads
+		 * and writes the two the engine actually reads. */
+		o.cfgvalue = function (sid) {
+			if ((uci.get('clashwrt', sid, 'bypass_set_mode') || 'off') === 'off')
+				return 'off';
+			return uci.get('clashwrt', sid, 'bypass_set_source') || 'ru';
+		};
+		o.write = function (sid, value) {
+			if (value === 'off') {
+				uci.set('clashwrt', sid, 'bypass_set_mode', 'off');
+				return;
+			}
+			uci.set('clashwrt', sid, 'bypass_set_source', value);
+			if (value === 'custom') {
+				/* the direction is settled below; only seed it, so that
+				 * switching to a custom list cannot leave the set off */
+				var cur = uci.get('clashwrt', sid, 'bypass_set_mode');
+				if (cur !== 'exclude' && cur !== 'include')
+					uci.set('clashwrt', sid, 'bypass_set_mode', 'auto');
+				return;
+			}
+			uci.set('clashwrt', sid, 'bypass_set_mode',
+				value === 'refilter' ? 'include' : 'exclude');
+		};
+		o.remove = function (sid) { uci.set('clashwrt', sid, 'bypass_set_mode', 'off'); };
+
+		/* Which way round the set goes is not really a preference: it follows
+		 * from what mihomo does with traffic that matches no rule, and mihomo
+		 * says that in one line — its terminal MATCH rule. So the default is
+		 * to read it. The two explicit answers stay for the config the parser
+		 * cannot read, and for anyone who means something else by it. */
+		o = s.option(form.ListValue, 'bypass_set_mode', _('Which way round'));
+		o.value('auto', _('Work it out from mihomo\'s routing'));
+		o.value('exclude', _('Skip the proxy for the listed addresses'));
+		o.value('include', _('Skip the proxy for everything except the listed addresses'));
+		o.default = 'auto';
+		o.depends('bypass_set_profile', 'custom');
+		/* Written by the option above for every preset, so being inactive must
+		 * not mean being cleared. */
+		o.retain = true;
 
 		o = s.option(form.Value, 'bypass_set_url', _('List URL'),
 			_('Plain CIDR per line, or a YAML <code>payload:</code> list. Anything that is not an IPv4 network is ignored.'));
-		o.depends('bypass_set_source', 'custom');
+		o.depends('bypass_set_profile', 'custom');
 
 		o = s.option(form.Value, 'bypass_set_interval', _('Refresh interval (seconds)'));
 		o.datatype = 'uinteger';
 		o.default = '86400';
-		o.depends({ bypass_set_mode: 'off', '!reverse': true });
+		o.depends({ bypass_set_profile: 'off', '!reverse': true });
+
+		/* The status block is where a derived direction becomes visible, so it
+		 * has to be filled on arrival rather than only after someone presses
+		 * Refresh — an automatic decision nobody can see is worse than a
+		 * question. cfgvalue is called more than once per render, hence the
+		 * guard: one read, not one per call. */
+		var setStatusRead = false;
 
 		o = s.option(form.DummyValue, '_setstatus', _('Status'));
 		o.rawhtml = true;
+		o.depends({ bypass_set_profile: 'off', '!reverse': true });
 		o.cfgvalue = function () {
-			return E('div', { 'id': 'clashwrt-set-status' }, E('em', {}, _('checking…')));
+			var node = E('div', { 'id': 'clashwrt-set-status' }, E('em', {}, _('checking…')));
+			if (setStatusRead)
+				return node;
+			setStatusRead = true;
+
+			var paint = function (text) {
+				var target = document.getElementById('clashwrt-set-status') || node;
+				dom.content(target, E('pre', { 'style': 'margin:0' }, text));
+			};
+			fs.exec('/usr/libexec/clashwrt/setctl.sh', ['status'])
+				.then(function (r) { paint((r.stdout || '') + (r.stderr || '')); })
+				.catch(function (e) { paint(String(e.message || e)); });
+			return node;
 		};
 
 		o = s.option(form.Button, '_setupdate', _('Refresh now'));
 		o.inputstyle = 'action';
+		o.depends({ bypass_set_profile: 'off', '!reverse': true });
 		o.onclick = function (ev) {
 			var out = document.getElementById('clashwrt-set-status');
 			dom.content(out, E('em', {}, _('Downloading…')));

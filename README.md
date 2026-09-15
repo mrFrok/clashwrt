@@ -166,6 +166,27 @@ rules:
 
 `filter:` uses Go's RE2, which has **no lookahead** — write exclusions as positive-inclusion patterns.
 
+### Kernel bypass set
+
+A set of destinations that skip the proxy, matched in the kernel before any marking happens. This is not the same as a `DIRECT` rule inside mihomo: a connection mihomo decides to pass through still terminates on the router and is relayed through userspace, which costs throughput and collapses every device behind one address, so a shaper like cake can no longer tell hosts apart. Traffic excluded here never reaches mihomo at all. It works in all four interception modes.
+
+Pick what should skip the proxy and the rest follows. The two cases are mirror images: if mihomo proxies everything by default, what skips is Russian networks; if mihomo is direct by default and only proxies a blocklist, what skips is *everything except* that blocklist. Same set, opposite sense, and which one applies is not a preference — for a list of your own it is read out of your configuration rather than asked for:
+
+| mihomo's last rule | what it means | what skips the proxy |
+|---|---|---|
+| `MATCH,DIRECT` | direct unless a rule says otherwise | everything except the list |
+| `MATCH,<group>` | proxied unless a rule says otherwise | the list |
+
+The set holds the exceptions to whatever mihomo does by default, so the default is what decides which way round it goes. That is a reading, not a guess, and it is the one source that is also right for a config written by hand. If the config has no terminal `MATCH`, the wizard's stored routing strategy answers instead; if neither does, the list is refused rather than loaded the wrong way round — pointing the set backwards sends exactly the traffic that needs the proxy straight out the WAN.
+
+```sh
+/usr/libexec/clashwrt/setctl.sh detect   # the direction, and where it came from
+/usr/libexec/clashwrt/setctl.sh status   # plus list age and what is in the kernel
+/usr/libexec/clashwrt/setctl.sh update force
+```
+
+Choosing a preset by hand that contradicts your routing is warned about rather than refused — the detected routing is evidence, not authority.
+
 ### Configuration and rule files
 
 **Configuration** is a direct editor for `config.yaml`, with syntax checking, backups and one-click restore. **Rule files** manages the hand-maintained lists that file-backed rule providers point at:
@@ -249,6 +270,8 @@ Nothing reports an error when that happens. Marked packets simply fall through t
 /usr/libexec/clashwrt/fw.sh check       # repair routing that went stale
 /usr/libexec/clashwrt/fw.sh detect      # what "auto" resolved lan/wan to
 /usr/libexec/clashwrt/fw.sh selftest    # does this kernel honour TPROXY?
+/usr/libexec/clashwrt/setctl.sh detect  # which way round the bypass set goes
+/usr/libexec/clashwrt/setctl.sh status  # list age, and what is loaded in the kernel
 
 /etc/init.d/mihomo start|stop|restart   # also Stop/Start on the Settings page
 /usr/libexec/clashwrt/updctl.sh core-status
