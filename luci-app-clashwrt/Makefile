@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 include $(TOPDIR)/rules.mk
 
-PKG_VERSION:=1.0.1
+PKG_VERSION:=1.0.2
 PKG_RELEASE:=1
 
 LUCI_TITLE:=LuCI interface for ClashWrt
