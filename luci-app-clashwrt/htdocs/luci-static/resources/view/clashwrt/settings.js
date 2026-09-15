@@ -9,7 +9,7 @@
 'require dom';
 'require clashwrt.generator as gen';
 
-var UI_VERSION = '0.1.6';
+var UI_VERSION = '0.1.7';
 
 var callStatus = function () {
 	return fs.exec('/usr/libexec/clashwrt/fw.sh', ['status'])
@@ -83,8 +83,34 @@ function renderStatus(text) {
 	if (!Object.keys(st).length)
 		return E('em', {}, _('Status unavailable.'));
 
+	/* The mode in UCI decides what the firewall builds; the inbounds in
+	 * config.yaml decide what mihomo is listening for. Change either by hand
+	 * and they stop agreeing, with nothing to show for it but traffic
+	 * arriving at a port nothing is bound to. So the page reads the config
+	 * and says whether it can serve the mode that is selected, rather than
+	 * repeating the selection back as though it were a fact. */
+	var agrees = st['conf_agrees'];
+	var serves = st['conf_modes'] || '';
+
+	var modeCell;
+	if (agrees === 'no') {
+		modeCell = E('span', {}, [
+			E('strong', {}, st['mode'] || '?'), ' ',
+			pill('#fce8e6', '#c5221f', _('config.yaml cannot serve this')),
+			E('div', { 'style': 'font-size:90%;opacity:0.8;margin-top:2px' },
+				_('Its inbounds fit: ') + serves)
+		]);
+	} else if (agrees === 'yes') {
+		modeCell = E('span', {}, [ E('strong', {}, st['mode'] || '?'), ' ', badge(true, _('matches config.yaml')) ]);
+	} else {
+		modeCell = E('span', {}, [
+			E('strong', {}, st['mode'] || '?'), ' ',
+			pill('#f1f3f4', '#5f6368', _('config.yaml not readable'))
+		]);
+	}
+
 	var rows = [
-		[_('Mode'), E('strong', {}, st['mode'] || '?')],
+		[_('Mode'), modeCell],
 		[_('Enabled'), badge(st['enabled'] === '1', st['enabled'] === '1' ? _('yes') : _('no'))],
 		[_('Firewall ruleset'), badge(st['nft_table'] === 'present', stateWord(st['nft_table']))],
 		[_('mihomo daemon'), badge(st['mihomo'] === 'running', stateWord(st['mihomo']))],

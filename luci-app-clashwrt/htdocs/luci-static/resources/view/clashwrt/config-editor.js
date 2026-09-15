@@ -5,7 +5,7 @@
 'require ui';
 'require dom';
 
-var UI_VERSION = '0.1.4';
+var UI_VERSION = '0.1.5';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -114,6 +114,26 @@ function say(node, ok, text) {
 	}, text));
 }
 
+/* fs.exec resolves whatever the command exits with; only an RPC or permission
+ * failure rejects. So the promise settling is not the answer to "did it work"
+ * -- the exit code is. Reading the one for the other is how a rejected config
+ * came back in a green success box with the parser's complaint inside it. */
+function ok(res) {
+	return !!res && res.code === 0;
+}
+
+function textOf(res) {
+	if (!res) return '';
+	return (res.stdout || '') + (res.stderr || '');
+}
+
+/* mihomo locates a syntax error by line, which is only useful if the line can
+ * be found. Pull the number out so the editor can go there. */
+function errorLine(text) {
+	var m = /(?:^|[^0-9])line[\s:]+(\d+)/i.exec(text || '');
+	return m ? parseInt(m[1], 10) : 0;
+}
+
 return view.extend({
 	load: function () {
 		return Promise.all([
@@ -129,14 +149,28 @@ return view.extend({
 
 		var hlPre = E('pre', {
 			'aria-hidden': 'true',
-			'style': 'position:absolute;inset:0;overflow:auto;pointer-events:none;' +
-				'border-radius:4px;background:var(--background-color-medium,rgba(127,127,127,0.08));'
+			'style': 'position:absolute;left:0;right:0;top:0;bottom:0;overflow:auto;' +
+				'pointer-events:none;border-radius:4px;' +
+				'background:var(--background-color-medium,rgba(127,127,127,0.08));'
+		});
+
+		/* A third layer, to the left of the other two. It carries the same
+		 * metrics as they do, because a number that does not sit level with
+		 * its line is worse than no number at all. Only the vertical scroll is
+		 * mirrored -- it must not drift sideways with the text. */
+		var gutter = E('pre', {
+			'aria-hidden': 'true',
+			'style': 'position:absolute;left:0;top:0;bottom:0;overflow:hidden;' +
+				'text-align:right;pointer-events:none;user-select:none;' +
+				'border-radius:4px 0 0 4px;' +
+				'background:var(--background-color-medium,rgba(127,127,127,0.08));' +
+				'opacity:0.6;'
 		});
 
 		var area = E('textarea', {
 			'id': 'clashwrt-config',
 			'spellcheck': 'false',
-			'style': 'position:absolute;inset:0;width:100%;height:100%;resize:none;' +
+			'style': 'position:absolute;left:0;right:0;top:0;bottom:0;resize:none;' +
 				'overflow:auto;background:transparent;color:transparent;' +
 				'caret-color:var(--color-fg,#ccc);border-radius:4px;'
 		}, text);
@@ -147,29 +181,86 @@ return view.extend({
 			'.cw-n{color:#ff9e64}',
 			'.cw-b{color:#bb9af7}',
 			'.cw-c{color:#767b91;font-style:italic}',
+			'.cw-err{color:#f7768e;font-weight:700;opacity:1}',
 			':root[data-theme="light"] .cw-k{color:#1a56c4}',
 			':root[data-theme="light"] .cw-s{color:#2c7a2c}',
 			':root[data-theme="light"] .cw-n{color:#b05500}',
 			':root[data-theme="light"] .cw-b{color:#7c3aed}',
-			':root[data-theme="light"] .cw-c{color:#6b7280}'
+			':root[data-theme="light"] .cw-c{color:#6b7280}',
+			':root[data-theme="light"] .cw-err{color:#c5221f}'
 		].join('\n'));
+
+		/* Which line the last check complained about, 0 for none. */
+		var badLine = 0;
+
+		function paintGutter() {
+			var n = area.value.split('\n').length;
+			var width = 'calc(' + String(n).length + 'ch + 16px)';
+
+			/* Widening the gutter has to move the other two layers with it, or
+			 * the text slides under the numbers at 10, 100, 1000 lines. */
+			gutter.style.setProperty('width', width, 'important');
+			hlPre.style.setProperty('left', width, 'important');
+			area.style.setProperty('left', width, 'important');
+
+			var rows = [];
+			for (var i = 1; i <= n; i++)
+				rows.push(i === badLine
+					? '<span class="cw-err">' + i + '</span>'
+					: String(i));
+			gutter.innerHTML = rows.join('\n') + '\n';
+		}
 
 		function repaint() {
 			/* trailing newline keeps the last line scrollable into view */
 			hlPre.innerHTML = highlightYaml(area.value) + '\n';
-			hlPre.scrollTop = area.scrollTop;
-			hlPre.scrollLeft = area.scrollLeft;
+			paintGutter();
+			syncScroll();
 		}
-		area.addEventListener('input', repaint);
-		area.addEventListener('scroll', function () {
+
+		function syncScroll() {
 			hlPre.scrollTop = area.scrollTop;
 			hlPre.scrollLeft = area.scrollLeft;
-		});
+			gutter.scrollTop = area.scrollTop;
+		}
+
+		/* Editing invalidates the mark: the line the parser named is not
+		 * necessarily the same line any more. */
+		area.addEventListener('input', function () { badLine = 0; repaint(); });
+		area.addEventListener('scroll', syncScroll);
+
+		/* Put the caret on the offending line and bring it into view. A line
+		 * number in a message is only half an answer when the file is long. */
+		function goToLine(n) {
+			var lines = area.value.split('\n');
+			if (!n || n < 1 || n > lines.length) return;
+
+			var start = 0, i;
+			for (i = 0; i < n - 1; i++) start += lines[i].length + 1;
+
+			var lh = parseFloat(window.getComputedStyle(area).lineHeight) || 17;
+			area.scrollTop = Math.max(0, (n - 1) * lh - area.clientHeight / 2);
+			area.focus();
+			area.setSelectionRange(start, start + lines[n - 1].length);
+			syncScroll();
+		}
+
+		/* Report an outcome: colour by the exit code, and if the message
+		 * located a line, mark it and go there. */
+		function report(res) {
+			var body = textOf(res);
+			var good = ok(res);
+			badLine = good ? 0 : errorLine(body);
+			paintGutter();
+			say(out, good, body || (good ? _('Done.') : _('No output.')));
+			if (badLine) goToLine(badLine);
+		}
 
 		var editorBox = E('div', {
 			'style': 'position:relative;width:100%;height:60vh'
-		}, [ styleTag, hlPre, area ]);
+		}, [ styleTag, gutter, hlPre, area ]);
 
+		applyMetrics(gutter);
 		applyMetrics(hlPre);
 		applyMetrics(area);
 
@@ -187,11 +278,9 @@ return view.extend({
 				dom.content(out, E('em', {}, _('Checking…')));
 				stage(area.value)
 					.then(function () { return confctl(['validate']); })
-					.then(function (res) {
-						say(out, true, (res.stdout || '') + (res.stderr || ''));
-					})
+					.then(report)
 					.catch(function (e) {
-						say(out, false, (e.stdout || '') + (e.stderr || '') || String(e));
+						say(out, false, textOf(e) || String(e.message || e));
 					})
 					.finally(function () { busy(b, false); });
 			}
@@ -218,11 +307,9 @@ return view.extend({
 								dom.content(out, E('em', {}, _('Applying…')));
 								stage(area.value)
 									.then(function () { return confctl(['apply']); })
-									.then(function (res) {
-										say(out, true, (res.stdout || '') + (res.stderr || ''));
-									})
+									.then(report)
 									.catch(function (e) {
-										say(out, false, (e.stdout || '') + (e.stderr || '') || String(e));
+										say(out, false, textOf(e) || String(e.message || e));
 									})
 									.finally(function () { busy(b, false); });
 							}
@@ -239,7 +326,17 @@ return view.extend({
 				var b = ev.target;
 				busy(b, true);
 				confctl(['read'])
-					.then(function (res) { area.value = res.stdout || ''; repaint(); say(out, true, _('Reloaded from disk.')); })
+					.then(function (res) {
+						badLine = 0;
+						area.value = res.stdout || '';
+						repaint();
+						say(out, ok(res), ok(res)
+							? _('Reloaded from disk.')
+							: textOf(res));
+					})
+					.catch(function (e) {
+						say(out, false, textOf(e) || String(e.message || e));
+					})
 					.finally(function () { busy(b, false); });
 			}
 		}, _('Discard changes'));
@@ -261,12 +358,16 @@ return view.extend({
 						dom.content(out, E('em', {}, _('Restoring…')));
 						confctl(['restore', sel.value])
 							.then(function (res) {
-								say(out, true, (res.stdout || '') + (res.stderr || ''));
+								say(out, ok(res), textOf(res));
 								return confctl(['read']);
 							})
-							.then(function (res) { area.value = res.stdout || ''; repaint(); })
+							.then(function (res) {
+								badLine = 0;
+								area.value = res.stdout || '';
+								repaint();
+							})
 							.catch(function (e) {
-								say(out, false, (e.stdout || '') + (e.stderr || '') || String(e));
+								say(out, false, textOf(e) || String(e.message || e));
 							})
 							.finally(function () { busy(b, false); });
 					}

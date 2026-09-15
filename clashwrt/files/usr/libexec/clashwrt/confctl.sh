@@ -61,11 +61,43 @@ validate_file() {
 	rm -rf "$probe"
 
 	if [ $rc -ne 0 ]; then
-		# mihomo is chatty on success; only the failure text is useful here
-		echo "$out" | grep -viE '^time=.*level=info' | tail -20 >&2
+		echo "$out" | clean_validation_error >&2
 		return 1
 	fi
 	return 0
+}
+
+# mihomo reports a rejected config as a logfmt line -- a timestamp, a level and
+# the real message buried in msg="..." -- followed by a line naming the file it
+# tested. Neither shape is worth showing.
+#
+# The timestamp and level are noise on a one-shot syntax check. The filename is
+# worse than noise: it names the probe directory, a temporary copy that this
+# function has already deleted by the time anyone reads the message, so it
+# sends the reader looking for a file that never existed and was never theirs.
+# What locates the mistake is the line number inside msg, and that is what is
+# left.
+#
+# Anything that does not match the expected shape is passed through untouched
+# rather than dropped -- a message nobody anticipated is exactly the one worth
+# seeing in full.
+clean_validation_error() {
+	awk '
+		/level=(error|fatal)/ {
+			if (match($0, /msg="/)) {
+				m = substr($0, RSTART + RLENGTH)
+				sub(/"[[:space:]]*$/, "", m)
+				print m
+				seen = 1
+				next
+			}
+		}
+		# names the probe copy, which is gone by now
+		/test failed$/ { next }
+		/^time=.*level=info/ { next }
+		{ rest = rest $0 "\n" }
+		END { if (!seen) printf "%s", rest }
+	' | head -20
 }
 
 # Backups made by hand before this package existed, and by earlier versions of

@@ -740,3 +740,18 @@ msgstr "Мимо прокси идут адреса из списка"
 
 msgid "Skip the proxy for everything except the listed addresses"
 msgstr "Мимо прокси идёт всё, кроме адресов из списка"
+
+msgid "Done."
+msgstr "Готово."
+
+msgid "config.yaml cannot serve this"
+msgstr "config.yaml не может это обслужить"
+
+msgid "Its inbounds fit: "
+msgstr "Его входящие подходят для: "
+
+msgid "matches config.yaml"
+msgstr "совпадает с config.yaml"
+
+msgid "config.yaml not readable"
+msgstr "config.yaml не прочитан"

@@ -165,6 +165,48 @@ mihomo_ports() {
 
 nft_set() { echo "$*" | tr ' ' '\n' | grep -v '^$' | tr '\n' ',' | sed 's/,$//'; }
 
+# Which modes the installed config.yaml can actually serve.
+#
+# The mode in UCI decides what the firewall builds; the inbounds in config.yaml
+# decide what mihomo is listening for. Edit either one by hand and they stop
+# agreeing, and the failure is quiet: the rules are built, the counters move,
+# and the packets arrive at a port nothing is bound to. So the config is read
+# and the two are compared where somebody can see it.
+#
+# Not every config names one mode. tproxy-port alongside an enabled tun serves
+# both 'tproxy' and 'tproxy_tun' equally well, and nothing in the file says
+# which was meant -- that is a question about the kernel, not about the config.
+# So this reports the whole set it can serve and lets the caller say whether
+# the configured mode is in it, rather than inventing a single answer.
+conf_modes() {
+	local has_tproxy="" has_redir="" has_tun="" out=""
+
+	[ -f "$MIHOMO_CONF" ] || return 1
+
+	[ -n "$(yaml_top tproxy-port)" ] && has_tproxy=1
+	[ -n "$(yaml_top redir-port)" ]  && has_redir=1
+	case "$(yaml_in tun enable)" in
+		true|1|yes) has_tun=1 ;;
+	esac
+
+	[ -n "$has_tproxy" ] && out="tproxy"
+	[ -n "$has_tproxy" ] && [ -n "$has_tun" ] && out="$out tproxy_tun"
+	[ -n "$has_redir" ]  && [ -n "$has_tun" ] && out="$out redirect_tun"
+	[ -n "$has_tun" ]    && out="$out tun"
+
+	out="${out# }"
+	[ -n "$out" ] || return 1
+	echo "$out"
+}
+
+conf_serves_mode() {
+	local m
+	for m in $(conf_modes 2>/dev/null); do
+		[ "$m" = "$1" ] && return 0
+	done
+	return 1
+}
+
 # ---------------------------------------------------------------------------
 # preconditions
 # ---------------------------------------------------------------------------
@@ -520,6 +562,18 @@ do_status() {
 	ip route show table "$table_tun" 2>/dev/null | grep -q "dev $tun_device" && echo ok || echo missing
 	echo -n "mihomo:       "
 	pidof mihomo >/dev/null 2>&1 && echo running || echo stopped
+
+	# What the config can serve, next to what the firewall was told to build.
+	local serves
+	serves="$(conf_modes 2>/dev/null)" || serves=""
+	echo "conf_modes:   ${serves:-unknown}"
+	if [ -n "$serves" ] && ! conf_serves_mode "$mode"; then
+		echo "conf_agrees:  no"
+	elif [ -n "$serves" ]; then
+		echo "conf_agrees:  yes"
+	else
+		echo "conf_agrees:  unknown"
+	fi
 }
 
 # Re-apply only the pieces that go stale on their own, without tearing the
