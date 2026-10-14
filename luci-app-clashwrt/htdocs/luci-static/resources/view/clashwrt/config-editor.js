@@ -4,8 +4,10 @@
 'require fs';
 'require ui';
 'require dom';
+'require clashwrt.generator as gen';
+'require clashwrt.rulefiles as rulefiles';
 
-var UI_VERSION = '0.1.5';
+var UI_VERSION = '0.2.1';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -111,7 +113,7 @@ function say(node, ok, text) {
 	dom.content(node, E('div', {
 		'class': ok ? 'alert-message success' : 'alert-message warning',
 		'style': 'white-space:pre-wrap;margin:8px 0 0 0'
-	}, text));
+	}, [ text ]));
 }
 
 /* fs.exec resolves whatever the command exits with; only an RPC or permission
@@ -138,12 +140,14 @@ return view.extend({
 	load: function () {
 		return Promise.all([
 			confctl(['read']).catch(function () { return { stdout: '' }; }),
-			confctl(['backups']).catch(function () { return { stdout: '' }; })
+			confctl(['backups']).catch(function () { return { stdout: '' }; }),
+			rulefiles.load()
 		]);
 	},
 
 	render: function (data) {
 		var text = (data[0] && data[0].stdout) ? data[0].stdout : '';
+		var filesNode = rulefiles.render(data[2]);
 		var backups = ((data[1] && data[1].stdout) ? data[1].stdout : '')
 			.split('\n').filter(function (s) { return s.trim().length; });
 
@@ -341,54 +345,276 @@ return view.extend({
 			}
 		}, _('Discard changes'));
 
-		var restoreRow = null;
-		if (backups.length) {
-			var sel = E('select', { 'class': 'cbi-input-select' },
-				backups.map(function (b) { return E('option', { 'value': b }, b); }));
+		/* Insert rules for a site into the text in the editor. Nothing is
+		 * saved: the result is an ordinary edit, checked and installed by
+		 * the buttons above like any other. */
+		var siteInput = E('input', {
+			'type': 'text', 'class': 'cbi-input-text', 'style': 'width:22em',
+			'placeholder': _('https://example.com or a service name, e.g. youtube')
+		});
+		var siteGroup = E('select', { 'class': 'cbi-input-select', 'style': 'margin-left:6px' });
 
-			restoreRow = E('div', { 'style': 'margin-top:1em' }, [
-				E('label', { 'style': 'margin-right:6px' }, _('Backups:')),
-				sel,
-				' ',
-				E('button', {
-					'class': 'cbi-button cbi-button-neutral',
-					'click': function (ev) {
-						var b = ev.target;
-						busy(b, true);
-						dom.content(out, E('em', {}, _('Restoring…')));
-						confctl(['restore', sel.value])
-							.then(function (res) {
-								say(out, ok(res), textOf(res));
-								return confctl(['read']);
-							})
-							.then(function (res) {
-								badLine = 0;
-								area.value = res.stdout || '';
-								repaint();
-							})
-							.catch(function (e) {
-								say(out, false, textOf(e) || String(e.message || e));
-							})
-							.finally(function () { busy(b, false); });
-					}
-				}, _('Restore selected'))
+		function fillSiteGroups() {
+			var keep = siteGroup.value || 'Proxy';
+			var names = ['Proxy', 'DIRECT'];
+			gen.parseConfig(area.value).groups.forEach(function (n) {
+				if (n !== gen.UDP_GROUP && names.indexOf(n) < 0) names.push(n);
+			});
+			dom.content(siteGroup, names.map(function (n) {
+				return E('option', { 'value': n, 'selected': n === keep ? '' : null }, [ n ]);
+			}));
+		}
+		var sitePreview = E('div', { 'style': 'margin-top:4px;font-size:90%;opacity:.85;word-break:break-all' });
+
+		function previewSite() {
+			var d = gen.siteDomains(siteInput.value);
+			dom.content(sitePreview, siteInput.value.trim() ? [
+				d.length
+					? _('Will add %d domain(s): %s').format(d.length, d.join(', '))
+					: _('Not recognised as a site — enter a URL, a hostname, or a service name.')
+			] : '');
+		}
+		fillSiteGroups();
+		siteGroup.addEventListener('focus', fillSiteGroups);
+		siteGroup.addEventListener('mousedown', fillSiteGroups);
+		siteInput.addEventListener('input', previewSite);
+
+		function addSite() {
+			var d = gen.siteDomains(siteInput.value);
+			if (!d.length) {
+				say(out, false, _('Not recognised as a site — enter a URL, a hostname, or a service name.'));
+				return;
+			}
+			try {
+				var next = gen.addSiteRules(area.value, d, { group: siteGroup.value });
+				if (next === area.value) {
+					say(out, true, _('Every one of these sites is already in the config for that group.'));
+					return;
+				}
+				area.value = next;
+				badLine = 0;
+				repaint();
+				siteInput.value = '';
+				previewSite();
+				say(out, true, _('Added %d domain(s) to the editor: %s. Not saved yet — check the syntax, then save.')
+					.format(d.length, d.join(', ')));
+			} catch (e) {
+				say(out, false, String(e.message || e));
+			}
+		}
+
+		siteInput.addEventListener('keydown', function (ev) {
+			if (ev.key === 'Enter') { ev.preventDefault(); addSite(); }
+		});
+
+		var siteRow = E('div', { 'style': 'margin-top:1em' }, [
+			E('label', { 'style': 'margin-right:6px' }, _('Add site:')),
+			siteInput,
+			siteGroup,
+			' ',
+			E('button', { 'type': 'button', 'class': 'cbi-button cbi-button-add', 'click': addSite }, _('Add')),
+			sitePreview
+		]);
+
+		var BACKUP_NAME_RE = /^config-[A-Za-z0-9._-]+\.yaml$/;
+
+		var sel = E('select', { 'class': 'cbi-input-select' });
+		var restoreRow = E('div', { 'style': 'margin-top:1em' });
+		var noBackups = E('em', {}, _('No backups yet. One is made each time you save.'));
+
+		/* Repopulate the dropdown. `pick` is the entry to select if it still
+		 * exists; otherwise the one at `index` (so deleting the middle of the
+		 * list lands on its neighbour), clamped to the end. */
+		function setBackups(list, pick, index) {
+			backups = list;
+			dom.content(sel, list.map(function (b) { return E('option', { 'value': b }, [ b ]); }));
+			if (list.length) {
+				var at = list.indexOf(pick);
+				if (at < 0) at = Math.min(Math.max(index || 0, 0), list.length - 1);
+				sel.selectedIndex = at;
+			}
+			restoreRow.style.display = list.length ? '' : 'none';
+			noBackups.style.display = list.length ? 'none' : '';
+		}
+
+		function reloadBackups(pick, index) {
+			return confctl(['backups']).then(function (res) {
+				setBackups(textOf(res).split('\n').filter(function (x) { return x.trim().length; }), pick, index);
+			});
+		}
+
+		function backupModal(title, body, label, cls, action) {
+			ui.showModal(title, [
+				body,
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+					' ',
+					E('button', {
+						'class': 'cbi-button ' + cls,
+						'click': function () { action(); }
+					}, label)
+				])
 			]);
 		}
 
+		var btnRestore = E('button', {
+			'class': 'cbi-button cbi-button-neutral',
+			'click': function (ev) {
+				var b = ev.target;
+				busy(b, true);
+				dom.content(out, E('em', {}, _('Restoring…')));
+				confctl(['restore', sel.value])
+					.then(function (res) {
+						say(out, ok(res), textOf(res));
+						return confctl(['read']);
+					})
+					.then(function (res) {
+						badLine = 0;
+						area.value = res.stdout || '';
+						repaint();
+					})
+					.catch(function (e) {
+						say(out, false, textOf(e) || String(e.message || e));
+					})
+					.finally(function () { busy(b, false); });
+			}
+		}, _('Restore selected'));
+
+		var btnRename = E('button', {
+			'class': 'cbi-button cbi-button-neutral',
+			'style': 'margin-left:6px',
+			'click': function () {
+				var oldName = sel.value;
+				if (!oldName) return;
+				var input = E('input', {
+					'type': 'text', 'class': 'cbi-input-text', 'style': 'width:100%',
+					'value': oldName, 'spellcheck': 'false'
+				});
+				var err = E('div', { 'style': 'color:#c5221f;min-height:1.2em;margin-top:4px' });
+
+				var go = function () {
+					var nn = input.value.trim();
+					if (nn === oldName) {
+						dom.content(err, _('The new name is the same as the old one.'));
+						return;
+					}
+					if (!BACKUP_NAME_RE.test(nn) || nn.length > 100) {
+						dom.content(err, _('Use a name like config-before-upgrade.yaml: it must start with "config-", end with ".yaml", and contain only letters, digits, dots, dashes and underscores.'));
+						return;
+					}
+					if (backups.indexOf(nn) >= 0) {
+						dom.content(err, _('A backup with that name already exists.'));
+						return;
+					}
+					ui.hideModal();
+					dom.content(out, E('em', {}, _('Renaming…')));
+					confctl(['rename-backup', oldName, nn])
+						.then(function (res) {
+							say(out, ok(res), textOf(res));
+							return reloadBackups(ok(res) ? nn : oldName, sel.selectedIndex);
+						})
+						.catch(function (e) {
+							say(out, false, textOf(e) || String(e.message || e));
+						});
+				};
+
+				input.addEventListener('keydown', function (ev) {
+					if (ev.key === 'Enter') { ev.preventDefault(); go(); }
+				});
+
+				backupModal(_('Rename backup'), E('div', {}, [
+					E('p', {}, [ _('New name for "%s":').format(oldName) ]),
+					input,
+					err
+				]), _('Rename'), 'cbi-button-positive', go);
+				input.focus();
+			}
+		}, _('Rename backup'));
+
+		var btnDelete = E('button', {
+			'class': 'cbi-button cbi-button-negative',
+			'style': 'margin-left:6px',
+			'click': function () {
+				var name = sel.value;
+				var index = sel.selectedIndex;
+				if (!name) return;
+				backupModal(_('Delete backup'),
+					E('p', {}, [ _('Delete the backup "%s"? This cannot be undone.').format(name) ]),
+					_('Delete'), 'cbi-button-negative', function () {
+						ui.hideModal();
+						dom.content(out, E('em', {}, _('Deleting…')));
+						confctl(['delete-backup', name])
+							.then(function (res) {
+								say(out, ok(res), textOf(res));
+								return reloadBackups(null, index);
+							})
+							.catch(function (e) {
+								say(out, false, textOf(e) || String(e.message || e));
+							});
+					});
+			}
+		}, _('Delete backup'));
+
+		dom.content(restoreRow, [
+			E('label', { 'style': 'margin-right:6px' }, _('Backups:')),
+			sel, ' ', btnRestore, btnRename, btnDelete
+		]);
+		setBackups(backups, null, 0);
+
+		/* Three jobs, three tabs: the other two used to be pages of their
+		 * own, and the message area below is shared so a result is visible
+		 * whichever tab produced it. */
+		var panes = {};
+		var items = {};
+
+		function showTab(id) {
+			Object.keys(panes).forEach(function (k) {
+				panes[k].style.display = k === id ? '' : 'none';
+				items[k].className = k === id ? 'cbi-tab' : 'cbi-tab-disabled';
+				items[k].setAttribute('data-active', k === id ? '1' : '0');
+			});
+		}
+
+		function tab(id, title, node) {
+			panes[id] = node;
+			items[id] = E('li', { 'class': 'cbi-tab-disabled', 'data-tab': id }, E('a', {
+				'href': '#',
+				'click': function (ev) { ev.preventDefault(); showTab(id); }
+			}, title));
+			return items[id];
+		}
+
+		var editorPane = E('div', { 'class': 'cbi-section' }, [
+			editorBox,
+			E('div', { 'style': 'margin-top:8px' }, [ btnValidate, btnSave, btnReload ]),
+			siteRow
+		]);
+		var backupsPane = E('div', { 'class': 'cbi-section' }, [
+			E('div', { 'class': 'cbi-map-descr' },
+				_('The previous version is kept every time you save.')),
+			restoreRow,
+			noBackups
+		]);
+		var filesPane = E('div', { 'class': 'cbi-section' }, filesNode);
+
+		var tabBar = E('ul', { 'class': 'cbi-tabmenu' }, [
+			tab('editor', _('Editor'), editorPane),
+			tab('backups', _('Backups'), backupsPane),
+			tab('files', _('Rule files'), filesPane)
+		]);
+		showTab('editor');
+
 		return E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, [
-				_('Mihomo configuration'),
+				_('Configuration'),
 				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' },
 					'ui ' + UI_VERSION)
 			]),
 			E('div', { 'class': 'cbi-map-descr' },
-				_('Direct editor for config.yaml. Nothing is installed until mihomo has accepted it, and the previous version is kept as a backup.')),
-			E('div', { 'class': 'cbi-section' }, [
-				editorBox,
-				E('div', { 'style': 'margin-top:8px' }, [ btnValidate, btnSave, btnReload ]),
-				restoreRow || '',
-				out
-			])
+				_('Edit config.yaml. Mihomo must accept a change before it is installed.')),
+			tabBar,
+			editorPane, backupsPane, filesPane,
+			out
 		]);
 	},
 

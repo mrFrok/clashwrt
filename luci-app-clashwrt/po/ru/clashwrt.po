@@ -15,15 +15,6 @@ msgstr "Состояние недоступно."
 msgid "Mode"
 msgstr "Режим"
 
-msgid "Enabled"
-msgstr "Включено"
-
-msgid "yes"
-msgstr "да"
-
-msgid "no"
-msgstr "нет"
-
 msgid "Firewall ruleset"
 msgstr "Правила файрвола"
 
@@ -42,12 +33,6 @@ msgstr "Порт TPROXY"
 msgid "Redirect port"
 msgstr "Порт redirect"
 
-msgid "ClashWrt — transparent proxy"
-msgstr "ClashWrt — прозрачный прокси"
-
-msgid "Intercepts LAN traffic and hands it to mihomo. Pick the interception mode that your kernel actually honours — see the mode descriptions below."
-msgstr "Перехватывает трафик локальной сети и передаёт его в mihomo. Выберите режим перехвата, который действительно поддерживает ваше ядро — см. описания ниже."
-
 msgid "Testing, this takes a few seconds…"
 msgstr "Проверка, это займёт несколько секунд…"
 
@@ -60,17 +45,11 @@ msgstr "Проверить поддержку TPROXY"
 msgid "Status"
 msgstr "Состояние"
 
-msgid "Checks whether this kernel actually delivers TPROXY packets to a transparent socket, and recommends a mode. Requires socat. Briefly attaches a test interface to the LAN."
-msgstr "Проверяет, действительно ли ядро доставляет TPROXY-пакеты в прозрачный сокет, и советует режим. Нужен socat. На короткое время подключает к сети тестовый интерфейс."
-
 msgid "enabled"
 msgstr "включено"
 
 msgid "disabled"
 msgstr "выключено"
-
-msgid "Regenerating configuration…"
-msgstr "Перегенерация конфигурации…"
 
 msgid "Disable protocol split"
 msgstr "Выключить разделение протоколов"
@@ -80,21 +59,6 @@ msgstr "Включить разделение протоколов"
 
 msgid "TCP / UDP protocol split"
 msgstr "Разделение протоколов TCP и UDP"
-
-msgid "Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently"
-msgstr "Направляет UDP на узлы поверх QUIC (Hysteria2, TUIC), а остальное — на узлы поверх TCP. Сейчас"
-
-msgid "Run the setup wizard once first — the split is applied by regenerating the configuration from its answers."
-msgstr "Сначала пройдите мастер настройки — разделение применяется перегенерацией конфигурации по его ответам."
-
-msgid "General"
-msgstr "Основное"
-
-msgid "Enable"
-msgstr "Включить"
-
-msgid "Build the ruleset and policy routing. Disabling tears both down and leaves traffic direct."
-msgstr "Создать правила и маршрутизацию. При выключении всё снимается, трафик идёт напрямую."
 
 msgid "Interception mode"
 msgstr "Режим перехвата"
@@ -111,65 +75,29 @@ msgstr "Tun — TCP + UDP"
 msgid "NAT redirect for TCP + tun for UDP"
 msgstr "NAT-redirect для TCP + tun для UDP"
 
-msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket."
-msgstr "<strong>TPROXY</strong> — правильный механизм прозрачного проксирования и единственный, который сохраняет исходное назначение UDP без tun-интерфейса. Но на некоторых ядрах он незаметно сломан: правило срабатывает и помечает пакет, однако в прозрачный сокет он так и не попадает."
-
 msgid "LAN device"
 msgstr "Интерфейс локальной сети"
-
-msgid "Only traffic arriving on this device is intercepted."
-msgstr "Перехватывается только трафик, приходящий с этого интерфейса."
-
-msgid "Must match <code>tun.device</code> in mihomo's config.yaml."
-msgstr "Должно совпадать с <code>tun.device</code> в config.yaml mihomo."
 
 msgid "Mihomo directory"
 msgstr "Каталог mihomo"
 
-msgid "Where config.yaml lives. Listening ports are read from it, so the firewall cannot drift from the daemon."
-msgstr "Где лежит config.yaml. Порты прослушивания читаются оттуда, поэтому файрвол не может разойтись с демоном."
-
-msgid "Behaviour"
-msgstr "Поведение"
-
 msgid "Manage firewall zone"
 msgstr "Управлять зоной файрвола"
-
-msgid "Create and maintain an fw4 zone for the tun device. Without it fw4's own forward chain rejects forwarded tun traffic no matter what any other table accepts."
-msgstr "Создавать и поддерживать зону fw4 для tun-интерфейса. Без неё цепочка forward самого fw4 отклоняет проходящий трафик tun, что бы ни разрешали другие таблицы."
 
 msgid "Block QUIC"
 msgstr "Блокировать QUIC"
 
-msgid "Reject UDP/443 so browsers fall back to TCP. Only useful when UDP is not proxied well."
-msgstr "Отклонять UDP/443, чтобы браузеры откатывались на TCP. Полезно, только если UDP проксируется плохо."
-
 msgid "Hijack LAN DNS"
 msgstr "Перехватывать DNS локальной сети"
-
-msgid "Redirect port 53 from the LAN into mihomo's resolver. Leave off if dnsmasq already forwards to mihomo."
-msgstr "Перенаправлять порт 53 из локальной сети в резолвер mihomo. Оставьте выключенным, если dnsmasq уже пересылает запросы в mihomo."
 
 msgid "Bypass destinations"
 msgstr "Исключённые назначения"
 
-msgid "Destination networks that are never proxied."
-msgstr "Сети назначения, которые никогда не проксируются."
-
 msgid "Bypass clients"
 msgstr "Исключённые клиенты"
 
-msgid "LAN source addresses that are never proxied."
-msgstr "Адреса в локальной сети, которые никогда не проксируются."
-
 msgid "Advanced"
 msgstr "Дополнительно"
-
-msgid "Leave empty to read <code>tproxy-port</code> from config.yaml."
-msgstr "Оставьте пустым, чтобы прочитать <code>tproxy-port</code> из config.yaml."
-
-msgid "Leave empty to read <code>redir-port</code> from config.yaml."
-msgstr "Оставьте пустым, чтобы прочитать <code>redir-port</code> из config.yaml."
 
 msgid "Mihomo DNS port"
 msgstr "DNS-порт mihomo"
@@ -179,9 +107,6 @@ msgstr "API-порт mihomo"
 
 msgid "Mihomo routing mark"
 msgstr "Метка маршрутизации mihomo"
-
-msgid "Must match <code>routing-mark</code> in config.yaml. Traffic carrying it is never re-intercepted, otherwise mihomo's own connections loop back into mihomo."
-msgstr "Должно совпадать с <code>routing-mark</code> в config.yaml. Трафик с этой меткой никогда не перехватывается повторно, иначе собственные соединения mihomo зациклятся на нём же."
 
 msgid "TCP fwmark"
 msgstr "Метка fwmark для TCP"
@@ -201,9 +126,6 @@ msgstr "Приоритет правила"
 msgid "Tun wait (seconds)"
 msgstr "Ожидание tun (секунды)"
 
-msgid "How long to wait for the tun device at startup. It is created by mihomo, so it may not exist yet; hotplug re-applies the route regardless once it appears."
-msgstr "Сколько ждать появления tun-интерфейса при запуске. Его создаёт mihomo, поэтому его может ещё не быть; когда он появится, hotplug всё равно восстановит маршрут."
-
 msgid "Downloading and installing…"
 msgstr "Загрузка и установка…"
 
@@ -218,12 +140,6 @@ msgstr "Установить по ссылке"
 
 msgid "Web dashboard"
 msgstr "Веб-панель"
-
-msgid "The panel mihomo serves at its API port. Any of these can be swapped at any time; the previous one is only removed once the new copy has been checked."
-msgstr "Панель, которую mihomo отдаёт на своём API-порту. Любую можно заменить в любой момент: старая удаляется только после проверки новой."
-
-msgid "Currently installed:"
-msgstr "Сейчас установлена:"
 
 msgid "Dashboard:"
 msgstr "Панель:"
@@ -263,12 +179,6 @@ msgstr "Восстановление…"
 
 msgid "Restore selected"
 msgstr "Восстановить выбранную"
-
-msgid "Mihomo configuration"
-msgstr "Конфигурация Mihomo"
-
-msgid "Direct editor for config.yaml. Nothing is installed until mihomo has accepted it, and the previous version is kept as a backup."
-msgstr "Прямой редактор config.yaml. Ничего не устанавливается, пока mihomo не примет файл; предыдущая версия сохраняется в резервной копии."
 
 msgid "nothing open"
 msgstr "ничего не открыто"
@@ -315,14 +225,8 @@ msgstr "Сохранить файл"
 msgid "Rule files"
 msgstr "Файлы правил"
 
-msgid "Hand-maintained lists that a config refers to as file-backed rule providers, for example <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. One rule per line, such as <code>DOMAIN-SUFFIX,example.com</code>."
-msgstr "Списки, которые вы ведёте вручную и на которые конфигурация ссылается как на файловые rule-provider, например <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. По одному правилу в строке, вида <code>DOMAIN-SUFFIX,example.com</code>."
-
 msgid "Files in %s"
 msgstr "Файлы в %s"
-
-msgid "Editing:"
-msgstr "Редактируется:"
 
 msgid "Everything direct, except the selected lists"
 msgstr "Всё напрямую, кроме выбранных списков"
@@ -371,9 +275,6 @@ msgstr "Применить конфигурацию"
 
 msgid "Setup wizard"
 msgstr "Мастер настройки"
-
-msgid "Builds a working config.yaml from a subscription or node links. Inbound settings are generated to match the interception mode currently selected on the Settings page, so the firewall and mihomo always agree."
-msgstr "Собирает рабочий config.yaml из подписки или ссылок на узлы. Входящие настройки генерируются под режим перехвата, выбранный на странице настроек, поэтому файрвол и mihomo всегда согласованы."
 
 msgid "Subscription URLs"
 msgstr "Ссылки на подписки"
@@ -453,9 +354,6 @@ msgstr "Перезапустить mihomo"
 msgid "Open dashboard"
 msgstr "Открыть панель"
 
-msgid "Address:"
-msgstr "Адрес:"
-
 msgid "If the panel still looks unchanged, reload its tab once — the previous dashboard holds it in the browser cache until then."
 msgstr "Если панель выглядит по-прежнему, перезагрузите её вкладку один раз — до этого предыдущая панель держит её в кеше браузера."
 
@@ -482,6 +380,9 @@ msgstr "Если mihomo запущен, проверьте доступност�
 
 msgid "nothing logged yet"
 msgstr "записей пока нет"
+
+msgid "reading from %s"
+msgstr "источник: %s"
 
 msgid "proxy-related"
 msgstr "связанное с прокси"
@@ -534,18 +435,6 @@ msgstr "Фильтр:"
 msgid "Auto-scroll"
 msgstr "Автопрокрутка"
 
-msgid "reading from %s"
-msgstr "источник: %s"
-
-msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device."
-msgstr "<strong>NAT-redirect</strong> работает всегда, но совсем не умеет UDP: для датаграмм нет SO_ORIGINAL_DST, поэтому его приходится дополнять tun-интерфейсом."
-
-msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput."
-msgstr "<strong>Tun</strong> работает везде, но каждый пакет проходит через пространство пользователя, что снижает пропускную способность."
-
-msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
-msgstr "Если не уверены, начните с TPROXY, а при проблемах переходите на NAT-redirect + tun."
-
 msgid "update available"
 msgstr "доступно обновление"
 
@@ -554,27 +443,6 @@ msgstr "актуальная версия"
 
 msgid "cannot tell"
 msgstr "не удалось определить"
-
-msgid "Stop mihomo"
-msgstr "Остановить mihomo"
-
-msgid "Start mihomo"
-msgstr "Запустить mihomo"
-
-msgid "Stopping mihomo…"
-msgstr "Остановка mihomo…"
-
-msgid "mihomo stopped."
-msgstr "mihomo остановлен."
-
-msgid "Starting mihomo…"
-msgstr "Запуск mihomo…"
-
-msgid "mihomo started."
-msgstr "mihomo запущен."
-
-msgid "Stopping the core does not take the firewall rules down. In the TPROXY and NAT-redirect modes intercepted traffic then has nowhere to go and fails outright, so turn Enable off below as well if you want the LAN back on a direct path."
-msgstr "Остановка ядра не убирает правила файрвола. В режимах TPROXY и NAT-redirect перехваченному трафику после этого некуда идти, и он просто перестаёт проходить — если нужно вернуть локальную сеть на прямой маршрут, снимите ниже и галочку «Включить»."
 
 msgid "Update core"
 msgstr "Обновить ядро"
@@ -603,38 +471,56 @@ msgstr "ядро mihomo"
 msgid "Updating the core downloads the build for this CPU and restarts mihomo if it was running; your configuration is untouched. Updating ClashWrt re-runs the installer, which keeps /etc/config/clashwrt and config.yaml but replaces the LuCI pages — reload the page once it reports finished."
 msgstr "Обновление ядра скачивает сборку под этот процессор и перезапускает mihomo, если тот был запущен; конфигурация не затрагивается. Обновление ClashWrt заново запускает установщик: он сохраняет /etc/config/clashwrt и config.yaml, но заменяет страницы LuCI — после сообщения о завершении перезагрузите страницу."
 
-msgid "Kernel bypass set"
-msgstr "Обход на уровне ядра"
+msgid "If unsure, try TPROXY first and fall back to NAT redirect + tun."
+msgstr "Если не уверены, начните с TPROXY, а при проблемах переходите на NAT-redirect + tun."
 
-msgid "Skip the proxy entirely for a set of destinations, decided in the kernel before any marking happens. A DIRECT rule inside mihomo is not a fast path — the connection still terminates on the router and is relayed through userspace, which costs throughput and makes every device look like one host to a shaper. Works in all four interception modes."
-msgstr "Полностью пропускать прокси для набора адресов — решение принимается в ядре до любой маркировки. Правило DIRECT внутри mihomo быстрым путём не является: соединение всё равно завершается на роутере и ретранслируется через пространство пользователя, что снижает скорость и превращает все устройства в один хост с точки зрения шейпера. Работает во всех четырёх режимах перехвата."
+msgid "Currently installed:"
+msgstr "Сейчас установлена:"
 
-msgid "Off — intercept everything"
-msgstr "Выключено — перехватывать всё"
+msgid "Address:"
+msgstr "Адрес:"
 
-msgid "Listed destinations bypass the proxy"
-msgstr "Адреса из списка идут мимо прокси"
+msgid "Editing:"
+msgstr "Редактируется:"
 
-msgid "Only listed destinations are intercepted"
-msgstr "Перехватывать только адреса из списка"
+msgid "present"
+msgstr "есть"
 
-msgid "Pair <em>exclude</em> with “everything through the proxy except Russia”, and <em>include</em> with “everything direct except the lists”."
-msgstr "Первый вариант сочетается со стратегией «всё через прокси, кроме России», второй — со «всё напрямую, кроме списков»."
+msgid "absent"
+msgstr "нет"
 
-msgid "List"
-msgstr "Список"
+msgid "running"
+msgstr "работает"
 
-msgid "Russian networks (ipdeny)"
-msgstr "Российские сети (ipdeny)"
+msgid "stopped"
+msgstr "остановлен"
 
-msgid "Russian networks (meta-rules-dat)"
-msgstr "Российские сети (meta-rules-dat)"
+msgid "up"
+msgstr "поднят"
 
-msgid "Re-filter blocked ranges"
-msgstr "Заблокированные диапазоны Re-filter"
+msgid "missing"
+msgstr "отсутствует"
 
-msgid "A URL of your own"
-msgstr "Своя ссылка"
+msgid "ok"
+msgstr "в порядке"
+
+msgid "<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket."
+msgstr "<strong>TPROXY</strong> — правильный механизм прозрачного проксирования и единственный, который сохраняет исходное назначение UDP без tun-интерфейса. Но на некоторых ядрах он незаметно сломан: правило срабатывает и помечает пакет, однако в прозрачный сокет он так и не попадает."
+
+msgid "<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device."
+msgstr "<strong>NAT-redirect</strong> работает всегда, но совсем не умеет UDP: для датаграмм нет SO_ORIGINAL_DST, поэтому его приходится дополнять tun-интерфейсом."
+
+msgid "<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput."
+msgstr "<strong>Tun</strong> работает везде, но каждый пакет проходит через пространство пользователя, что снижает пропускную способность."
+
+msgid "Bypass"
+msgstr "Обход"
+
+msgid "A list of your own"
+msgstr "Свой список"
+
+msgid "Work it out from mihomo's routing"
+msgstr "Определить по маршрутизации mihomo"
 
 msgid "List URL"
 msgstr "Ссылка на список"
@@ -660,74 +546,17 @@ msgstr "Российские домены разрешаются через Ян
 msgid "Use Yandex DNS for the Russian domain set"
 msgstr "Использовать Яндекс DNS для набора российских доменов"
 
-msgid "present"
-msgstr "есть"
-
-msgid "absent"
-msgstr "нет"
-
-msgid "running"
-msgstr "работает"
-
-msgid "stopped"
-msgstr "остановлен"
-
-msgid "up"
-msgstr "поднят"
-
-msgid "missing"
-msgstr "отсутствует"
-
-msgid "ok"
-msgstr "в порядке"
-
-msgid "Russian networks (ipdeny) — for “bypass”"
-msgstr "Российские сети (ipdeny) — для «мимо прокси»"
-
-msgid "Russian networks (meta-rules-dat) — for “bypass”"
-msgstr "Российские сети (meta-rules-dat) — для «мимо прокси»"
-
-msgid "Re-filter blocked ranges — for “only these”"
-msgstr "Заблокированные диапазоны Re-filter — для «только эти»"
-
-msgid "The list has to match the direction. Russian networks are what should <em>skip</em> the proxy. Re-filter is the opposite — addresses blocked in Russia, so they are exactly what needs the proxy, and belong under “only these”. A mismatched pair is refused rather than quietly sending the wrong traffic out."
-msgstr "Список должен соответствовать направлению. Российские сети — это то, что должно идти <em>мимо</em> прокси. Re-filter наоборот: это адреса, заблокированные в России, то есть именно они нуждаются в прокси, и им место в варианте «только эти». Неверная пара отклоняется, а не отправляет тихо не тот трафик наружу."
-
-msgid "Decide in the kernel, before any marking happens, that a set of destinations skips the proxy — which is faster than reaching the same conclusion inside mihomo. Works in all four interception modes."
-msgstr "Решать прямо в ядре, ещё до какой-либо маркировки, что набор адресов идёт мимо прокси — это быстрее, чем приходить к тому же выводу внутри mihomo. Работает во всех четырёх режимах перехвата."
-
-msgid "Bypass"
-msgstr "Обход"
-
-msgid "Russian networks go direct (ipdeny)"
-msgstr "Российские сети идут напрямую (ipdeny)"
-
-msgid "Russian networks go direct (meta-rules-dat)"
-msgstr "Российские сети идут напрямую (meta-rules-dat)"
-
-msgid "Intercept only what is blocked in Russia (Re-filter)"
-msgstr "Перехватывать только заблокированное в России (Re-filter)"
-
-msgid "A list of your own"
-msgstr "Свой список"
-
-msgid "Direction"
-msgstr "Направление"
-
-msgid "Work it out from mihomo's routing"
-msgstr "Определить по маршрутизации mihomo"
-
-msgid "The listed addresses go direct"
-msgstr "Адреса из списка идут напрямую"
-
-msgid "Only the listed addresses are intercepted"
-msgstr "Перехватываются только адреса из списка"
-
 msgid "Skip the proxy for"
 msgstr "Мимо прокси идёт"
 
 msgid "Nothing — everything goes to mihomo"
 msgstr "Ничего — весь трафик идёт в mihomo"
+
+msgid "Russian networks (ipdeny)"
+msgstr "Российские сети (ipdeny)"
+
+msgid "Russian networks (meta-rules-dat)"
+msgstr "Российские сети (meta-rules-dat)"
 
 msgid "Everything except what is blocked in Russia (Re-filter)"
 msgstr "Всё, кроме заблокированного в России (Re-filter)"
@@ -755,3 +584,612 @@ msgstr "совпадает с config.yaml"
 
 msgid "config.yaml not readable"
 msgstr "config.yaml не прочитан"
+
+msgid "https://example.com or a service name, e.g. youtube"
+msgstr "https://example.com или название сервиса, например youtube"
+
+msgid "Remove"
+msgstr "Удалить"
+
+msgid "No sites added."
+msgstr "Сайты не добавлены."
+
+msgid "Not recognised as a site — enter a URL, a hostname, or a service name."
+msgstr "Не похоже на сайт — введите URL, имя хоста или название сервиса."
+
+msgid "Will add %d domain(s): %s"
+msgstr "Будет добавлено доменов: %d — %s"
+
+msgid "Added %d domain(s): %s"
+msgstr "Добавлено доменов: %d — %s"
+
+msgid "The installed config.yaml has %d inline node(s) that the wizard cannot recover from it. Generating without pasting their links again drops them."
+msgstr "В установленном config.yaml есть узлов, заданных прямо в файле: %d. Мастер не может восстановить их ссылки. Если не вставить ссылки заново, при генерации эти узлы пропадут."
+
+msgid "A generated configuration only has the Proxy group. Pick Proxy or DIRECT, or use \"Add to current config only\" to target \"%s\"."
+msgstr "В сгенерированной конфигурации есть только группа Proxy. Выберите Proxy или DIRECT либо используйте «Добавить только в текущий конфиг», чтобы направить сайты в «%s»."
+
+msgid "The preview holds the \"add to current config\" result. Press Generate first, or use \"Add to current config only\" to apply it."
+msgstr "В предпросмотре результат «добавления в текущий конфиг». Сначала нажмите «Сгенерировать» или примените его кнопкой «Добавить только в текущий конфиг»."
+
+msgid "Add at least one site first."
+msgstr "Сначала добавьте хотя бы один сайт."
+
+msgid "Every one of these sites is already in the config for that group."
+msgstr "Все эти сайты уже есть в конфиге для этой группы."
+
+msgid "Rules are inserted before the first catch-all rule; the rest of the file is untouched. Review the result below, then confirm."
+msgstr "Правила вставляются перед первым общим правилом, остальной файл не меняется. Проверьте результат ниже и подтвердите."
+
+msgid "Add sites to current configuration"
+msgstr "Добавить сайты в текущую конфигурацию"
+
+msgid "This adds %d site(s) to the rules of the installed config.yaml, sending them to \"%s\". The current file is backed up first, and nothing is installed unless mihomo accepts the result."
+msgstr "В правила установленного config.yaml будет добавлено сайтов: %d, они пойдут в группу «%s». Сначала делается резервная копия, и ничего не устанавливается, пока mihomo не примет результат."
+
+msgid "Add and apply"
+msgstr "Добавить и применить"
+
+msgid "Add to current config only"
+msgstr "Добавить только в текущий конфиг"
+
+msgid "config.yaml could not be read."
+msgstr "Не удалось прочитать config.yaml."
+
+msgid "Fields reloaded from the installed config.yaml."
+msgstr "Поля перезагружены из установленного config.yaml."
+
+msgid "Reload from config.yaml"
+msgstr "Перечитать из config.yaml"
+
+msgid "Sites"
+msgstr "Сайты"
+
+msgid "Add a website by URL or by service name. Its domains are written into the config as plain rules and sent to the chosen group, ahead of the lists above."
+msgstr "Добавьте сайт по URL или названию сервиса. Его домены записываются в конфиг обычными правилами и направляются в выбранную группу — раньше списков выше."
+
+msgid "Add"
+msgstr "Добавить"
+
+msgid "Added %d domain(s) to the editor: %s. Not saved yet — check the syntax, then save."
+msgstr "В редактор добавлено доменов: %d — %s. Пока не сохранено — проверьте синтаксис и сохраните."
+
+msgid "Add site:"
+msgstr "Добавить сайт:"
+
+msgid "Show all %d sites"
+msgstr "Показать все сайты: %d"
+
+msgid "Show only the first %d"
+msgstr "Показать только первые %d"
+
+msgid "Rename"
+msgstr "Переименовать"
+
+msgid "Renaming…"
+msgstr "Переименование…"
+
+msgid "New name for \"%s\":"
+msgstr "Новое имя для «%s»:"
+
+msgid "Rename backup"
+msgstr "Переименовать копию"
+
+msgid "Deleting…"
+msgstr "Удаление…"
+
+msgid "Delete backup"
+msgstr "Удалить копию"
+
+msgid "Use a name like config-before-upgrade.yaml: it must start with \"config-\", end with \".yaml\", and contain only letters, digits, dots, dashes and underscores."
+msgstr "Используйте имя вида config-before-upgrade.yaml: оно должно начинаться с «config-», заканчиваться на «.yaml» и содержать только латинские буквы, цифры, точки, дефисы и подчёркивания."
+
+msgid "Delete the backup \"%s\"? This cannot be undone."
+msgstr "Удалить резервную копию «%s»? Это действие необратимо."
+
+msgid "A backup with that name already exists."
+msgstr "Резервная копия с таким именем уже существует."
+
+msgid "The new name is the same as the old one."
+msgstr "Новое имя совпадает со старым."
+
+msgid "Nothing to preview yet: add a subscription URL or a node link, and pick Proxy or DIRECT for added sites."
+msgstr "Пока нечего показывать: добавьте URL подписки или ссылку на узел и выберите Proxy или DIRECT для добавленных сайтов."
+
+msgid "Install from a URL"
+msgstr "Установить по ссылке"
+
+msgid "Unknown"
+msgstr "Неизвестно"
+
+msgid "The router did not answer. Reload the page."
+msgstr "Роутер не ответил. Перезагрузите страницу."
+
+msgid "Direct"
+msgstr "Напрямую"
+
+msgid "The core is running, but the proxy is off: all traffic goes out directly."
+msgstr "Ядро работает, но прокси выключен: весь трафик идёт напрямую."
+
+msgid "Off"
+msgstr "Выключено"
+
+msgid "The mihomo core is not installed yet. All traffic goes out directly."
+msgstr "Ядро mihomo ещё не установлено. Весь трафик идёт напрямую."
+
+msgid "Everything is off. All traffic goes out directly."
+msgstr "Всё выключено. Весь трафик идёт напрямую."
+
+msgid "Bypassed"
+msgstr "В обход"
+
+msgid "The proxy path is down, so traffic goes direct until it recovers."
+msgstr "Путь через прокси не работает, поэтому трафик идёт напрямую, пока он не восстановится."
+
+msgid "Broken"
+msgstr "Неисправно"
+
+msgid "The proxy is on but the core is not running, so traffic is being lost. Start the core or turn the proxy off."
+msgstr "Прокси включён, но ядро не работает, поэтому трафик теряется. Запустите ядро или выключите прокси."
+
+msgid "The proxy is on but its firewall rules are missing. Turn it off and on again."
+msgstr "Прокси включён, но его правил файрвола нет. Выключите и включите его снова."
+
+msgid "No internet"
+msgstr "Нет интернета"
+
+msgid "Your internet connection is down. The proxy cannot fix that."
+msgstr "Интернет-соединение не работает. Прокси тут не поможет."
+
+msgid "Protected"
+msgstr "Защищено"
+
+msgid "Traffic from your network goes through the proxy."
+msgstr "Трафик вашей сети идёт через прокси."
+
+msgid "Hand-maintained lists a config refers to as file-backed rule providers."
+msgstr "Списки, которые вы ведёте вручную и на которые конфиг ссылается как на файловые наборы правил."
+
+msgid "Example"
+msgstr "Пример"
+
+msgid "Reference a list as <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. One rule per line, such as <code>DOMAIN-SUFFIX,example.com</code>."
+msgstr "Подключите список так: <code>{ behavior: classical, type: file, format: text, path: ./lst/mylist.txt }</code>. По одному правилу в строке, например <code>DOMAIN-SUFFIX,example.com</code>."
+
+msgid "No backups yet. One is made each time you save."
+msgstr "Резервных копий пока нет. Копия создаётся при каждом сохранении."
+
+msgid "The previous version is kept every time you save."
+msgstr "При каждом сохранении прежняя версия сохраняется."
+
+msgid "Editor"
+msgstr "Редактор"
+
+msgid "Backups"
+msgstr "Копии"
+
+msgid "Edit config.yaml. Mihomo must accept a change before it is installed."
+msgstr "Правка config.yaml. Изменение ставится, только если mihomo его принял."
+
+msgid "Live mihomo log, or the system log."
+msgstr "Живой журнал mihomo или системный журнал."
+
+msgid "What each log shows"
+msgstr "Что показывает каждый журнал"
+
+msgid "Proxy"
+msgstr "Прокси"
+
+msgid "Steers your network into the core. Off: it behaves as if ClashWrt were not installed. Starts off."
+msgstr "Направляет трафик сети в ядро. Выключено: сеть работает, будто ClashWrt не установлен. По умолчанию выключено."
+
+msgid "The engine itself. Off: it also stays stopped after a reboot. Starts on."
+msgstr "Сам движок. Выключено: после перезагрузки он тоже не запустится. По умолчанию включено."
+
+msgid "Everything"
+msgstr "Всё сразу"
+
+msgid "Both together, in the safe order. Use this when something is wrong."
+msgstr "Оба сразу, в безопасном порядке. Используйте, если что-то пошло не так."
+
+msgid "Switching on…"
+msgstr "Включаю…"
+
+msgid "Switching off…"
+msgstr "Выключаю…"
+
+msgid "Turn off the core?"
+msgstr "Выключить ядро?"
+
+msgid "The proxy is still on. With the core off, your network would lose its connection until the proxy is turned off too."
+msgstr "Прокси всё ещё включён. Если выключить ядро, сеть потеряет соединение, пока не выключить и прокси."
+
+msgid "Turn off both (recommended)"
+msgstr "Выключить оба (рекомендуется)"
+
+msgid "Restart core"
+msgstr "Перезапустить ядро"
+
+msgid "Watchdog is on. The VPN is responding, all is well."
+msgstr "Сторож включён. VPN отвечает, всё хорошо."
+
+msgid "The watchdog has just started and is still looking around."
+msgstr "Сторож только запустился и пока присматривается."
+
+msgid "The VPN stopped responding. Checking again (%s of %s)."
+msgstr "VPN перестал отвечать. Проверяю ещё раз (%s из %s)."
+
+msgid "The VPN is not responding, so the internet goes direct. It can come back in %s s at the earliest."
+msgstr "VPN не отвечает, поэтому интернет идёт напрямую. Вернётся не раньше чем через %s с."
+
+msgid "There is no internet at all, so the VPN is not to blame. Waiting."
+msgstr "Интернета нет совсем, VPN тут ни при чём. Жду."
+
+msgid "The proxy is off, so the watchdog has nothing to do."
+msgstr "Прокси выключен, сторожу делать нечего."
+
+msgid "Cannot check the VPN: %s"
+msgstr "Не удаётся проверить VPN: %s"
+
+msgid "The watchdog is not running."
+msgstr "Сторож не запущен."
+
+msgid "Probing…"
+msgstr "Проверяю…"
+
+msgid "Probe now"
+msgstr "Проверить сейчас"
+
+msgid "Restore the proxy now?"
+msgstr "Вернуть прокси сейчас?"
+
+msgid "This brings the proxy back right away, even if the VPN is still not working. After a short pause the watchdog will check it again."
+msgstr "Прокси вернётся сразу, даже если VPN ещё не работает. Через короткую паузу сторож проверит его снова."
+
+msgid "Restore now"
+msgstr "Вернуть сейчас"
+
+msgid "Restore proxy now"
+msgstr "Вернуть прокси сейчас"
+
+msgid "Turn it on in Settings"
+msgstr "Включить в настройках"
+
+msgid "Watchdog"
+msgstr "Сторож"
+
+msgid "Website names may not open: DNS could not be switched away from the stopped core."
+msgstr "Сайты по названию могут не открываться: DNS не удалось переключить с остановленного ядра."
+
+msgid "Details"
+msgstr "Подробности"
+
+msgid "Group: %s · failed probes: %s · passed probes: %s · quick relapses: %s"
+msgstr "Группа: %s · неудачных проверок: %s · удачных проверок: %s · быстрых повторов сбоя: %s"
+
+msgid "on"
+msgstr "вкл"
+
+msgid "off"
+msgstr "выкл"
+
+msgid "Start the core first."
+msgstr "Сначала запустите ядро."
+
+msgid "The core is not installed. Install it from Settings."
+msgstr "Ядро не установлено. Установите его в настройках."
+
+msgid "Update available"
+msgstr "Есть обновление"
+
+msgid "Status and kill switches. Everything else is in the tabs above."
+msgstr "Состояние и аварийные выключатели. Всё остальное — на вкладках выше."
+
+msgid "Start and stop live on the Overview page."
+msgstr "Запуск и остановка — на странице «Обзор»."
+
+msgid "Checks that this kernel delivers TPROXY packets. Briefly attaches a test interface."
+msgstr "Проверяет, доставляет ли это ядро пакеты TPROXY. Ненадолго создаёт тестовый интерфейс."
+
+msgid "More about the test"
+msgstr "Подробнее о проверке"
+
+msgid "Recommends an interception mode. Requires socat."
+msgstr "Рекомендует режим перехвата. Нужен socat."
+
+msgid "Update the mihomo core?"
+msgstr "Обновить ядро mihomo?"
+
+msgid "mihomo restarts for a moment. Your configuration is untouched."
+msgstr "mihomo ненадолго перезапустится. Конфигурация не изменится."
+
+msgid "Update ClashWrt?"
+msgstr "Обновить ClashWrt?"
+
+msgid "The installer replaces the pages and restarts rpcd. You may have to log in again."
+msgstr "Установщик заменит страницы и перезапустит rpcd. Возможно, придётся войти заново."
+
+msgid "What updating does"
+msgstr "Что делает обновление"
+
+msgid "Sends UDP to QUIC nodes, the rest to TCP nodes. Currently"
+msgstr "UDP идёт на QUIC-узлы, остальное — на TCP-узлы. Сейчас"
+
+msgid "How it works"
+msgstr "Как это работает"
+
+msgid "Safe defaults are set. Change only what you need."
+msgstr "Безопасные значения уже заданы. Меняйте только нужное."
+
+msgid "Basic"
+msgstr "Основные"
+
+msgid "Maintenance"
+msgstr "Обслуживание"
+
+msgid "How LAN traffic is caught. The default works on every kernel."
+msgstr "Как перехватывается трафик локальной сети. Значение по умолчанию работает на любом ядре."
+
+msgid "Which one should I pick?"
+msgstr "Что выбрать?"
+
+msgid "Only traffic arriving on this device is intercepted. Default: br-lan."
+msgstr "Перехватывается только трафик, приходящий на это устройство. По умолчанию: br-lan."
+
+msgid "Sends LAN DNS queries to mihomo. Default: off. Leave off if dnsmasq already forwards to mihomo."
+msgstr "Отправляет DNS-запросы локальной сети в mihomo. По умолчанию: выкл. Оставьте выключенным, если dnsmasq уже пересылает запросы в mihomo."
+
+msgid "Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well."
+msgstr "Заставляет браузеры переходить на TCP. По умолчанию: выкл. Нужно, только если UDP проксируется плохо."
+
+msgid "VPN watchdog"
+msgstr "Сторож VPN"
+
+msgid "Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off."
+msgstr "Сам выключает прокси, если VPN перестал работать, и включает обратно, когда он восстановится. По умолчанию: выкл."
+
+msgid "It tests the proxy every few seconds. After repeated failures with the internet itself up, LAN traffic goes direct until the proxy answers again. Switching the proxy off yourself always wins."
+msgstr "Он проверяет прокси каждые несколько секунд. После повторных сбоев при работающем интернете трафик сети идёт напрямую, пока прокси не ответит снова. Если вы сами выключили прокси, это решение главнее."
+
+msgid "While it is bypassed, DNS is switched to your uplink resolver, and switched back when the proxy returns."
+msgstr "Пока прокси обходится, DNS переключается на резолвер провайдера и возвращается обратно вместе с прокси."
+
+msgid "Destination networks that are never proxied. Default: none."
+msgstr "Сети назначения, которые никогда не проксируются. По умолчанию: нет."
+
+msgid "LAN devices that are never proxied. Default: none."
+msgstr "Устройства сети, которые никогда не проксируются. По умолчанию: нет."
+
+msgid "Skips mihomo in the kernel, which is faster. Default: nothing."
+msgstr "Пропускает mihomo на уровне ядра, это быстрее. По умолчанию: ничего."
+
+msgid "Default: work it out from your mihomo routing."
+msgstr "По умолчанию: определить по маршрутизации mihomo."
+
+msgid "How often the list is downloaded again. Default: 86400 (one day)."
+msgstr "Как часто список скачивается заново. По умолчанию: 86400 (сутки)."
+
+msgid "Must match <code>tun.device</code> in config.yaml. Default: clash-tun."
+msgstr "Должно совпадать с <code>tun.device</code> в config.yaml. По умолчанию: clash-tun."
+
+msgid "Where config.yaml lives; ports are read from it. Default: /etc/mihomo."
+msgstr "Где лежит config.yaml; порты читаются из него. По умолчанию: /etc/mihomo."
+
+msgid "Keeps an fw4 zone for the tun device. Default: on. Without it fw4 rejects forwarded tun traffic."
+msgstr "Поддерживает зону fw4 для tun-устройства. По умолчанию: вкл. Без неё fw4 отклоняет пересылаемый tun-трафик."
+
+msgid "Leave empty to read <code>tproxy-port</code> from config.yaml. Default: empty."
+msgstr "Оставьте пустым, чтобы взять <code>tproxy-port</code> из config.yaml. По умолчанию: пусто."
+
+msgid "Leave empty to read <code>redir-port</code> from config.yaml. Default: empty."
+msgstr "Оставьте пустым, чтобы взять <code>redir-port</code> из config.yaml. По умолчанию: пусто."
+
+msgid "Where mihomo's resolver listens. Default: 1053."
+msgstr "Где слушает резолвер mihomo. По умолчанию: 1053."
+
+msgid "Used by the dashboard and the watchdog. Default: 9090."
+msgstr "Используется панелью и сторожем. По умолчанию: 9090."
+
+msgid "Must match <code>routing-mark</code> in config.yaml, or mihomo's own traffic loops back into itself. Default: 2."
+msgstr "Должна совпадать с <code>routing-mark</code> в config.yaml, иначе собственный трафик mihomo зациклится. По умолчанию: 2."
+
+msgid "Firewall mark for TPROXY traffic. Default: 1."
+msgstr "Метка файрвола для трафика TPROXY. По умолчанию: 1."
+
+msgid "Firewall mark for tun traffic. Default: 3."
+msgstr "Метка файрвола для tun-трафика. По умолчанию: 3."
+
+msgid "Routing table number for TPROXY. Default: 100."
+msgstr "Номер таблицы маршрутизации для TPROXY. По умолчанию: 100."
+
+msgid "Routing table number for tun. Default: 151."
+msgstr "Номер таблицы маршрутизации для tun. По умолчанию: 151."
+
+msgid "Priority of the policy-routing rules. Default: 1002."
+msgstr "Приоритет правил политики маршрутизации. По умолчанию: 1002."
+
+msgid "How long to wait for the tun device at startup. Default: 10. Hotplug re-applies the route once it appears."
+msgstr "Сколько ждать tun-устройство при запуске. По умолчанию: 10. Когда оно появится, hotplug заново применит маршрут."
+
+msgid "Watchdog proxy group"
+msgstr "Группа прокси для сторожа"
+
+msgid "Group whose delay is tested. Default: empty, read from config.yaml."
+msgstr "Группа, задержка которой проверяется. По умолчанию: пусто, берётся из config.yaml."
+
+msgid "Watchdog: failures before bypass"
+msgstr "Сторож: сбоев до обхода"
+
+msgid "Failed tests in a row, with the internet up, before traffic goes direct. Default: 3."
+msgstr "Сколько проверок подряд должно не пройти при работающем интернете, чтобы трафик пошёл напрямую. По умолчанию: 3."
+
+msgid "Watchdog: successes before restore"
+msgstr "Сторож: успехов до возврата"
+
+msgid "Good tests in a row before the proxy comes back. Default: 3."
+msgstr "Сколько удачных проверок подряд нужно, чтобы прокси вернулся. По умолчанию: 3."
+
+msgid "Watchdog: test interval (seconds)"
+msgstr "Сторож: интервал проверок (секунды)"
+
+msgid "Time between tests while all is well. Default: 20."
+msgstr "Пауза между проверками, пока всё хорошо. По умолчанию: 20."
+
+msgid "Watchdog: fast interval (seconds)"
+msgstr "Сторож: быстрый интервал (секунды)"
+
+msgid "Time between tests after a failure. Default: 5."
+msgstr "Пауза между проверками после сбоя. По умолчанию: 5."
+
+msgid "Watchdog: minimum bypass (seconds)"
+msgstr "Сторож: минимальный обход (секунды)"
+
+msgid "Traffic stays direct at least this long. Default: 120."
+msgstr "Трафик идёт напрямую не меньше этого времени. По умолчанию: 120."
+
+msgid "Watchdog: maximum bypass hold (seconds)"
+msgstr "Сторож: максимальное удержание обхода (секунды)"
+
+msgid "The hold doubles on repeated flips, up to this. Default: 900."
+msgstr "При частых переключениях удержание удваивается, но не больше этого значения. По умолчанию: 900."
+
+msgid "Watchdog: boot grace (seconds)"
+msgstr "Сторож: отсрочка после запуска (секунды)"
+
+msgid "No bypass this long after the proxy starts. Default: 90."
+msgstr "Столько секунд после запуска прокси обход не включается. По умолчанию: 90."
+
+msgid "Watchdog: test timeout (seconds)"
+msgstr "Сторож: таймаут проверки (секунды)"
+
+msgid "How long one test waits for an answer. Default: 5."
+msgstr "Сколько одна проверка ждёт ответа. По умолчанию: 5."
+
+msgid "Filled in from your last saved answers."
+msgstr "Заполнено вашими прошлыми сохранёнными ответами."
+
+msgid "Filled in from the installed config.yaml."
+msgstr "Заполнено из установленного config.yaml."
+
+msgid "The wizard did not write this config.yaml. \"Apply configuration\" replaces it whole; to keep it, use \"Add to current config only\"."
+msgstr "Этот config.yaml создан не мастером. «Применить конфигурацию» заменяет его целиком; чтобы сохранить его, используйте «Только добавить в текущий конфиг»."
+
+msgid "Builds config.yaml from your subscription or node links."
+msgstr "Собирает config.yaml из вашей подписки или ссылок на узлы."
+
+msgid "How it fits together"
+msgstr "Как это связано"
+
+msgid "Inbound settings follow the interception mode chosen on the Settings page, so the firewall and mihomo agree."
+msgstr "Входящие настройки следуют режиму перехвата, выбранному на странице настроек, поэтому файрвол и mihomo согласованы."
+
+msgid "Nodes"
+msgstr "Узлы"
+
+msgid "Where your proxy servers come from."
+msgstr "Откуда берутся ваши прокси-серверы."
+
+msgid "Which resolver answers when a name is looked up."
+msgstr "Какой резолвер отвечает при поиске имени."
+
+msgid "Off by default."
+msgstr "По умолчанию выключено."
+
+msgid "Why use it?"
+msgstr "Зачем это нужно?"
+
+msgid "Routing and sites"
+msgstr "Маршрутизация и сайты"
+
+msgid "What goes through the proxy and what goes direct."
+msgstr "Что идёт через прокси, а что напрямую."
+
+msgid "Send one website to a chosen group."
+msgstr "Отправить один сайт в выбранную группу."
+
+msgid "How sites work"
+msgstr "Как работают сайты"
+
+msgid "Protocol split and apply"
+msgstr "Разделение протоколов и применение"
+
+msgid "Optional split, then generate and apply."
+msgstr "Необязательное разделение, затем сборка и применение."
+
+msgid "Why split?"
+msgstr "Зачем разделять?"
+
+msgid "Overview"
+msgstr "Обзор"
+
+msgid "Turn the watchdog on"
+msgstr "Включить сторожа"
+
+msgid "Turn the watchdog off"
+msgstr "Выключить сторожа"
+
+msgid "The watchdog is on."
+msgstr "Сторож включён."
+
+msgid "The watchdog is off."
+msgstr "Сторож выключен."
+
+msgid "Could not change the watchdog: %s"
+msgstr "Не удалось изменить сторожа: %s"
+
+msgid "Applies at once, without Save."
+msgstr "Применяется сразу, без кнопки «Сохранить»."
+
+msgid "ms"
+msgstr "мс"
+
+msgid "Watchdog off"
+msgstr "Сторож выкл"
+
+msgid "Watchdog: bypass, VPN unavailable"
+msgstr "Сторож: обход, VPN недоступен"
+
+msgid "Watchdog on, all is well"
+msgstr "Сторож вкл, всё в порядке"
+
+msgid "Service off"
+msgstr "Служба выключена"
+
+msgid "ClashWrt is switched off. All traffic goes out directly and the watchdog sleeps."
+msgstr "ClashWrt выключен. Весь интернет идёт напрямую, сторож спит."
+
+msgid "The whole service. Off: nothing is steered, the watchdog sleeps, and it stays off after a reboot. Starts on."
+msgstr "Вся служба целиком. Выключена: ничего не перенаправляется, сторож спит, и после перезагрузки так и останется. По умолчанию включена."
+
+msgid "Switch ClashWrt on first."
+msgstr "Сначала включите ClashWrt."
+
+msgid "The watchdog sleeps while ClashWrt is off."
+msgstr "Сторож спит, пока ClashWrt выключен."
+
+msgid "Watchdog sleeps, ClashWrt is off"
+msgstr "Сторож спит, ClashWrt выключен"
+
+msgid "Still steered"
+msgstr "Правила остались"
+
+msgid "The proxy is set to off, but its firewall rules are still loaded, so traffic still goes through the core. Switch the proxy off again."
+msgstr "Прокси выключен, но его правила всё ещё загружены, и трафик по-прежнему идёт через ядро. Выключите прокси ещё раз."
+
+msgid "The proxy is set to off, but its firewall rules are still loaded and the core is not running, so traffic is being lost. Switch the proxy off again."
+msgstr "Прокси выключен, но его правила всё ещё загружены, а ядро не запущено, поэтому трафик теряется. Выключите прокси ещё раз."
+
+msgid "ClashWrt is set not to start after a reboot, but it is still running now."
+msgstr "После перезагрузки ClashWrt не запустится, но сейчас он всё ещё работает."
+
+msgid "Will not start after a reboot."
+msgstr "Не запустится после перезагрузки."
+
+msgid "Keep it on"
+msgstr "Оставить включённым"
+
+msgid "Watchdog not running"
+msgstr "Сторож не запущен"
+
+msgid "Watchdog idle, the proxy is off"
+msgstr "Сторож отдыхает, прокси выключен"

@@ -78,7 +78,7 @@ do_apply() {
 			"$f" > "$WWW/view/clashwrt/$b-$t.js"
 	done
 
-	sed "s#\"clashwrt/\([A-Za-z0-9_-]*\)\"#\"clashwrt/\1-$t\"#g" \
+	sed "s#\"path\": \"clashwrt/\([A-Za-z0-9_-]*\)\"#\"path\": \"clashwrt/\1-$t\"#g" \
 		"$SRC/menu.json" > "$MENU"
 
 	chmod 0644 "$WWW/view/clashwrt"/*.js "$WWW/clashwrt"/*.js "$MENU" 2>/dev/null

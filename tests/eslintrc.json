@@ -1,0 +1,13 @@
+{
+	"root": true,
+	"parserOptions": { "ecmaVersion": 5, "ecmaFeatures": { "globalReturn": true } },
+	"env": { "browser": true },
+	"globals": {
+		"_": "readonly", "E": "readonly", "L": "readonly", "ui": "readonly", "dom": "readonly",
+		"fs": "readonly", "uci": "readonly", "rpc": "readonly", "poll": "readonly", "view": "readonly",
+		"form": "readonly", "baseclass": "readonly", "network": "readonly", "firewall": "readonly",
+		"gen": "readonly", "power": "readonly", "dashui": "readonly", "rulefiles": "readonly",
+		"Promise": "readonly"
+	},
+	"rules": { "no-undef": "error", "no-redeclare": "error", "no-dupe-keys": "error", "no-unreachable": "error" }
+}

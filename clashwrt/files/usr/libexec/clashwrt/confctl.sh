@@ -13,7 +13,7 @@
 # is installed before `mihomo -t` has accepted it, and the previous version is
 # always kept.
 #
-# Usage: confctl.sh read|validate|apply|backups|restore <name>|diff
+# Usage: confctl.sh read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>
 
 . /lib/functions.sh
 
@@ -190,11 +190,48 @@ do_restore() {
 	do_apply
 }
 
+# Names that rename/delete will touch. A bare file name of the shape the
+# backup rotation itself produces (config-*.yaml), from a closed character set:
+# no slash, so no path can be smuggled in, and nothing that could be read as an
+# option or a hidden file. Anything else is refused before the filesystem is
+# looked at.
+valid_backup_name() {
+	case "$1" in
+		*[!A-Za-z0-9._-]*) return 1 ;;
+		config-?*.yaml) ;;
+		*) return 1 ;;
+	esac
+	[ "${#1}" -le 100 ]
+}
+
+do_delete_backup() {
+	local name="$1"
+	valid_backup_name "$name" || die "invalid backup name"
+	local src="$BACKUP_DIR/$name"
+	[ -f "$src" ] && [ ! -L "$src" ] || die "no such backup: $name"
+	rm -f "$src" || die "could not delete $name"
+	echo "deleted $name"
+}
+
+do_rename_backup() {
+	local old="$1" new="$2"
+	valid_backup_name "$old" || die "invalid backup name"
+	valid_backup_name "$new" || die "invalid new name (use config-<anything>.yaml, letters, digits, . _ -)"
+	[ "$old" != "$new" ] || die "the new name is the same as the old one"
+	local src="$BACKUP_DIR/$old" dst="$BACKUP_DIR/$new"
+	[ -f "$src" ] && [ ! -L "$src" ] || die "no such backup: $old"
+	[ ! -e "$dst" ] && [ ! -L "$dst" ] || die "a backup named $new already exists"
+	mv "$src" "$dst" || die "could not rename $old"
+	echo "renamed $old -> $new"
+}
+
 case "${1:-}" in
 	read)     do_read ;;
 	validate) do_validate ;;
 	apply)    do_apply ;;
 	backups)  do_backups ;;
 	restore)  do_restore "${2:-}" ;;
-	*) echo "usage: $0 read|validate|apply|backups|restore <name>" >&2; exit 1 ;;
+	delete-backup) do_delete_backup "${2:-}" ;;
+	rename-backup) do_rename_backup "${2:-}" "${3:-}" ;;
+	*) echo "usage: $0 read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>" >&2; exit 1 ;;
 esac

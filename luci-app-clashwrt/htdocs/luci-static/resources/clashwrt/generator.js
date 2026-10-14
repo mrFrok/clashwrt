@@ -306,51 +306,77 @@ function indentOf(line) {
 	return m ? m[1].length : 0;
 }
 
-/* Find the block of a named proxy-group: [startLine, endLineExclusive].
+/* One YAML scalar from the start of `s`: 'single', "double" or plain.
+ * A plain scalar ends at "," or "}" inside a {flow} mapping, and only at
+ * " #" or the end of the line in block style, so "Auto Select" and
+ * "HK, JP" survive intact. Returns null when there is nothing to read. */
+function readScalar(s, flow) {
+	var m;
+	s = String(s).replace(/^\s+/, '');
+	if (s.charAt(0) === "'") {
+		m = s.match(/^'((?:[^']|'')*)'/);
+		return m ? m[1].replace(/''/g, "'") : null;
+	}
+	if (s.charAt(0) === '"') {
+		m = s.match(/^"((?:[^"\\]|\\.)*)"/);
+		return m ? m[1].replace(/\\(.)/g, '$1') : null;
+	}
+	if (flow) s = s.split(/[,}]/)[0];
+	s = s.replace(/\s+#.*$/, '').replace(/\s+$/, '');
+	return s ? s : null;
+}
+
+/* Every proxy-group as { name, start, end } (end exclusive), in file order.
  *
  * Indentation is what separates a new group from a nested list entry -- both
  * begin with "- ", and the entries under `use:` or `proxies:` would otherwise
  * look like the start of the next group and cut the block short. */
-function findGroup(lines, name) {
-	var i, gi = -1;
-	for (i = 0; i < lines.length; i++) {
-		if (/^proxy-groups:\s*$/.test(lines[i])) { gi = i; break; }
+function groupEntries(lines) {
+	var out = [];
+	var r = sectionRange(lines, 'proxy-groups');
+	if (!r) return out;
+	var base = -1, i, m;
+	for (i = r.start; i < r.end; i++) {
+		m = lines[i].match(/^(\s*)-\s/);
+		if (m) { base = m[1].length; break; }
 	}
-	if (gi < 0) return null;
+	if (base < 0) return out;
 
-	/* the indent of the first list item defines the level groups live at */
-	var baseIndent = -1;
-	for (i = gi + 1; i < lines.length; i++) {
-		if (!lines[i].trim()) continue;
-		var mm = lines[i].match(/^(\s*)-\s/);
-		if (mm) { baseIndent = mm[1].length; break; }
-		if (indentOf(lines[i]) === 0) return null;   /* section is empty */
-	}
-	if (baseIndent < 0) return null;
-
-	var isGroupStart = function (ln) {
-		var m = ln.match(/^(\s*)-\s/);
-		return !!m && m[1].length === baseIndent;
+	var startsHere = function (ln) {
+		var mm = ln.match(/^(\s*)-\s/);
+		return !!mm && mm[1].length === base;
 	};
 
-	var start = -1;
-	for (i = gi + 1; i < lines.length; i++) {
-		var ln = lines[i];
-		if (!ln.trim()) continue;
+	var starts = [];
+	for (i = r.start; i < r.end; i++)
+		if (startsHere(lines[i])) starts.push(i);
 
-		/* a non-indented key that is not a list item ends the section */
-		if (indentOf(ln) === 0 && !/^\s*-/.test(ln)) {
-			if (start >= 0) return { start: start, end: i };
-			break;
+	starts.forEach(function (s, k) {
+		var end = k + 1 < starts.length ? starts[k + 1] : r.end;
+		var name = null, n;
+		n = lines[s].match(/^\s*-\s*\{([\s\S]*)$/);
+		if (n) {
+			m = n[1].match(/(?:^|[{,])\s*name:\s*([\s\S]*)$/);
+			if (m) name = readScalar(m[1], true);
+		} else {
+			m = lines[s].match(/^\s*-\s+name:\s*([\s\S]*)$/);
+			if (m) name = readScalar(m[1], false);
 		}
+		for (var j = s + 1; name === null && j < end; j++) {
+			m = lines[j].match(/^(\s+)name:\s*([\s\S]*)$/);
+			if (m && m[1].length > base) name = readScalar(m[2], false);
+		}
+		if (name !== null) out.push({ name: name, start: s, end: end });
+	});
+	return out;
+}
 
-		if (isGroupStart(ln)) {
-			if (start >= 0) return { start: start, end: i };
-			if (new RegExp('^\\s*-\\s*(\\{\\s*)?name:\\s*[\'"]?' + name + '[\'"]?\\s*(,|$|\\})').test(ln))
-				start = i;
-		}
-	}
-	return start >= 0 ? { start: start, end: lines.length } : null;
+/* [startLine, endLineExclusive] of a named proxy-group, or null. */
+function findGroup(lines, name) {
+	var all = groupEntries(lines);
+	for (var i = 0; i < all.length; i++)
+		if (all[i].name === name) return { start: all[i].start, end: all[i].end };
+	return null;
 }
 
 function rulesRange(lines) {
@@ -381,21 +407,390 @@ function parseRule(line, target) {
 	return { indent: m[1], parts: parts.slice(0, -1).map(function (s) { return s.trim(); }) };
 }
 
+/* ------------------------------------------------------------------ */
+/* sites: "add this website" -> DOMAIN-SUFFIX rules                    */
+/* ------------------------------------------------------------------ */
+/*
+ * Domain lists for a few services are inlined here instead of referencing
+ * the geosite rule-sets: those are hundreds of thousands of entries that
+ * mihomo would load into memory on a router just to route one website. A
+ * handful of suffixes does the same job for the service the user named.
+ *
+ * `keys` are what a user may type instead of a URL, `hosts` are hostnames
+ * that identify the service when a URL is pasted (matched as equal-or-
+ * subdomain), `suffixes` is what gets emitted.
+ */
+var SITE_PRESETS = {
+	youtube: {
+		title: 'YouTube', keys: ['youtube', 'yt'],
+		hosts: ['youtube.com', 'youtu.be', 'youtube-nocookie.com', 'youtubekids.com', 'yt.be'],
+		suffixes: ['youtube.com', 'youtu.be', 'youtube-nocookie.com', 'youtubekids.com', 'yt.be',
+			'googlevideo.com', 'ytimg.com', 'ggpht.com', 'youtubei.googleapis.com']
+	},
+	instagram: {
+		title: 'Instagram', keys: ['instagram', 'insta'],
+		hosts: ['instagram.com', 'instagr.am', 'ig.me', 'cdninstagram.com'],
+		suffixes: ['instagram.com', 'cdninstagram.com', 'instagr.am', 'ig.me', 'fbcdn.net']
+	},
+	x: {
+		title: 'X / Twitter', keys: ['x', 'twitter'],
+		hosts: ['x.com', 'twitter.com', 't.co', 'twimg.com', 'twttr.com'],
+		suffixes: ['x.com', 'twitter.com', 't.co', 'twimg.com', 'twttr.com']
+	},
+	openai: {
+		title: 'ChatGPT / OpenAI', keys: ['openai', 'chatgpt'],
+		hosts: ['openai.com', 'chatgpt.com', 'oaistatic.com', 'oaiusercontent.com', 'sora.com'],
+		suffixes: ['openai.com', 'chatgpt.com', 'oaistatic.com', 'oaiusercontent.com', 'sora.com']
+	},
+	claude: {
+		title: 'Claude / Anthropic', keys: ['claude', 'anthropic'],
+		hosts: ['claude.ai', 'claude.com', 'anthropic.com', 'claudeusercontent.com'],
+		suffixes: ['claude.ai', 'claude.com', 'anthropic.com', 'claudeusercontent.com']
+	},
+	discord: {
+		title: 'Discord', keys: ['discord'],
+		hosts: ['discord.com', 'discord.gg', 'discordapp.com', 'discordapp.net', 'discord.media'],
+		suffixes: ['discord.com', 'discord.gg', 'discordapp.com', 'discordapp.net', 'discord.media',
+			'discordcdn.com', 'discord.gift', 'discord.new', 'discordstatus.com']
+	},
+	netflix: {
+		title: 'Netflix', keys: ['netflix'],
+		hosts: ['netflix.com', 'netflix.net', 'nflxvideo.net', 'nflximg.net', 'nflxext.com'],
+		suffixes: ['netflix.com', 'netflix.net', 'nflximg.com', 'nflximg.net', 'nflxvideo.net',
+			'nflxext.com', 'nflxso.net']
+	},
+	spotify: {
+		title: 'Spotify', keys: ['spotify'],
+		hosts: ['spotify.com', 'scdn.co', 'spoti.fi'],
+		suffixes: ['spotify.com', 'scdn.co', 'spotifycdn.com', 'spotifycdn.net', 'spoti.fi',
+			'spotilocal.com', 'pscdn.co']
+	},
+	telegram: {
+		title: 'Telegram', keys: ['telegram', 'tg'],
+		hosts: ['telegram.org', 'telegram.me', 't.me', 'telegra.ph', 'telesco.pe'],
+		suffixes: ['telegram.org', 'telegram.me', 'telegram.dog', 't.me', 'telegra.ph', 'telesco.pe',
+			'tdesktop.com', 'cdn-telegram.org', 'tg.dev']
+	},
+	gemini: {
+		title: 'Google Gemini', keys: ['gemini'],
+		hosts: ['gemini.google.com', 'bard.google.com', 'aistudio.google.com', 'ai.google.dev',
+			'makersuite.google.com', 'generativelanguage.googleapis.com'],
+		suffixes: ['gemini.google.com', 'bard.google.com', 'aistudio.google.com', 'ai.google.dev',
+			'makersuite.google.com', 'generativelanguage.googleapis.com']
+	}
+};
+
+function normDomains(list) {
+	var seen = {}, out = [];
+	(list || []).forEach(function (d) {
+		d = String(d).trim().toLowerCase();
+		if (d && !seen[d]) { seen[d] = true; out.push(d); }
+	});
+	return out.sort();
+}
+
+function validHost(h) {
+	if (!h || h.length > 253) return false;
+	if (/^\d+(\.\d+){3}$/.test(h)) return false;          /* IPv4 */
+	var labels = h.split('.');
+	if (labels.length < 2) return false;
+	for (var i = 0; i < labels.length; i++)
+		if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(labels[i])) return false;
+	return !/^\d+$/.test(labels[labels.length - 1]);
+}
+
+function presetOf(token, host) {
+	for (var k in SITE_PRESETS) {
+		var p = SITE_PRESETS[k];
+		if (token !== null && (k === token || p.keys.indexOf(token) >= 0)) return p;
+		if (host) {
+			for (var i = 0; i < p.hosts.length; i++)
+				if (host === p.hosts[i] || host.slice(-p.hosts[i].length - 1) === '.' + p.hosts[i])
+					return p;
+		}
+	}
+	return null;
+}
+
+/* URL, bare host or service name -> list of DOMAIN-SUFFIX values.
+ * A host that matches no preset is kept exactly as typed: trimming it to a
+ * guessed registrable domain would turn foo.github.io into github.io and
+ * proxy every site hosted there. Empty list means the input was rejected. */
+function siteDomains(input) {
+	var s = String(input === undefined || input === null ? '' : input).trim().toLowerCase();
+	if (!s || /\s/.test(s)) return [];
+
+	if (/^[a-z0-9-]+$/.test(s)) {
+		var byKey = presetOf(s, null);
+		return byKey ? byKey.suffixes.slice() : [];
+	}
+
+	s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');
+	s = s.replace(/^\/\//, '');
+	s = s.split(/[\/?#]/)[0];
+	s = s.replace(/^[^@]*@/, '');
+	if (s.charAt(0) === '[') return [];                    /* IPv6 literal */
+	s = s.replace(/:\d*$/, '').replace(/\.+$/, '').replace(/^www\./, '');
+
+	if (!validHost(s)) return [];
+
+	var p = presetOf(null, s);
+	if (p) return p.suffixes.slice();
+	return [s];
+}
+
+function detectSplit(text) {
+	var lines = (text || '').split('\n');
+	var hasGroup = !!findGroup(lines, UDP_GROUP);
+	var hasRules = lines.some(function (l) {
+		return l.indexOf(UDP_GROUP) >= 0 && /^\s*-/.test(l);
+	});
+	return { group: hasGroup, rules: hasRules, on: hasGroup && hasRules };
+}
+
+/* ------------------------------------------------------------------ */
+/* reading an installed config (read-only)                             */
+/* ------------------------------------------------------------------ */
+
+function unq(v) {
+	v = String(v).replace(/\s+#.*$/, '').trim();
+	if (v.length > 1 && v.charAt(0) === "'" && v.charAt(v.length - 1) === "'")
+		return v.slice(1, -1).replace(/''/g, "'");
+	if (v.length > 1 && v.charAt(0) === '"' && v.charAt(v.length - 1) === '"')
+		return v.slice(1, -1);
+	return v;
+}
+
+/* [start, end) of a top-level section's body. Comments and blank lines do
+ * not end it; a non-list line at column 0 does. */
+function sectionRange(lines, key) {
+	var re = new RegExp('^' + key + ':\\s*(#.*)?$');
+	var i, start = -1;
+	for (i = 0; i < lines.length; i++) {
+		if (re.test(lines[i])) { start = i + 1; break; }
+	}
+	if (start < 0) return null;
+	var end = lines.length;
+	for (i = start; i < lines.length; i++) {
+		var ln = lines[i];
+		if (!ln.trim() || /^\s*#/.test(ln)) continue;
+		if (indentOf(ln) === 0 && !/^-/.test(ln)) { end = i; break; }
+	}
+	return { start: start, end: end };
+}
+
+/* Items of `key:` inside a range, block list or [a, b] flow list. */
+function listUnder(lines, range, key) {
+	var out = [];
+	if (!range) return out;
+	var re = new RegExp('^(\\s+)' + key + ':\\s*(.*)$');
+	for (var i = range.start; i < range.end; i++) {
+		var m = lines[i].match(re);
+		if (!m) continue;
+		var rest = m[2].replace(/\s+#.*$/, '').trim();
+		if (rest.charAt(0) === '[') {
+			rest.replace(/^\[|\]$/g, '').split(',').forEach(function (x) {
+				if (x.trim()) out.push(unq(x));
+			});
+			return out;
+		}
+		for (var j = i + 1; j < range.end; j++) {
+			var it = lines[j].match(/^(\s*)-\s+(.+?)\s*$/);
+			if (!lines[j].trim() || /^\s*#/.test(lines[j])) continue;
+			if (!it || it[1].length <= m[1].length) break;
+			out.push(unq(it[2]));
+		}
+		return out;
+	}
+	return out;
+}
+
+function groupNames(lines) {
+	return groupEntries(lines).map(function (g) { return g.name; });
+}
+
+function filterOf(lines, group) {
+	var g = findGroup(lines, group);
+	if (!g) return '';
+	for (var i = g.start; i < g.end; i++) {
+		var m = lines[i].match(/filter:\s*('(?:[^']|'')*'|"[^"]*"|[^,}]+)/);
+		if (m) return unq(m[1]);
+	}
+	return '';
+}
+
+/* body of a plain "- A,b,c" rule line, or null (AND/OR/NOT, comments) */
+function plainRule(line) {
+	var m = line.match(/^(\s*)-\s*(.+?)\s*$/);
+	if (!m) return null;
+	var body = m[2].replace(/\s+#.*$/, '');
+	if (/^(AND|OR|NOT|SUB-RULE),/.test(body)) return null;
+	return { indent: m[1], parts: body.split(',').map(function (s) { return s.trim(); }) };
+}
+
+function parseConfig(text) {
+	text = text || '';
+	var lines = text.split('\n');
+	var res = {
+		subs: [], links: 0, dnsServers: [], routing: '', ruleSets: [],
+		udpSplit: false, udpFilter: '', tcpFilter: '', yandexDns: false,
+		extraDomains: [], extraGroup: 'Proxy', groups: [], generatedByUs: false
+	};
+	var i, r, m;
+
+	for (i = 0; i < lines.length; i++) {
+		if (lines[i].trim()) { res.generatedByUs = /^#\s*Generated by clashwrt/.test(lines[i]); break; }
+	}
+
+	r = sectionRange(lines, 'proxy-providers');
+	if (r) for (i = r.start; i < r.end; i++) {
+		m = lines[i].match(/^\s+url:\s*(.+?)\s*$/);
+		if (m) { res.subs.push(unq(m[1])); continue; }
+		m = lines[i].match(/^\s+(?!health-check)[^\s:#]+:\s*\{.*?[{,]\s*url:\s*('(?:[^']|'')*'|"[^"]*"|[^,}\s]+)/);
+		if (m) res.subs.push(unq(m[1]));
+	}
+
+	r = sectionRange(lines, 'proxies');
+	if (r) {
+		var base = -1;
+		for (i = r.start; i < r.end; i++) {
+			m = lines[i].match(/^(\s*)-\s/);
+			if (!m) continue;
+			if (base < 0) base = m[1].length;
+			if (m[1].length === base) res.links++;
+		}
+	}
+
+	r = sectionRange(lines, 'dns');
+	res.dnsServers = listUnder(lines, r, 'nameserver');
+	if (!res.dnsServers.length) res.dnsServers = listUnder(lines, r, 'default-nameserver');
+	if (r) for (i = r.start; i < r.end; i++)
+		if (lines[i].indexOf('rule-set:ru_domains') >= 0) res.yandexDns = true;
+
+	/* rule-provider names -> which bundled lists are wholly present */
+	var provNames = {};
+	r = sectionRange(lines, 'rule-providers');
+	if (r) {
+		var pbase = -1;
+		for (i = r.start; i < r.end; i++) {
+			m = lines[i].match(/^(\s+)([^\s:#-][^\s:#]*):/);
+			if (!m) continue;
+			if (pbase < 0) pbase = m[1].length;
+			if (m[1].length === pbase) provNames[m[2]] = true;
+		}
+	}
+	Object.keys(RULESETS).forEach(function (k) {
+		var pn = Object.keys(RULESETS[k].providers);
+		if (pn.every(function (n) { return provNames[n]; })) res.ruleSets.push(k);
+	});
+
+	var sp = detectSplit(text);
+	res.udpSplit = sp.on;
+	res.udpFilter = filterOf(lines, UDP_GROUP);
+	res.tcpFilter = filterOf(lines, 'Proxy');
+	res.groups = groupNames(lines);
+
+	r = sectionRange(lines, 'rules');
+	if (r) {
+		var lastMatch = null, suffixRules = [];
+		for (i = r.start; i < r.end; i++) {
+			var pr = plainRule(lines[i]);
+			if (!pr) continue;
+			if (pr.parts[0] === 'MATCH' && pr.parts.length >= 2) lastMatch = pr.parts[1];
+			else if (pr.parts[0] === 'DOMAIN-SUFFIX' && pr.parts.length >= 3)
+				suffixRules.push({ d: pr.parts[1].toLowerCase(), g: pr.parts[2] });
+		}
+		if (lastMatch !== null)
+			res.routing = lastMatch === 'DIRECT' ? 'direct_except_list' : 'proxy_except_ru';
+		/* Only rules that send a real site to a proxy-group count. System and
+		 * service entries (DOMAIN-SUFFIX,local,DIRECT and the like) name no
+		 * proxy-group or are not a hostname, so they cannot pick the target. */
+		var mine = suffixRules.filter(function (x) {
+			return x.g !== UDP_GROUP && res.groups.indexOf(x.g) >= 0 && validHost(x.d);
+		});
+		if (mine.length) {
+			res.extraGroup = mine[0].g;
+			res.extraDomains = normDomains(mine
+				.filter(function (x) { return x.g === res.extraGroup; })
+				.map(function (x) { return x.d; }));
+		}
+	}
+
+	return res;
+}
+
+/* Insert DOMAIN-SUFFIX rules into an existing config without regenerating
+ * it: the new rules go in front of the first catch-all-ish rule (a RULE-SET
+ * sending to DIRECT, a GEOIP, or MATCH), so they win over the list that
+ * would otherwise send the site direct. Everything else is left byte-for-
+ * byte as it was. */
+function addSiteRules(text, domains, opts) {
+	opts = opts || {};
+	var group = opts.group || 'Proxy';
+	var lines = String(text || '').split('\n');
+	var doms = normDomains(domains);
+
+	var rr = sectionRange(lines, 'rules');
+	if (!rr) throw new Error('no rules: section found');
+
+	if (/[,\r\n]/.test(group))
+		throw new Error('group name "' + group + '" cannot be used in a rule');
+	if (group !== 'DIRECT' && group !== 'REJECT' && groupNames(lines).indexOf(group) < 0)
+		throw new Error('no proxy-group named "' + group + '"');
+	doms.forEach(function (d) {
+		if (!validHost(d)) throw new Error('not a valid domain: "' + d + '"');
+	});
+
+	var split = group === 'Proxy' && detectSplit(text).on;
+
+	var have = {};
+	var anchor = -1, last = -1, i;
+	for (i = rr.start; i < rr.end; i++) {
+		var pr = plainRule(lines[i]);
+		if (!pr) { if (/^\s*-\s/.test(lines[i])) last = i; continue; }
+		last = i;
+		var t = pr.parts[0];
+		if (t === 'DOMAIN-SUFFIX' && pr.parts.length >= 3)
+			have[pr.parts[1].toLowerCase() + ',' + pr.parts[2]] = true;
+		if (anchor < 0 && (t === 'GEOIP' || t === 'MATCH' ||
+			(t === 'RULE-SET' && pr.parts[pr.parts.length - 1] === 'DIRECT')))
+			anchor = i;
+	}
+
+	var fresh = doms.filter(function (d) { return !have[d + ',' + group]; });
+	if (!fresh.length) return text;
+
+	var at = anchor >= 0 ? anchor : last + 1;
+	var ref = anchor >= 0 ? lines[anchor] : (last >= 0 ? lines[last] : '');
+	var indent = (ref.match(/^(\s*)-/) || [null, '  '])[1];
+	var cr = /\r$/.test(ref) ? '\r' : '';
+	if (anchor < 0 && last < 0) at = rr.start;
+
+	var add = [];
+	fresh.forEach(function (d) {
+		if (split) add.push(indent + '- AND,((NETWORK,udp),(DOMAIN-SUFFIX,' + d + ')),' + UDP_GROUP + cr);
+		add.push(indent + '- DOMAIN-SUFFIX,' + d + ',' + group + cr);
+	});
+
+	var out = lines.slice(0, at).concat(add, lines.slice(at));
+	return out.join('\n');
+}
+
 return baseclass.extend({
 	UDP_NATIVE: UDP_NATIVE,
 	RULESETS: RULESETS,
 	DNS_PRESETS: DNS_PRESETS,
 	UDP_GROUP: UDP_GROUP,
+	SITE_PRESETS: SITE_PRESETS,
+
+	siteDomains: siteDomains,
+	normDomains: normDomains,
+	parseConfig: parseConfig,
+	groupNames: groupNames,
+	addSiteRules: addSiteRules,
 
 	/* Is the split currently in effect? */
-	detectSplit: function (text) {
-		var lines = (text || '').split('\n');
-		var hasGroup = !!findGroup(lines, UDP_GROUP);
-		var hasRules = lines.some(function (l) {
-			return l.indexOf(UDP_GROUP) >= 0 && /^\s*-/.test(l);
-		});
-		return { group: hasGroup, rules: hasRules, on: hasGroup && hasRules };
-	},
+	detectSplit: detectSplit,
 
 	/* Names of nodes declared inline whose protocol carries UDP natively. */
 	udpNativeNames: function (text) {
@@ -470,7 +865,7 @@ return baseclass.extend({
 			}
 		}
 
-		lines.splice(src.end, 0, ...clone);
+		Array.prototype.splice.apply(lines, [src.end, 0].concat(clone));
 
 		/* now the rules: every rule that sends something to the TCP group
 		 * gets a UDP-scoped twin in front of it */
@@ -722,7 +1117,19 @@ return baseclass.extend({
 
 		/* rules */
 		L.push('rules:');
+		var extra = normDomains(o.extraDomains);
+		var extraGroup = o.extraGroup || 'Proxy';
+		var emitExtra = function () {
+			extra.forEach(function (d) {
+				if (udpSplit && extraGroup === 'Proxy')
+					L.push('  - AND,((NETWORK,udp),(DOMAIN-SUFFIX,' + d + ')),ProxyUDP');
+				L.push('  - DOMAIN-SUFFIX,' + d + ',' + extraGroup);
+			});
+		};
 		if (o.routing === 'proxy_except_ru') {
+			/* before the RU sets, so a site the user named is not claimed
+			 * by them */
+			emitExtra();
 			L.push('  - RULE-SET,ru_domains,DIRECT');
 			L.push('  - RULE-SET,ru_ips,DIRECT');
 			L.push('  - GEOIP,private,DIRECT,no-resolve');
@@ -740,10 +1147,7 @@ return baseclass.extend({
 			order.forEach(function (pn4) {
 				L.push('  - RULE-SET,' + pn4 + ',Proxy');
 			});
-			(o.extraDomains || []).forEach(function (d) {
-				if (udpSplit) L.push('  - AND,((NETWORK,udp),(DOMAIN-SUFFIX,' + d + ')),ProxyUDP');
-				L.push('  - DOMAIN-SUFFIX,' + d + ',Proxy');
-			});
+			emitExtra();
 			L.push('  - MATCH,DIRECT');
 		}
 
