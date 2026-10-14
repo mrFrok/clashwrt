@@ -29,17 +29,42 @@
 #   (userspace copies every packet). Hence the matrix: pick the fastest
 #   mechanism your kernel actually honours for each protocol.
 #
-# Usage: fw.sh apply|flush|status|check
+# Usage: fw.sh apply|reload|flush|status|check|detect|selftest
+#        fw.sh dns-sync
+#        fw.sh autobypass on|off
 
 # Deliberately no `set -u`: OpenWrt's /lib/functions.sh reads IPKG_INSTROOT and
 # friends unset, so nounset makes sourcing it abort.
-. /lib/functions.sh
-. /lib/functions/network.sh
+# The CLASHWRT_* overrides exist so tests/ can run this file off the router.
+# shellcheck source=/dev/null
+. "${CLASHWRT_FUNCTIONS:-/lib/functions.sh}"
+# shellcheck source=/dev/null
+. "${CLASHWRT_NETWORK:-/lib/functions/network.sh}"
 
 NAME="clashwrt"
 TABLE="inet clashwrt"
 
+# Written by the watchdog (through 'autobypass on') when the proxy path is
+# dead but the WAN is fine. While it exists apply and check build nothing, so
+# a restart or a hotplug event cannot quietly put the broken path back. It
+# lives in /var/run on purpose: a reboot starts proxy-first again.
+RUNDIR="${CLASHWRT_RUNDIR:-/var/run/clashwrt}"
+FLAG="$RUNDIR/autobypass"
+LOCKFILE="/var/lock/clashwrt-fw.lock"
+SIGFILE="$RUNDIR/fw.sig"
+RCD="${CLASHWRT_RCD:-/etc/rc.d}"
+
 log() { logger -t "$NAME" "$@"; [ -t 1 ] && echo "$NAME: $*" >&2; return 0; }
+
+# Switched off from the Overview page ('powerctl.sh svc off') means not
+# started at boot, i.e. no S link; that is all /etc/rc.d acts on.
+svc_enabled() { ls "$RCD"/S[0-9][0-9]"$NAME" >/dev/null 2>&1; }
+
+wd_running() {
+	local pid
+	pid="$(sed -n 's/^pid:[[:space:]]*//p' "$RUNDIR/watchdog.state" 2>/dev/null | head -n1)"
+	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
 
 # Failures always go to stderr, tty or not: this runs from init scripts, from
 # hotplug and from LuCI, and a misconfiguration that explains itself only in
@@ -49,6 +74,13 @@ die() {
 	echo "$NAME: ERROR: $*" >&2
 	exit 1
 }
+
+# Every action that changes the ruleset takes one lock, so the watchdog, the
+# init script, hotplug and LuCI cannot interleave a flush with an apply.
+# The lock itself lives in lock.sh, shared with powerctl.sh.
+# shellcheck source=lock.sh
+. "${CLASHWRT_LIBEXEC:-/usr/libexec/clashwrt}/lock.sh"
+fw_lock() { cw_lock "$LOCKFILE" 30 firewall; }
 
 # ---------------------------------------------------------------------------
 # config
@@ -514,12 +546,101 @@ apply_routing() {
 }
 
 # ---------------------------------------------------------------------------
+# DNS during an auto-bypass
+# ---------------------------------------------------------------------------
+#
+# Lifting the traffic rules is not enough when dnsmasq forwards to mihomo's
+# DNS port: the LAN would keep asking the core that just died and lose name
+# resolution along with the proxy. So while the bypass flag exists, those
+# forwards are taken out of dnsmasq's server list (the rest of the list, or
+# its normal upstream, then answers), and the original list is put back as
+# soon as the flag is gone. The original list is kept in DNS_BAK on flash, not
+# in /var/run, so a power cut during a bypass is repaired by the next apply
+# instead of leaving the forward missing for good.
+
+DNSMASQ_SEC="dhcp.@dnsmasq[0]"
+DNS_BAK="${CLASHWRT_DNS_BAK:-/etc/clashwrt-dns.bak}"
+DNSMASQ_INIT="${CLASHWRT_DNSMASQ_INIT:-/etc/init.d/dnsmasq}"
+
+# the entries of dnsmasq's server list that point at mihomo, one per line
+dns_mihomo_entries() {
+	local s
+	for s in $(uci -q get "$DNSMASQ_SEC.server" 2>/dev/null); do
+		case "$s" in
+			*"#$dns_port"|*":$dns_port") echo "$s" ;;
+		esac
+	done
+}
+
+# what netifd learned from the uplink, loopback excluded
+dns_uplink_resolvers() {
+	local rf
+	rf="$(uci -q get "$DNSMASQ_SEC.resolvfile" 2>/dev/null)"
+	sed -n 's/^nameserver[[:space:]]*\([^[:space:]]*\).*/\1/p' "${rf:-/tmp/resolv.conf.d/resolv.conf.auto}" 2>/dev/null |
+		grep -v -e '^127\.' -e '^::1$'
+}
+
+dns_commit() {
+	uci commit dhcp && "$DNSMASQ_INIT" reload >/dev/null 2>&1
+}
+
+dns_fallback_on() {
+	local mine s up have
+	mine="$(dns_mihomo_entries)"
+	[ -n "$mine" ] || return 0
+
+	have="$(uci -q get "$DNSMASQ_SEC.server" 2>/dev/null)"
+	up=""
+	# with nothing left in the list and the uplink's resolvers switched off,
+	# dnsmasq would have no upstream at all: borrow the uplink's own
+	if [ "$(echo "$have" | tr ' ' '\n' | grep -c -v -F -x "$mine")" -eq 0 ] &&
+		[ "$(uci -q get "$DNSMASQ_SEC.noresolv")" = 1 ]; then
+		up="$(dns_uplink_resolvers)"
+		if [ -z "$up" ]; then
+			log "auto-bypass: dnsmasq forwards only to mihomo and no uplink resolver is known, DNS stays on mihomo"
+			return 1
+		fi
+	fi
+
+	if [ ! -e "$DNS_BAK" ]; then
+		echo "$have" | tr ' ' '\n' > "$DNS_BAK.tmp" && mv "$DNS_BAK.tmp" "$DNS_BAK" ||
+			{ rm -f "$DNS_BAK.tmp"; log "auto-bypass: cannot save the dnsmasq server list, DNS stays on mihomo"; return 1; }
+	fi
+	for s in $mine; do uci -q del_list "$DNSMASQ_SEC.server=$s"; done
+	for s in $up; do uci add_list "$DNSMASQ_SEC.server=$s"; done
+	dns_commit
+	log "auto-bypass: dnsmasq no longer forwards to mihomo"
+}
+
+dns_restore() {
+	local s
+	[ -e "$DNS_BAK" ] || return 0
+	uci -q delete "$DNSMASQ_SEC.server"
+	while read -r s; do
+		[ -n "$s" ] && uci add_list "$DNSMASQ_SEC.server=$s"
+	done < "$DNS_BAK"
+	dns_commit
+	rm -f "$DNS_BAK"
+	log "dnsmasq forwards to mihomo again"
+}
+
+# DNS follows the flag: forwards are out while it exists, back when it is gone
+dns_sync() {
+	if [ -e "$FLAG" ]; then dns_fallback_on; else dns_restore; fi
+}
+
+# ---------------------------------------------------------------------------
 # actions
 # ---------------------------------------------------------------------------
 
 do_apply() {
 	load_cfg
+	dns_sync
 	[ "$enabled" = 1 ] || { log "disabled in UCI, nothing to do"; do_flush_quiet; exit 0; }
+	[ ! -e "$FLAG" ] || { log "auto-bypass is active, leaving traffic direct (the watchdog restores it)"; do_flush_quiet; exit 0; }
+	# Whoever asks -- a late watchdog restore, a hand-run start or restart --
+	# a service switched off stays off.
+	svc_enabled || { log "ClashWrt is switched off, nothing to do"; do_flush_quiet; exit 0; }
 	resolve_ports
 	check_prereq
 	ensure_fw4_zone
@@ -530,10 +651,32 @@ do_apply() {
 	# the cached list without going to the network.
 	[ "$set_mode" != "off" ] && /usr/libexec/clashwrt/setctl.sh load >/dev/null 2>&1
 
+	fw_sig > "$SIGFILE"
 	log "applied mode=$mode lan=$lan_device tun=$tun_device tproxy_port=${tproxy_port:-none} redir_port=${redir_port:-none} bypass_set=$set_mode"
 }
 
+# The settings the ruleset is built from: everything in the config section
+# except the watchdog's own, which never reach the firewall.
+fw_sig() {
+	uci -q show "$NAME.config" | grep -v "^$NAME\\.config\\.watchdog" | md5sum
+}
+
+# A settings change does not tear a working ruleset down. If the table is
+# there and what it was built from has not changed, there is nothing to do; a
+# watchdog toggle, a wizard save or a LuCI "Save & Apply" of other settings
+# therefore costs the LAN no traffic at all. Anything else is a normal apply.
+do_reload() {
+	load_cfg
+	if [ "$enabled" = 1 ] && [ ! -e "$FLAG" ] && svc_enabled &&
+		nft list table $TABLE >/dev/null 2>&1 &&
+		[ "$(cat "$SIGFILE" 2>/dev/null)" = "$(fw_sig)" ]; then
+		return 0
+	fi
+	do_apply
+}
+
 do_flush_quiet() {
+	rm -f "$SIGFILE"
 	nft delete table $TABLE 2>/dev/null
 	flush_rules
 }
@@ -541,13 +684,31 @@ do_flush_quiet() {
 do_flush() {
 	load_cfg
 	do_flush_quiet
+	dns_sync
 	log "flushed"
 }
 
 do_status() {
+	local wd eg
 	load_cfg
 	resolve_ports
 	echo "enabled:      $enabled"
+	echo -n "autobypass:   "
+	[ -e "$FLAG" ] && echo yes || echo no
+	echo -n "service:      "
+	svc_enabled && echo on || echo off
+	config_get wd config watchdog 0
+	echo -n "watchdog:     "
+	[ "$wd" = "1" ] && echo on || echo off
+	echo -n "wd_running:   "
+	wd_running && echo yes || echo no
+	echo -n "egress:       "
+	if [ -e "$FLAG" ]; then
+		echo bypassed
+	else
+		eg="$(sed -n 's/^state:[[:space:]]*//p' "$RUNDIR/watchdog.state" 2>/dev/null | head -n1)"
+		echo "${eg:-unknown}"
+	fi
 	echo "mode:         $mode"
 	echo "lan_device:   $lan_device"
 	echo "wan_device:   ${wan_device:-unknown}"
@@ -586,6 +747,9 @@ do_status() {
 do_check() {
 	load_cfg
 	[ "$enabled" = 1 ] || exit 0
+	[ ! -e "$FLAG" ] || exit 0
+	# switched off from the Overview page: do not rebuild what it stopped
+	svc_enabled || exit 0
 	resolve_ports
 
 	nft list table $TABLE >/dev/null 2>&1 || { log "nft table missing, re-applying"; do_apply; exit 0; }
@@ -600,6 +764,33 @@ do_check() {
 	fi
 }
 
+# The watchdog's two moves, as one atomic step each. Both refuse to act while
+# the user has the proxy off: that decision always wins, so a watchdog that
+# wakes up late can never turn the proxy back on.
+do_autobypass() {
+	load_cfg
+	case "${1:-}" in
+	on)
+		[ "$enabled" = 1 ] || { echo "proxy is off, nothing to bypass"; exit 0; }
+		mkdir -p "$RUNDIR"
+		: > "$FLAG"
+		do_flush_quiet
+		dns_sync
+		log "auto-bypass ON: proxy path is down, traffic goes direct"
+		;;
+	off)
+		rm -f "$FLAG"
+		if [ "$enabled" = 1 ]; then
+			do_apply
+			log "auto-bypass OFF: proxy path is back"
+		else
+			dns_sync
+		fi
+		;;
+	*) echo "usage: $0 autobypass on|off" >&2; exit 1 ;;
+	esac
+}
+
 # What netifd currently reports, so the UI can show what "auto" resolved to.
 do_detect() {
 	load_cfg
@@ -607,12 +798,19 @@ do_detect() {
 	echo "wan_device: ${wan_device:-unknown}"
 }
 
-case "${1:-}" in
-	apply)    do_apply ;;
-	flush)    do_flush ;;
-	status)   do_status ;;
-	check)    do_check ;;
-	detect)   do_detect ;;
-	selftest) exec /usr/libexec/clashwrt/selftest.sh ;;
-	*) echo "usage: $0 apply|flush|status|check|detect|selftest" >&2; exit 1 ;;
-esac
+main() {
+	case "${1:-}" in
+		apply)      fw_lock; do_apply ;;
+		reload)     fw_lock; do_reload ;;
+		flush)      fw_lock; do_flush ;;
+		status)     do_status ;;
+		check)      fw_lock; do_check ;;
+		autobypass) fw_lock; do_autobypass "${2:-}" ;;
+		dns-sync)   fw_lock; load_cfg; dns_sync ;;
+		detect)     do_detect ;;
+		selftest)   exec /usr/libexec/clashwrt/selftest.sh ;;
+		*) echo "usage: $0 apply|reload|flush|status|check|detect|selftest|dns-sync|autobypass on|off" >&2; exit 1 ;;
+	esac
+}
+
+[ -n "${CLASHWRT_TEST:-}" ] || main "$@"

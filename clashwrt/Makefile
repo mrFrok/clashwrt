@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashwrt
-PKG_VERSION:=1.0.3
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-or-later
@@ -55,6 +55,9 @@ define Package/clashwrt/install
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/setctl.sh $(1)/usr/libexec/clashwrt/setctl.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/uistamp.sh $(1)/usr/libexec/clashwrt/uistamp.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/updctl.sh $(1)/usr/libexec/clashwrt/updctl.sh
+	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/powerctl.sh $(1)/usr/libexec/clashwrt/powerctl.sh
+	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/watchdog.sh $(1)/usr/libexec/clashwrt/watchdog.sh
+	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/lock.sh $(1)/usr/libexec/clashwrt/lock.sh
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/clashwrt $(1)/etc/init.d/clashwrt
@@ -69,10 +72,20 @@ define Package/clashwrt/install
 	$(INSTALL_BIN) ./files/etc/uci-defaults/99-clashwrt $(1)/etc/uci-defaults/99-clashwrt
 endef
 
+# opkg sets PKG_UPGRADE=1 for the scripts it runs during an upgrade. A fresh
+# install enables the service; an upgrade keeps whatever the user chose (the
+# Overview page's "switch off" removes the rc.d link), and brings back what
+# the old package's prerm stopped, but only if the service was left enabled.
 define Package/clashwrt/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
-/etc/init.d/clashwrt enable
+if [ "$${PKG_UPGRADE}" = "1" ]; then
+	if ls /etc/rc.d/S[0-9][0-9]clashwrt >/dev/null 2>&1; then
+		/etc/init.d/clashwrt start
+	fi
+else
+	/etc/init.d/clashwrt enable
+fi
 exit 0
 endef
 
@@ -80,7 +93,7 @@ define Package/clashwrt/prerm
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 /etc/init.d/clashwrt stop
-/etc/init.d/clashwrt disable
+[ "$${PKG_UPGRADE}" = "1" ] || /etc/init.d/clashwrt disable
 exit 0
 endef
 

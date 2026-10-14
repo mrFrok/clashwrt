@@ -9,6 +9,16 @@ STOP=05
 USE_PROCD=1
 
 FW=/usr/libexec/clashwrt/fw.sh
+WATCHDOG=/usr/libexec/clashwrt/watchdog.sh
+FLAG=/var/run/clashwrt/autobypass
+
+# Switched on = started at boot, i.e. any S link (rc.common's 'enabled' also
+# insists on the K link under today's numbers). Switched off from the
+# Overview page, a hand-run start or restart builds nothing and starts no
+# watchdog: fw.sh refuses too, and this keeps the daemon down.
+switched_on() {
+	ls /etc/rc.d/S[0-9][0-9]clashwrt >/dev/null 2>&1
+}
 
 boot() {
 	# On boot, mihomo has not started yet, so the tun device cannot exist.
@@ -16,16 +26,39 @@ boot() {
 	start
 }
 
+# Also what a settings change runs: with no reload_service, rc.common's
+# reload is this same start, and procd adds or drops the watchdog instance to
+# match. The firewall is not touched unless its own settings changed
+# (fw.sh reload), so a toggle or a save of unrelated settings costs the LAN
+# no traffic.
 start_service() {
-	$FW apply
+	local wd=0
+	[ "$(uci -q get clashwrt.config.enabled)" = "1" ] &&
+		[ "$(uci -q get clashwrt.config.watchdog)" = "1" ] && wd=1
+
+	# Without a watchdog nothing would ever lift a bypass: lift it now.
+	if [ "$wd" = 0 ] && [ -e "$FLAG" ]; then
+		$FW autobypass off
+	fi
+	$FW reload
+	switched_on || return 0
+
+	# Only worth a process when there is a ruleset to lift: with the proxy off
+	# the watchdog has nothing to protect, and it never switches it on. On
+	# boot the daemon starts here, before mihomo, and its grace period is what
+	# keeps it from judging a core that is still coming up.
+	[ "$wd" = 1 ] || return 0
+
+	procd_open_instance watchdog
+	procd_set_param command "$WATCHDOG" run
+	procd_set_param respawn 3600 5 5
+	procd_close_instance
 }
 
 stop_service() {
+	# A bypass flag must not outlive the daemon that would lift it.
+	rm -f "$FLAG"
 	$FW flush
-}
-
-reload_service() {
-	$FW apply
 }
 
 service_triggers() {

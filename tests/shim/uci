@@ -1,0 +1,41 @@
+#!/bin/sh
+# Minimal fake uci: one file per option in $UCI_DB, one value per line.
+db="${UCI_DB:?}"
+[ "$1" = -q ] && shift
+cmd="$1"; shift
+key() { echo "$1" | sed 's/[^A-Za-z0-9._-]/_/g'; }
+case "$cmd" in
+get)
+	f="$db/$(key "$1")"
+	[ -s "$f" ] || exit 1
+	tr '\n' ' ' < "$f" | sed 's/ $//'; echo
+	;;
+set)
+	k="${1%%=*}"; v="${1#*=}"
+	echo "$v" > "$db/$(key "$k")"
+	;;
+add_list)
+	k="${1%%=*}"; v="${1#*=}"
+	echo "$v" >> "$db/$(key "$k")"
+	;;
+del_list)
+	k="${1%%=*}"; v="${1#*=}"; f="$db/$(key "$k")"
+	[ -e "$f" ] || exit 0
+	grep -v -x -F -- "$v" "$f" > "$f.new"
+	mv "$f.new" "$f"
+	[ -s "$f" ] || rm -f "$f"
+	;;
+delete)
+	rm -f "$db/$(key "$1")"
+	;;
+commit)
+	echo "commit $1" >> "$db/.log"
+	;;
+show)
+	for f in "$db"/"$(key "$1")"*; do
+		[ -f "$f" ] || continue
+		while read -r v; do echo "$(basename "$f")='$v'"; done < "$f"
+	done
+	;;
+*) exit 1 ;;
+esac

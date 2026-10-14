@@ -192,6 +192,21 @@ if [ ! -d "$SRC/clashwrt/files" ]; then
 fi
 [ -d "$SRC/clashwrt/files" ] || die "unexpected tarball layout (no clashwrt/files)"
 
+# What the user last chose for the mihomo core, read before anything below can
+# create or enable it. Switching the core off from the Overview page disables
+# it at boot; an upgrade must not undo that.
+CORE_STATE="fresh"
+if [ -x /etc/init.d/mihomo ]; then
+	if /etc/init.d/mihomo enabled >/dev/null 2>&1; then CORE_STATE="on"; else CORE_STATE="off"; fi
+fi
+
+# Likewise for the service itself: if it was switched off from the Overview
+# page, an upgrade must not switch it back on.
+SVC_STATE="fresh"
+if [ -x /etc/init.d/clashwrt ]; then
+	if ls /etc/rc.d/S[0-9][0-9]clashwrt >/dev/null 2>&1; then SVC_STATE="on"; else SVC_STATE="off"; fi
+fi
+
 say "installing firewall engine and service"
 idir /usr/libexec/clashwrt
 for f in "$SRC"/clashwrt/files/usr/libexec/clashwrt/*.sh; do
@@ -219,6 +234,8 @@ say "installing the LuCI pages"
 # The canonical copies live outside the web root; uistamp publishes them under
 # content-addressed names so that an update actually reaches the browser.
 idir /usr/share/clashwrt/ui/view /usr/share/clashwrt/ui/mod
+# pages that no longer exist (merged into other tabs) must not be republished
+rm -f /usr/share/clashwrt/ui/view/*.js /usr/share/clashwrt/ui/mod/*.js
 icp 0644 "$SRC"/luci-app-clashwrt/htdocs/luci-static/resources/view/clashwrt/*.js \
 	/usr/share/clashwrt/ui/view/
 icp 0644 "$SRC"/luci-app-clashwrt/htdocs/luci-static/resources/clashwrt/*.js \
@@ -355,9 +372,17 @@ fi
 # enable
 # --------------------------------------------------------------------------
 
-/etc/init.d/mihomo enable  >/dev/null 2>&1 || true
-/etc/init.d/clashwrt enable >/dev/null 2>&1 || true
-/etc/init.d/mihomo restart >/dev/null 2>&1 || warn "mihomo did not start (expected until a real config exists)"
+if [ "$SVC_STATE" = "off" ]; then
+	say "ClashWrt is switched off on this router; leaving it that way"
+else
+	/etc/init.d/clashwrt enable >/dev/null 2>&1 || true
+fi
+if [ "$CORE_STATE" = "off" ]; then
+	say "the mihomo core is switched off on this router; leaving it that way"
+else
+	/etc/init.d/mihomo enable  >/dev/null 2>&1 || true
+	/etc/init.d/mihomo restart >/dev/null 2>&1 || warn "mihomo did not start (expected until a real config exists)"
+fi
 
 rm -f /tmp/luci-indexcache* 2>/dev/null || true
 /etc/init.d/rpcd restart >/dev/null 2>&1 || true
@@ -367,7 +392,7 @@ cat <<EOF
 Done.
 
   Interface : Services -> ClashWrt
-  Next      : run the Setup wizard, then enable the proxy on the Settings page
+  Next      : run the Setup wizard, then switch the proxy on from the Overview page
 
 The firewall side stays off until you enable it, so nothing on the network has
 changed yet. If you do not know which interception mode this kernel supports,

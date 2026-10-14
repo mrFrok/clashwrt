@@ -1,4 +1,6 @@
 config clashwrt 'config'
+	# The proxy kill switch. Owned by the Overview page (powerctl.sh); '0'
+	# leaves the router forwarding everything directly.
 	option enabled '0'
 
 	# tproxy       - TCP+UDP through nft tproxy into mihomo's tproxy-port.
@@ -81,3 +83,37 @@ config clashwrt 'config'
 	list bypass_net '192.168.0.0/16'
 	list bypass_net '224.0.0.0/4'
 	list bypass_net '240.0.0.0/4'
+
+	# Fail-open watchdog. When the proxy path stops working but the internet
+	# itself is fine, traffic goes direct until the path is healthy again,
+	# instead of the whole network going down with the VPN. Off by default;
+	# it never switches the proxy on, and switching the proxy off always wins.
+	option watchdog '0'
+
+	# Which proxy group to time. Empty = the group named by the terminal
+	# MATCH rule of config.yaml, else "Proxy".
+	option watchdog_group ''
+
+	# Consecutive failed probes before bypassing, and passes before restoring.
+	option watchdog_fail '3'
+	option watchdog_ok '3'
+
+	# Seconds between probes: normal, and while a decision is pending.
+	option watchdog_interval '20'
+	option watchdog_fast '5'
+
+	# Shortest time a bypass lasts, doubling when the path keeps failing again
+	# within ten minutes of coming back, up to the maximum.
+	option watchdog_hold '120'
+	option watchdog_hold_max '900'
+
+	# After the watchdog starts (boot, or a settings change) it only watches.
+	option watchdog_grace '90'
+
+	# Seconds a probe waits for an answer.
+	option watchdog_timeout '5'
+
+	# URLs that answer HTTP 204. Defaults to three well-known ones;
+	# watchdog_url is tried through the proxy, watchdog_ctl_url out of the WAN.
+	# list watchdog_url 'http://www.gstatic.com/generate_204'
+	# list watchdog_ctl_url 'http://www.gstatic.com/generate_204'

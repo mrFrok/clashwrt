@@ -1,0 +1,3 @@
+#!/bin/sh
+[ -z "${LOGGER_OUT:-}" ] || echo "$*" >> "$LOGGER_OUT"
+exit 0
