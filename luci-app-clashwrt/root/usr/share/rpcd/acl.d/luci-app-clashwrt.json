@@ -29,6 +29,12 @@
 				],
 				"/usr/libexec/clashwrt/setctl.sh": [
 					"exec"
+				],
+				"/usr/libexec/clashwrt/powerctl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/watchdog.sh": [
+					"exec"
 				]
 			},
 			"ubus": {
@@ -78,6 +84,12 @@
 					"exec"
 				],
 				"/usr/libexec/clashwrt/setctl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/powerctl.sh": [
+					"exec"
+				],
+				"/usr/libexec/clashwrt/watchdog.sh": [
 					"exec"
 				]
 			},

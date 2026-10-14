@@ -20,6 +20,8 @@ wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | sh
 - **A test that tells you which mode to use** instead of leaving you to guess — it runs a real transparent listener behind a real nft rule and reports whether the kernel delivers.
 - **Setup wizard.** Paste a subscription URL or node links, pick DNS and a routing strategy, get a working `config.yaml` with inbounds matched to the selected mode.
 - **TCP/UDP protocol split.** Send UDP through Hysteria2/TUIC and everything else through Reality/VLESS, with one button — on the wizard's config or your own hand-written one.
+- **Three kill switches on one Overview page** — the proxy rules, the mihomo core, or both together — so the LAN can go back to a direct path in one click.
+- **Fail-open watchdog (opt-in).** If the proxy path dies while the internet itself is fine, traffic is let through directly until the proxy recovers.
 - **Config and rule-list editors** that validate with `mihomo -t` before installing anything, and keep backups.
 - **Live logs**, streamed from mihomo's API, plus the system log around it.
 - **Swappable dashboards** — metacubexd, zashboard, Yacd, or any URL.
@@ -59,15 +61,15 @@ reports plain `mips` on both big- and little-endian MIPS and cannot tell
 `mips-softfloat` from `mipsle-softfloat`. If that ever picks wrong, name the
 build yourself with `MIHOMO_ARCH`.
 
-Then open **Services → ClashWrt**, run the setup wizard, and enable the proxy on the Settings page.
+Then open **Services → ClashWrt**, run the setup wizard, and switch the proxy on from the Overview page.
 
 ### Updating
 
-Two things update independently, and the Settings page has a button for each — it shows the installed mihomo version against the latest release, and the installed commit against the head of `main`.
+Two things update independently, and Settings → Maintenance has a button for each — it shows the installed mihomo version against the latest release, and the installed commit against the head of `main`.
 
 **Update core** downloads the mihomo build for this CPU and restarts the daemon if it was running. Your configuration is not touched.
 
-**Update ClashWrt** re-runs `install.sh`, which keeps `/etc/config/clashwrt` and `config.yaml` and leaves the core alone. It runs detached, with the log followed on the page, because it replaces the LuCI pages and restarts `rpcd` — the very thing carrying the request. Expect to be logged out at the end: log back in and reload the page.
+**Update ClashWrt** re-runs `install.sh`, which keeps `/etc/config/clashwrt` and `config.yaml` and leaves the core alone. Whether the core was switched on or off at boot is kept too, so an upgrade does not turn a core you stopped back on. It runs detached, with the log followed on the page, because it replaces the LuCI pages and restarts `rpcd` — the very thing carrying the request. Expect to be logged out at the end: log back in and reload the page.
 
 Either can be done from the shell instead:
 
@@ -137,7 +139,55 @@ Recommended mode: redirect_tun (or tun)
 
 ## Using it
 
-Everything lives under **Services → ClashWrt**.
+Everything lives under **Services → ClashWrt**, in five pages:
+
+| Page | What it is for |
+|---|---|
+| Overview | State at a glance and the three kill switches |
+| Setup wizard | Builds a `config.yaml` |
+| Configuration | Tabs: Editor, Backups, Rule files |
+| Settings | Tabs: Basic, Bypass, Advanced, Maintenance |
+| Logs | Live mihomo log and the system log |
+
+The older addresses (`clashwrt/files`, `clashwrt/dashboard`) still work and redirect to the Configuration and Settings pages.
+
+### Overview and the kill switches
+
+The Overview refreshes every 5 seconds and has three independent switches:
+
+| Switch | What it does when off |
+|---|---|
+| Proxy | Removes the firewall rules that steer the LAN into mihomo. The router forwards directly, as if ClashWrt were not installed. |
+| Core | Stops mihomo and disables it at boot. |
+| Everything | Both, in the safe order: rules first when switching off, core first when switching on. |
+
+The Proxy switch owns the UCI option `enabled`, which is why Settings no longer has an Enable checkbox or Start/Stop buttons. Switching the core off while the proxy is still on asks for confirmation, because the LAN would be steered into a core that is not there. Switching the proxy on is refused while the core is down for the same reason. The page also has *Restart core*, *Open dashboard* and *Add site*.
+
+The same switches are scriptable, and print the status when they finish:
+
+```sh
+/usr/libexec/clashwrt/powerctl.sh status
+/usr/libexec/clashwrt/powerctl.sh proxy on|off
+/usr/libexec/clashwrt/powerctl.sh core on|off
+/usr/libexec/clashwrt/powerctl.sh all on|off
+```
+
+### Fail-open watchdog
+
+Off by default; enable it under Settings → Basic (`option watchdog '1'`). A procd daemon asks mihomo to time a request through the proxy group (`/proxies/<group>/delay`). After `watchdog_fail` failures in a row (default 3) it checks that the WAN itself still works, and only if it does, it **bypasses** the proxy: the rules stay loaded but stop steering traffic into mihomo. If the WAN is also down the pill turns gray (*wan down*) and nothing changes, since bypassing would not help.
+
+A bypass is held for at least `watchdog_hold` seconds (120). It is lifted after `watchdog_ok` consecutive good probes (3) once the hold is over. If it flaps again within 10 minutes the hold doubles, up to `watchdog_hold_max` (900). For `watchdog_grace` seconds after the watchdog starts (90) it only watches, so a slow boot is not mistaken for an outage.
+
+Your switch always wins: with the proxy switched off the watchdog is idle and clears any leftover bypass. While bypassed, the Overview pill is amber and offers *Restore proxy now*; *Probe now* runs one check on demand.
+
+```sh
+/usr/libexec/clashwrt/watchdog.sh status
+/usr/libexec/clashwrt/watchdog.sh probe   # one check now
+/usr/libexec/clashwrt/watchdog.sh reset   # forget flaps, lift a bypass
+/usr/libexec/clashwrt/fw.sh autobypass on|off
+```
+
+The probe needs mihomo's API (`external-controller`) and a group name; leave `watchdog_group` empty to use the group named by the config's final `MATCH` rule (else `Proxy`). If the router's dnsmasq forwards to mihomo's DNS port, a bypass takes that forward out of dnsmasq (the original server list is kept in `/etc/clashwrt-dns.bak` and put back when the bypass ends), so the LAN keeps resolving through the router's normal upstream. If that cannot be done (dnsmasq has no other upstream), DNS stays on mihomo and the Overview and Settings warn about it. Changing the watchdog or any setting that does not reach the firewall no longer reloads the ruleset.
 
 ### Setup wizard
 
@@ -147,11 +197,15 @@ Inbounds are generated to match the interception mode selected on the Settings p
 
 Bundled lists: `ru-bundle` and `re:filter` (both from [legiz-ru](https://github.com/legiz-ru/mihomo-rule-sets)), plus per-service sets for YouTube, Telegram, Discord, X, Instagram, ChatGPT and Gemini, from [meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat).
 
+The form opens pre-filled: from the answers the wizard saved last time, or — if there are none, for instance because the config was written by hand — from the installed `config.yaml` (subscriptions, DNS, routing, lists, split). Node links cannot be recovered from a config, so the wizard warns when generating would drop inline nodes, and warns that applying replaces a hand-edited file; **Reload from config.yaml** re-reads it.
+
+**Adding a site.** Type a URL, a hostname or a service name (`youtube`, `claude`, `discord`, `netflix`, `spotify`, …) and press *Add*. The site becomes a chip and is written into the config as plain `DOMAIN-SUFFIX` rules, sent to the group you choose (default `Proxy`) and placed ahead of the lists, so it wins over them. Known services expand to their handful of domains; any other address is added exactly as typed, minus `www.` (`news.bbc.co.uk` stays `news.bbc.co.uk`; type `bbc.co.uk` to cover the whole site), and the exact domain list is shown before anything is written. Group names with spaces or quotes are supported. The big geosite lists are not referenced — only the domains needed for that service are inlined, which keeps memory use on the router low. If the installed config was not written by the wizard, **Add to current config only** inserts just those rules into it (before the first `RULE-SET … DIRECT` / `GEOIP` / `MATCH` line, matching its indentation, skipping rules already there) and leaves everything else untouched; the config editor has the same *Add site* box, which only edits the text until you save.
+
 ### TCP/UDP protocol split
 
 Hysteria2 and TUIC are QUIC-based and carry datagrams natively; Reality, VLESS and Trojan tunnel them over a TCP stream. If your subscription has both, it is worth sending UDP to the former and everything else to the latter.
 
-One button on the Settings page turns this on and off, and it works on **whatever config is installed now** — the wizard's or your own. It edits the existing file rather than regenerating from stored answers, because plenty of configs are written by hand and have no stored answers; the transformation is line-based so comments and formatting survive, and the result is validated before it replaces anything.
+One button on the Settings page (Maintenance) turns this on and off, and it works on **whatever config is installed now** — the wizard's or your own. It edits the existing file rather than regenerating from stored answers, because plenty of configs are written by hand and have no stored answers; the transformation is line-based so comments and formatting survive, and the result is validated before it replaces anything.
 
 ```yaml
 proxy-groups:
@@ -189,7 +243,7 @@ Choosing a preset by hand that contradicts your routing is warned about rather t
 
 ### Configuration and rule files
 
-**Configuration** is a direct editor for `config.yaml`, with syntax checking, backups and one-click restore. **Rule files** manages the hand-maintained lists that file-backed rule providers point at:
+**Configuration** is a direct editor for `config.yaml`, with syntax checking, backups and one-click restore (tabs *Editor* and *Backups*). The *Rule files* tab manages the hand-maintained lists that file-backed rule providers point at:
 
 ```yaml
 rule-providers:
@@ -204,15 +258,15 @@ Two views. The live one is mihomo's own log, streamed straight from its API into
 
 ### Web dashboard
 
-Installs metacubexd, zashboard or Yacd, or any `.tar.gz` containing an `index.html` (not `.zip` — OpenWrt images routinely ship without `unzip`). The page links straight to the panel and has a button to restart mihomo, which is needed when `external-ui` has just changed.
+Installs metacubexd, zashboard or Yacd, or any `.tar.gz` containing an `index.html` (not `.zip` — OpenWrt images routinely ship without `unzip`). The installer is under Settings → Maintenance; the Overview links straight to the panel and has a button to restart mihomo, which is needed when `external-ui` has just changed.
 
 ## Configuration
 
-**Services → ClashWrt → Settings**, or `/etc/config/clashwrt`:
+**Services → ClashWrt → Settings**, or `/etc/config/clashwrt`. Every setting has a safe default and a one-line reason next to it.
 
 ```
 config clashwrt 'config'
-	option enabled '1'
+	option enabled '1'            # owned by the Proxy switch on the Overview
 	option mode 'redirect_tun'
 	option lan_device 'auto'
 	option wan_device 'auto'
@@ -222,7 +276,10 @@ config clashwrt 'config'
 	option manage_zone '1'
 	option block_quic '0'
 	option dns_hijack '0'
+	option watchdog '0'
 ```
+
+Watchdog tuning, under Settings → Advanced (only shown when the watchdog is on): `watchdog_group`, `watchdog_fail` (3), `watchdog_ok` (3), `watchdog_interval` (20 s), `watchdog_fast` (5 s), `watchdog_hold` (120 s), `watchdog_hold_max` (900 s), `watchdog_grace` (90 s), `watchdog_timeout` (5 s), and the optional lists `watchdog_url` / `watchdog_ctl_url` for the WAN control probe.
 
 `auto` asks netifd which device currently backs `lan`/`wan`, so a renamed bridge, a PPPoE WAN or a DSA port all work without editing anything.
 
@@ -273,7 +330,9 @@ Nothing reports an error when that happens. Marked packets simply fall through t
 /usr/libexec/clashwrt/setctl.sh detect  # which way round the bypass set goes
 /usr/libexec/clashwrt/setctl.sh status  # list age, and what is loaded in the kernel
 
-/etc/init.d/mihomo start|stop|restart   # also Stop/Start on the Settings page
+/usr/libexec/clashwrt/powerctl.sh status | proxy|core|all on|off   # the Overview's switches
+/usr/libexec/clashwrt/watchdog.sh status|probe|reset
+/etc/init.d/mihomo start|stop|restart   # the core; the Overview has Restart
 /usr/libexec/clashwrt/updctl.sh core-status
 /usr/libexec/clashwrt/updctl.sh core-install [version]
 /usr/libexec/clashwrt/updctl.sh cores       # mihomo binaries in /usr/bin
@@ -283,7 +342,7 @@ Nothing reports an error when that happens. Marked packets simply fall through t
 /usr/libexec/clashwrt/updctl.sh log     # follow the last self-update
 ```
 
-Stopping mihomo leaves the ruleset up. In the TPROXY and NAT-redirect modes that means intercepted traffic is handed to a port with nothing behind it and fails outright rather than quietly going direct, so turn **Enable** off as well if what you want is the LAN back on a direct path.
+Stopping mihomo by hand (`/etc/init.d/mihomo stop`) leaves the ruleset up. In the TPROXY and NAT-redirect modes that means intercepted traffic is handed to a port with nothing behind it and fails outright rather than quietly going direct. Use the **Everything** switch on the Overview (or `powerctl.sh all off`) instead: it takes the rules away first and then stops the core. The `clashwrt` init script stays enabled at boot on purpose — with `enabled '0'` it does nothing, and with `'1'` it is what restores the proxy after a reboot.
 
 ## Troubleshooting
 
@@ -347,6 +406,8 @@ Repository layout:
 clashwrt/              base package — firewall engine, init script, UCI config
   files/usr/libexec/clashwrt/
     fw.sh              the engine: builds the ruleset and policy routing
+    powerctl.sh        the proxy / core / all kill switches
+    watchdog.sh        fail-open watchdog (procd daemon)
     selftest.sh        TPROXY capability test
     confctl.sh         validated read/write of mihomo's config
     filectl.sh         rule-list file manager (sandboxed)

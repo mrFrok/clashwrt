@@ -8,8 +8,10 @@
 'require poll';
 'require dom';
 'require clashwrt.generator as gen';
+'require clashwrt.dashui as dashui';
+'require clashwrt.power as power';
 
-var UI_VERSION = '0.1.7';
+var UI_VERSION = '0.2.7';
 
 var callStatus = function () {
 	return fs.exec('/usr/libexec/clashwrt/fw.sh', ['status'])
@@ -43,7 +45,7 @@ function pill(bg, fg, label) {
 	return E('span', {
 		'style': 'display:inline-block;padding:1px 8px;border-radius:10px;font-size:90%;' +
 			'background:' + bg + ';color:' + fg + ';'
-	}, label);
+	}, [ label ]);
 }
 
 function badge(ok, label) {
@@ -78,6 +80,32 @@ function stateWord(v) {
 	return known[v] || v || '?';
 }
 
+/* Three states, plain words: off in the config, on and the VPN is fine, or on
+ * and the VPN is down so traffic goes direct. What it says follows whether the
+ * daemon really runs (fw.sh 'wd_running'), not what the switches were set to:
+ * a watchdog left running by a service that is off at boot still guards. */
+function watchdogPill(st) {
+	var running = st['wd_running'];
+	if (running === 'yes') {
+		if (st['egress'] === 'bypassed')
+			return pill('#fef7e0', '#b06000', _('Watchdog: bypass, VPN unavailable'));
+		return pill('#e6f4ea', '#137333', _('Watchdog on, all is well'));
+	}
+	if (st['service'] === 'off')
+		return pill('#f1f3f4', '#5f6368', _('Watchdog sleeps, ClashWrt is off'));
+	if (st['watchdog'] !== 'on')
+		return pill('#f1f3f4', '#5f6368', _('Watchdog off'));
+	/* with the proxy off the init script starts no watchdog at all */
+	if (running === 'no' && st['enabled'] !== '1')
+		return pill('#f1f3f4', '#5f6368', _('Watchdog idle, the proxy is off'));
+	/* an older fw.sh says nothing about the daemon itself */
+	if (running === 'no')
+		return pill('#fef7e0', '#b06000', _('Watchdog not running'));
+	if (st['egress'] === 'bypassed')
+		return pill('#fef7e0', '#b06000', _('Watchdog: bypass, VPN unavailable'));
+	return pill('#e6f4ea', '#137333', _('Watchdog on, all is well'));
+}
+
 function renderStatus(text) {
 	var st = parseStatus(text);
 	if (!Object.keys(st).length)
@@ -95,29 +123,30 @@ function renderStatus(text) {
 	var modeCell;
 	if (agrees === 'no') {
 		modeCell = E('span', {}, [
-			E('strong', {}, st['mode'] || '?'), ' ',
+			E('strong', {}, [ st['mode'] || '?' ]), ' ',
 			pill('#fce8e6', '#c5221f', _('config.yaml cannot serve this')),
 			E('div', { 'style': 'font-size:90%;opacity:0.8;margin-top:2px' },
-				_('Its inbounds fit: ') + serves)
+				[ _('Its inbounds fit: ') + serves ])
 		]);
 	} else if (agrees === 'yes') {
-		modeCell = E('span', {}, [ E('strong', {}, st['mode'] || '?'), ' ', badge(true, _('matches config.yaml')) ]);
+		modeCell = E('span', {}, [ E('strong', {}, [ st['mode'] || '?' ]), ' ', badge(true, _('matches config.yaml')) ]);
 	} else {
 		modeCell = E('span', {}, [
-			E('strong', {}, st['mode'] || '?'), ' ',
+			E('strong', {}, [ st['mode'] || '?' ]), ' ',
 			pill('#f1f3f4', '#5f6368', _('config.yaml not readable'))
 		]);
 	}
 
 	var rows = [
 		[_('Mode'), modeCell],
-		[_('Enabled'), badge(st['enabled'] === '1', st['enabled'] === '1' ? _('yes') : _('no'))],
+		[_('Proxy'), badge(st['enabled'] === '1', st['enabled'] === '1' ? _('on') : _('off'))],
+		[_('Watchdog'), watchdogPill(st)],
 		[_('Firewall ruleset'), badge(st['nft_table'] === 'present', stateWord(st['nft_table']))],
 		[_('mihomo daemon'), badge(st['mihomo'] === 'running', stateWord(st['mihomo']))],
 		[_('Tun device'), badge(st['tun_link'] === 'up', (st['tun_device'] || '') + ' ' + stateWord(st['tun_link']))],
 		[_('Tun route'), badge(st['tun_route'] === 'ok', stateWord(st['tun_route']))],
-		[_('TPROXY port'), E('span', {}, st['tproxy_port'] || '-')],
-		[_('Redirect port'), E('span', {}, st['redir_port'] || '-')]
+		[_('TPROXY port'), E('span', {}, [ st['tproxy_port'] || '-' ])],
+		[_('Redirect port'), E('span', {}, [ st['redir_port'] || '-' ])]
 	];
 
 	return E('table', { 'class': 'table' }, rows.map(function (r) {
@@ -128,412 +157,469 @@ function renderStatus(text) {
 	}));
 }
 
+/* Dangerous actions ask first, in one place. */
+function confirmThen(title, body, label, fn) {
+	ui.showModal(title, [
+		E('p', {}, [ body ]),
+		E('div', { 'class': 'right' }, [
+			E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+			' ',
+			E('button', {
+				'class': 'cbi-button cbi-button-negative important',
+				'click': function () { ui.hideModal(); fn(); }
+			}, label)
+		])
+	]);
+}
+
+
+/* Status, self-test and restart. Start and stop are the kill switches on the
+ * Overview page now; this block only reports and restarts. */
+function buildStatus(statusText) {
+	var btn = E('button', {
+		'class': 'cbi-button cbi-button-action',
+		'click': function (ev) {
+			var out = document.getElementById('clashwrt-selftest-out');
+			ev.target.disabled = true;
+			dom.content(out, E('em', {}, _('Testing, this takes a few seconds…')));
+			fs.exec('/usr/libexec/clashwrt/fw.sh', ['selftest'])
+				.then(function (res) {
+					var text = (res.stdout || '') + (res.stderr || '');
+					dom.content(out, E('pre', {
+						'style': 'white-space:pre-wrap;margin:6px 0 0 0'
+					}, [ text || _('No output.') ]));
+				})
+				.catch(function (e) {
+					dom.content(out, E('pre', {}, [ String(e) ]));
+				})
+				.finally(function () { ev.target.disabled = false; });
+		}
+	}, _('Test TPROXY support'));
+
+	function actionOut() {
+		return document.getElementById('clashwrt-selftest-out');
+	}
+
+	function report(ok, text) {
+		dom.content(actionOut(), E('div', {
+			'class': ok ? 'alert-message success' : 'alert-message warning',
+			'style': 'white-space:pre-wrap;margin-top:6px'
+		}, [ text ]));
+	}
+
+	function refreshStatus() {
+		return callStatus().then(function (txt) {
+			var target = document.getElementById('clashwrt-status');
+			if (target) dom.content(target, renderStatus(txt));
+		});
+	}
+
+	var btnRestart = E('button', {
+		'class': 'cbi-button cbi-button-reset',
+		'click': function (ev) {
+			var b = ev.target;
+			b.disabled = true;
+			dom.content(actionOut(), E('em', {}, _('Restarting mihomo…')));
+			fs.exec('/etc/init.d/mihomo', ['restart']).then(function (res) {
+				report(true, (res.stdout || '') + (res.stderr || '') || _('mihomo restarted.'));
+			}).catch(function (e) {
+				report(false, describe(e));
+			}).finally(function () {
+				b.disabled = false;
+				refreshStatus();
+			});
+		}
+	}, _('Restart mihomo'));
+
+	/* Browsers cache view scripts by a URL that never changes, so after
+	 * an update it is otherwise impossible to tell from the page whether
+	 * you are looking at the new code or a cached copy. */
+	var node = E('div', { 'class': 'cbi-section' }, [
+		E('h3', {}, [
+			_('Status'),
+			E('span', {
+				'style': 'font-size:65%;font-weight:normal;opacity:0.6;margin-left:8px'
+			}, 'ui ' + UI_VERSION)
+		]),
+		E('div', { 'id': 'clashwrt-status' }, renderStatus(statusText)),
+		E('div', { 'style': 'margin-top:1em' }, [
+			btnRestart,
+			E('div', { 'style': 'font-size:90%;opacity:0.8;margin-top:4px' },
+				_('Start and stop live on the Overview page.'))
+		]),
+		E('div', { 'style': 'margin-top:1em' }, [
+			btn,
+			E('div', { 'style': 'font-size:90%;opacity:0.8;margin-top:4px' },
+				_('Checks that this kernel delivers TPROXY packets. Briefly attaches a test interface.')),
+			E('details', { 'style': 'font-size:90%;opacity:0.8' }, [
+				E('summary', {}, _('More about the test')),
+				_('Recommends an interception mode. Requires socat.')
+			]),
+			E('div', { 'id': 'clashwrt-selftest-out' })
+		])
+	]);
+
+	poll.add(refreshStatus, 5);
+
+	return node;
+}
+
+function buildUpdates() {
+	var coreVer = E('span', {}, _('checking…'));
+	var coreState = E('span', {});
+	var selfVer = E('span', {}, _('checking…'));
+	var selfState = E('span', {});
+	var out = E('div');
+
+	var logBox = E('pre', {
+		'style': 'white-space:pre-wrap;max-height:18em;overflow:auto;margin:8px 0 0 0;display:none'
+	});
+
+	var btnCore = E('button', {
+		'class': 'cbi-button cbi-button-action',
+		'disabled': 'disabled'
+	}, _('Update core'));
+
+	var btnSelf = E('button', {
+		'class': 'cbi-button cbi-button-action',
+		'disabled': 'disabled'
+	}, _('Update ClashWrt'));
+
+	function report(ok, text) {
+		dom.content(out, E('div', {
+			'class': ok ? 'alert-message success' : 'alert-message warning',
+			'style': 'white-space:pre-wrap;margin-top:8px'
+		}, [ text ]));
+	}
+
+	function loadCore() {
+		return fs.exec(UPDCTL, ['core-status']).then(function (res) {
+			var st = parseStatus(res.stdout || '');
+			dom.content(coreVer, [
+				E('strong', {}, [ st['installed'] || '?' ]),
+				' → ',
+				st['latest'] || '?',
+				E('span', { 'style': 'opacity:0.6' }, [ ' (' + (st['arch'] || '?') + ')' ])
+			]);
+			dom.content(coreState, updatePill(st['update']));
+			btnCore.disabled = false;
+		}).catch(function (e) {
+			dom.content(coreVer, _('unavailable'));
+			dom.content(coreState, updatePill('unknown'));
+			report(false, describe(e));
+		});
+	}
+
+	function loadSelf() {
+		return fs.exec(UPDCTL, ['self-status']).then(function (res) {
+			var st = parseStatus(res.stdout || '');
+			var have = shortId(st['installed']);
+			var want = shortId(st['latest']);
+			dom.content(selfVer, [
+				E('strong', {}, [ have || _('unknown') ]),
+				want ? ' → ' + want : '',
+				st['date'] && st['date'] !== 'unknown'
+					? E('span', { 'style': 'opacity:0.6' }, [ ' (' + st['date'] + ')' ])
+					: ''
+			]);
+			dom.content(selfState, updatePill(st['update']));
+			btnSelf.disabled = false;
+		}).catch(function (e) {
+			dom.content(selfVer, _('unavailable'));
+			dom.content(selfState, updatePill('unknown'));
+			report(false, describe(e));
+		});
+	}
+
+	function runCoreUpdate(b) {
+		b.disabled = true;
+		dom.content(out, E('em', {}, _('Downloading the core, this takes a while…')));
+		fs.exec(UPDCTL, ['core-install']).then(function (res) {
+			report(true, (res.stdout || '') + (res.stderr || ''));
+		}).catch(function (e) {
+			report(false, describe(e));
+		}).finally(function () {
+			b.disabled = false;
+			loadCore();
+		});
+	}
+
+	btnCore.addEventListener('click', function (ev) {
+		var b = ev.target;
+		confirmThen(_('Update the mihomo core?'),
+			_('mihomo restarts for a moment. Your configuration is untouched.'),
+			_('Update core'), function () { runCoreUpdate(b); });
+	});
+
+	/* The installer replaces this very page's script and then restarts
+	 * rpcd, which drops the session carrying these calls. So the work
+	 * runs detached and is followed through a log file rather than
+	 * through the exec that started it -- and the follow is expected
+	 * to lose contact near the end rather than to fail. */
+	var timer = null;
+	var misses = 0;
+
+	function stopFollow() {
+		if (timer !== null) {
+			window.clearInterval(timer);
+			timer = null;
+		}
+	}
+
+	function follow() {
+		stopFollow();
+		misses = 0;
+		logBox.style.display = '';
+		timer = window.setInterval(function () {
+			fs.exec(UPDCTL, ['log']).then(function (res) {
+				var text = (res.stdout || '') + (res.stderr || '');
+				misses = 0;
+				dom.content(logBox, [ text ]);
+				logBox.scrollTop = logBox.scrollHeight;
+				if (text.indexOf('=== clashwrt update finished') >= 0) {
+					stopFollow();
+					btnSelf.disabled = false;
+					report(text.indexOf('rc=0 ===') >= 0,
+						_('Update finished. Reload this page to load the new interface — you may have to log in again, because the update restarts rpcd.'));
+				}
+			}).catch(function () {
+				/* rpcd going down at the end of the install ends this
+				 * session, so a run of failures here is the normal
+				 * ending, not an error worth shouting about. */
+				if (++misses >= 5) {
+					stopFollow();
+					btnSelf.disabled = false;
+					report(true, _('Lost contact with the router, which is what the last step of the update looks like: it restarts rpcd and ends this session. Log in again and reload the page.'));
+				}
+			});
+		}, 2000);
+	}
+
+	function runSelfUpdate(b) {
+		b.disabled = true;
+		dom.content(out, E('em', {}, _('Starting the update…')));
+		dom.content(logBox, '');
+		fs.exec(UPDCTL, ['self-update']).then(function (res) {
+			report(true, (res.stdout || '') + (res.stderr || ''));
+			follow();
+		}).catch(function (e) {
+			report(false, describe(e));
+			b.disabled = false;
+		});
+	}
+
+	btnSelf.addEventListener('click', function (ev) {
+		var b = ev.target;
+		confirmThen(_('Update ClashWrt?'),
+			_('The installer replaces the pages and restarts rpcd. You may have to log in again.'),
+			_('Update ClashWrt'), function () { runSelfUpdate(b); });
+	});
+
+	loadCore();
+	loadSelf();
+
+	function row(label, ver, state, btn) {
+		return E('tr', { 'class': 'tr' }, [
+			E('td', { 'class': 'td left', 'style': 'width:22%' }, label),
+			E('td', { 'class': 'td left' }, [ver, ' ', state]),
+			E('td', { 'class': 'td left', 'style': 'width:14em' }, btn)
+		]);
+	}
+
+	return E('div', { 'class': 'cbi-section' }, [
+		E('h3', {}, _('Updates')),
+		E('table', { 'class': 'table' }, [
+			row(_('mihomo core'), coreVer, coreState, btnCore),
+			row(_('ClashWrt'), selfVer, selfState, btnSelf)
+		]),
+		E('details', { 'style': 'font-size:90%;opacity:0.75;margin-top:6px' }, [
+			E('summary', {}, _('What updating does')),
+			_('Updating the core downloads the build for this CPU and restarts mihomo if it was running; your configuration is untouched. Updating ClashWrt re-runs the installer, which keeps /etc/config/clashwrt and config.yaml but replaces the LuCI pages — reload the page once it reports finished.')
+		]),
+		logBox,
+		out
+	]);
+}
+
+function buildSplit() {
+	var out = E('div');
+	var state = E('strong', {}, _('checking…'));
+	var btn = E('button', { 'class': 'cbi-button cbi-button-action', 'disabled': 'disabled' },
+		_('Enable protocol split'));
+
+	var udpFilter = uci.get('clashwrt', 'wizard', 'udp_filter') || '(?i)(hysteria|hy2|tuic)';
+	var on = false;
+
+	function paint() {
+		dom.content(state, on ? _('enabled') : _('disabled'));
+		btn.className = 'cbi-button ' + (on ? 'cbi-button-reset' : 'cbi-button-action');
+		dom.content(btn, on ? _('Disable protocol split') : _('Enable protocol split'));
+	}
+
+	function report(ok, text) {
+		dom.content(out, E('div', {
+			'class': ok ? 'alert-message success' : 'alert-message warning',
+			'style': 'white-space:pre-wrap;margin-top:8px'
+		}, [ text ]));
+	}
+
+	fs.exec('/usr/libexec/clashwrt/confctl.sh', ['read']).then(function (res) {
+		on = gen.detectSplit(res.stdout || '').on;
+		btn.disabled = false;
+		paint();
+	}).catch(function (e) {
+		dom.content(state, _('unknown'));
+		report(false, (e.stderr || e.message || String(e)));
+	});
+
+	btn.addEventListener('click', function () {
+		btn.disabled = true;
+		dom.content(out, E('em', {}, _('Applying…')));
+
+		fs.exec('/usr/libexec/clashwrt/confctl.sh', ['read']).then(function (res) {
+			var cur = res.stdout || '';
+			var next = on
+				? gen.disableSplit(cur)
+				: gen.enableSplit(cur, { udpFilter: udpFilter });
+
+			return fs.write('/tmp/clashwrt-staging', next)
+				.then(function () { return fs.exec('/usr/libexec/clashwrt/confctl.sh', ['apply']); })
+				.then(function (r) {
+					on = !on;
+					paint();
+					btn.disabled = false;
+					report(true, (r.stdout || '') + (r.stderr || ''));
+				});
+		}).catch(function (e) {
+			btn.disabled = false;
+			report(false, (e.stdout || '') + (e.stderr || '') || String(e.message || e));
+		});
+	});
+
+	return E('div', { 'class': 'cbi-section' }, [
+		E('h3', {}, _('TCP / UDP protocol split')),
+		E('p', {}, [
+			_('Sends UDP to QUIC nodes, the rest to TCP nodes. Currently') + ' ',
+			state, '.'
+		]),
+		E('details', { 'style': 'font-size:90%;opacity:0.75;margin-bottom:6px' }, [
+			E('summary', {}, _('How it works')),
+			_('Applies to the configuration that is installed now, whether the wizard wrote it or you did. The result is checked before it replaces anything.')
+		]),
+		btn,
+		out
+	]);
+}
+
+/* The Flag below only takes effect through Save & Apply at the bottom of the
+ * page, which is easy to miss. This button commits just this one option;
+ * uci.apply() fires the procd reload trigger, which is the only reload. */
+function buildWatchdogToggle(map, flag) {
+	var on = uci.get('clashwrt', 'config', 'watchdog') === '1';
+	var busy = false;
+	var out = E('div');
+	var btn = E('button', {
+		'class': 'cbi-button',
+		'click': function (ev) {
+			ev.preventDefault();
+			if (busy) return;
+			var next = on ? '0' : '1';
+			busy = true;
+			btn.disabled = true;
+			dom.content(out, E('em', {}, _('Applying…')));
+			uci.set('clashwrt', 'config', 'watchdog', next);
+			uci.save().then(function () {
+				return uci.apply();
+			}).then(function () {
+				on = next === '1';
+				syncFlag();
+				dom.content(out, E('div', { 'class': 'alert-message success' },
+					[ on ? _('The watchdog is on.') : _('The watchdog is off.') ]));
+			}).catch(function (e) {
+				dom.content(out, E('div', { 'class': 'alert-message warning',
+					'style': 'white-space:pre-wrap' }, [ _('Could not change the watchdog: %s').format(describe(e)) ]));
+			}).finally(function () {
+				busy = false;
+				btn.disabled = false;
+				paint();
+			});
+		}
+	});
+
+	/* Keeps the checkbox in the form equal to what was just committed;
+	 * otherwise a later Save would write the stale value back. */
+	function syncFlag() {
+		var w = flag.getUIElement ? flag.getUIElement('config') : null;
+		if (w && w.setValue) w.setValue(on ? '1' : '0');
+		if (map.checkDepends) map.checkDepends();
+	}
+
+	function paint() {
+		btn.className = 'cbi-button ' + (on ? 'cbi-button-reset' : 'cbi-button-action');
+		dom.content(btn, on ? _('Turn the watchdog off') : _('Turn the watchdog on'));
+	}
+
+	paint();
+	poll.add(function () {
+		if (busy) return Promise.resolve();
+		return power.status().then(function (st) {
+			if (st['wd_enabled'] !== 'on' && st['wd_enabled'] !== 'off') return;
+			on = st['wd_enabled'] === 'on';
+			paint();
+		});
+	}, 5);
+
+	return E('div', { 'class': 'cbi-section', 'style': 'margin-top:-0.5em' }, [
+		btn,
+		E('div', { 'style': 'font-size:90%;opacity:0.8;margin-top:4px' },
+			_('Applies at once, without Save.')),
+		out
+	]);
+}
+
+function customNode(s, tab, name, build) {
+	var o = s.taboption(tab, form.DummyValue, name);
+	o.rawhtml = true;
+	o.render = function () { return build(); };
+	o.write = function () {};
+	o.remove = function () {};
+	return o;
+}
+
 return view.extend({
 	load: function () {
 		return Promise.all([
 			uci.load('clashwrt'),
-			callStatus()
+			callStatus(),
+			dashui.load()
 		]);
 	},
 
 	render: function (data) {
 		var statusText = data[1];
+		var dashData = data[2];
 		var m, s, o;
 
-		m = new form.Map('clashwrt', _('ClashWrt — transparent proxy'),
-			_('Intercepts LAN traffic and hands it to mihomo. Pick the interception mode that your kernel actually honours — see the mode descriptions below.'));
-
-		/* ---------------- status ---------------- */
-
-		s = m.section(form.NamedSection, 'config', 'clashwrt');
-		s.render = L.bind(function (view /* self */) {
-			var btn = E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'click': function (ev) {
-					var out = document.getElementById('clashwrt-selftest-out');
-					ev.target.disabled = true;
-					dom.content(out, E('em', {}, _('Testing, this takes a few seconds…')));
-					fs.exec('/usr/libexec/clashwrt/fw.sh', ['selftest'])
-						.then(function (res) {
-							var text = (res.stdout || '') + (res.stderr || '');
-							dom.content(out, E('pre', {
-								'style': 'white-space:pre-wrap;margin:6px 0 0 0'
-							}, text || _('No output.')));
-						})
-						.catch(function (e) {
-							dom.content(out, E('pre', {}, String(e)));
-						})
-						.finally(function () { ev.target.disabled = false; });
-				}
-			}, _('Test TPROXY support'));
-
-			function actionOut() {
-				return document.getElementById('clashwrt-selftest-out');
-			}
-
-			function report(ok, text) {
-				dom.content(actionOut(), E('div', {
-					'class': ok ? 'alert-message success' : 'alert-message warning',
-					'style': 'white-space:pre-wrap;margin-top:6px'
-				}, text));
-			}
-
-			/* Restarting the core is the first thing anyone reaches for after
-			 * editing a config or swapping a dashboard, so it belongs here
-			 * rather than only on the page that happens to need it. Stop and
-			 * start sit next to it because the pair is what you need when a
-			 * config is being debugged and the daemon must be out of the way. */
-			var btnPower = E('button', { 'class': 'cbi-button cbi-button-remove' }, _('Stop mihomo'));
-			var running = (parseStatus(statusText)['mihomo'] === 'running');
-
-			/* One button rather than two: a bare Stop leaves no way back from
-			 * the page that offered it. Which of the two it is follows the
-			 * status poll, so it cannot claim a state the router is not in. */
-			function paintPower(isRunning) {
-				/* leave a click that is still in flight alone */
-				if (btnPower.disabled) return;
-				running = isRunning;
-				btnPower.className = 'cbi-button ' + (isRunning ? 'cbi-button-remove' : 'cbi-button-apply');
-				dom.content(btnPower, isRunning ? _('Stop mihomo') : _('Start mihomo'));
-			}
-
-			function refreshStatus() {
-				return callStatus().then(function (txt) {
-					var target = document.getElementById('clashwrt-status');
-					if (target) dom.content(target, renderStatus(txt));
-					paintPower(parseStatus(txt)['mihomo'] === 'running');
-				});
-			}
-
-			/* Run an init action and re-read the status immediately afterwards,
-			 * so the badges do not sit on the old value until the next poll. */
-			function service(action, busy, fallback, b) {
-				b.disabled = true;
-				dom.content(actionOut(), E('em', {}, busy));
-				fs.exec('/etc/init.d/mihomo', [action]).then(function (res) {
-					report(true, (res.stdout || '') + (res.stderr || '') || fallback);
-				}).catch(function (e) {
-					report(false, describe(e));
-				}).finally(function () {
-					b.disabled = false;
-					refreshStatus();
-				});
-			}
-
-			btnPower.addEventListener('click', function () {
-				/* the button itself, not ev.target: paintPower keys off
-				 * btnPower.disabled to know a click is still in flight */
-				if (running)
-					service('stop', _('Stopping mihomo…'), _('mihomo stopped.'), btnPower);
-				else
-					service('start', _('Starting mihomo…'), _('mihomo started.'), btnPower);
-			});
-
-			var btnRestart = E('button', {
-				'class': 'cbi-button cbi-button-reset',
-				'style': 'margin-left:6px',
-				'click': function (ev) {
-					service('restart', _('Restarting mihomo…'), _('mihomo restarted.'), ev.target);
-				}
-			}, _('Restart mihomo'));
-
-			paintPower(running);
-
-			/* Browsers cache view scripts by a URL that never changes, so after
-			 * an update it is otherwise impossible to tell from the page
-			 * whether you are looking at the new code or a cached copy.
-			 * This stamp makes that a single glance. */
-			var node = E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, [
-					_('Status'),
-					E('span', {
-						'style': 'font-size:65%;font-weight:normal;opacity:0.6;margin-left:8px'
-					}, 'ui ' + UI_VERSION)
-				]),
-				E('div', { 'id': 'clashwrt-status' }, renderStatus(statusText)),
-				E('div', { 'style': 'margin-top:1em' }, [
-					btnPower, btnRestart,
-					/* Worth saying plainly: the ruleset stays up when the
-					 * daemon goes down, and in the TPROXY and NAT-redirect
-					 * modes that means LAN traffic is sent to a port with
-					 * nothing behind it rather than quietly going direct. */
-					E('div', {
-						'style': 'font-size:90%;opacity:0.8;margin-top:4px'
-					}, _('Stopping the core does not take the firewall rules down. In the TPROXY and NAT-redirect modes intercepted traffic then has nowhere to go and fails outright, so turn Enable off below as well if you want the LAN back on a direct path.'))
-				]),
-				E('div', { 'style': 'margin-top:1em' }, [
-					btn,
-					E('div', {
-						'style': 'font-size:90%;opacity:0.8;margin-top:4px'
-					}, _('Checks whether this kernel actually delivers TPROXY packets to a transparent socket, and recommends a mode. Requires socat. Briefly attaches a test interface to the LAN.')),
-					E('div', { 'id': 'clashwrt-selftest-out' })
-				])
-			]);
-
-			poll.add(refreshStatus, 5);
-
-			return node;
-		}, this, this);
-
-		/* ---------------- updates ---------------- */
-		/* Two things get updated on a router and they fail differently, so
-		 * they get a button each. The core is a single binary from a GitHub
-		 * release and swapping it is contained; ClashWrt is whatever
-		 * install.sh last laid down, and re-running it rewrites the LuCI
-		 * pages and restarts rpcd underneath the page doing the asking. */
+		/* The proxy on/off switch used to be a Flag here. It lives on the
+		 * Overview page now and owns the `enabled` key, so showing a second
+		 * control for it would let the two disagree. */
+		m = new form.Map('clashwrt', _('Settings'),
+			_('Safe defaults are set. Change only what you need.'));
 
 		s = m.section(form.NamedSection, 'config', 'clashwrt');
-		s.render = L.bind(function () {
-			var coreVer = E('span', {}, _('checking…'));
-			var coreState = E('span', {});
-			var selfVer = E('span', {}, _('checking…'));
-			var selfState = E('span', {});
-			var out = E('div');
-
-			var logBox = E('pre', {
-				'style': 'white-space:pre-wrap;max-height:18em;overflow:auto;margin:8px 0 0 0;display:none'
-			});
-
-			var btnCore = E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'disabled': 'disabled'
-			}, _('Update core'));
-
-			var btnSelf = E('button', {
-				'class': 'cbi-button cbi-button-action',
-				'disabled': 'disabled'
-			}, _('Update ClashWrt'));
-
-			function report(ok, text) {
-				dom.content(out, E('div', {
-					'class': ok ? 'alert-message success' : 'alert-message warning',
-					'style': 'white-space:pre-wrap;margin-top:8px'
-				}, text));
-			}
-
-			function loadCore() {
-				return fs.exec(UPDCTL, ['core-status']).then(function (res) {
-					var st = parseStatus(res.stdout || '');
-					dom.content(coreVer, [
-						E('strong', {}, st['installed'] || '?'),
-						' → ',
-						st['latest'] || '?',
-						E('span', { 'style': 'opacity:0.6' }, ' (' + (st['arch'] || '?') + ')')
-					]);
-					dom.content(coreState, updatePill(st['update']));
-					btnCore.disabled = false;
-				}).catch(function (e) {
-					dom.content(coreVer, _('unavailable'));
-					dom.content(coreState, updatePill('unknown'));
-					report(false, describe(e));
-				});
-			}
-
-			function loadSelf() {
-				return fs.exec(UPDCTL, ['self-status']).then(function (res) {
-					var st = parseStatus(res.stdout || '');
-					var have = shortId(st['installed']);
-					var want = shortId(st['latest']);
-					dom.content(selfVer, [
-						E('strong', {}, have || _('unknown')),
-						want ? ' → ' + want : '',
-						st['date'] && st['date'] !== 'unknown'
-							? E('span', { 'style': 'opacity:0.6' }, ' (' + st['date'] + ')')
-							: ''
-					]);
-					dom.content(selfState, updatePill(st['update']));
-					btnSelf.disabled = false;
-				}).catch(function (e) {
-					dom.content(selfVer, _('unavailable'));
-					dom.content(selfState, updatePill('unknown'));
-					report(false, describe(e));
-				});
-			}
-
-			btnCore.addEventListener('click', function (ev) {
-				var b = ev.target;
-				b.disabled = true;
-				dom.content(out, E('em', {}, _('Downloading the core, this takes a while…')));
-				fs.exec(UPDCTL, ['core-install']).then(function (res) {
-					report(true, (res.stdout || '') + (res.stderr || ''));
-				}).catch(function (e) {
-					report(false, describe(e));
-				}).finally(function () {
-					b.disabled = false;
-					loadCore();
-				});
-			});
-
-			/* The installer replaces this very page's script and then restarts
-			 * rpcd, which drops the session carrying these calls. So the work
-			 * runs detached and is followed through a log file rather than
-			 * through the exec that started it -- and the follow is expected
-			 * to lose contact near the end rather than to fail. */
-			var timer = null;
-			var misses = 0;
-
-			function stopFollow() {
-				if (timer !== null) {
-					window.clearInterval(timer);
-					timer = null;
-				}
-			}
-
-			function follow() {
-				stopFollow();
-				misses = 0;
-				logBox.style.display = '';
-				timer = window.setInterval(function () {
-					fs.exec(UPDCTL, ['log']).then(function (res) {
-						var text = (res.stdout || '') + (res.stderr || '');
-						misses = 0;
-						dom.content(logBox, text);
-						logBox.scrollTop = logBox.scrollHeight;
-						if (text.indexOf('=== clashwrt update finished') >= 0) {
-							stopFollow();
-							btnSelf.disabled = false;
-							report(text.indexOf('rc=0 ===') >= 0,
-								_('Update finished. Reload this page to load the new interface — you may have to log in again, because the update restarts rpcd.'));
-						}
-					}).catch(function () {
-						/* rpcd going down at the end of the install ends this
-						 * session, so a run of failures here is the normal
-						 * ending, not an error worth shouting about. */
-						if (++misses >= 5) {
-							stopFollow();
-							btnSelf.disabled = false;
-							report(true, _('Lost contact with the router, which is what the last step of the update looks like: it restarts rpcd and ends this session. Log in again and reload the page.'));
-						}
-					});
-				}, 2000);
-			}
-
-			btnSelf.addEventListener('click', function (ev) {
-				var b = ev.target;
-				b.disabled = true;
-				dom.content(out, E('em', {}, _('Starting the update…')));
-				dom.content(logBox, '');
-				fs.exec(UPDCTL, ['self-update']).then(function (res) {
-					report(true, (res.stdout || '') + (res.stderr || ''));
-					follow();
-				}).catch(function (e) {
-					report(false, describe(e));
-					b.disabled = false;
-				});
-			});
-
-			loadCore();
-			loadSelf();
-
-			function row(label, ver, state, btn) {
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td left', 'style': 'width:22%' }, label),
-					E('td', { 'class': 'td left' }, [ver, ' ', state]),
-					E('td', { 'class': 'td left', 'style': 'width:14em' }, btn)
-				]);
-			}
-
-			return E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Updates')),
-				E('table', { 'class': 'table' }, [
-					row(_('mihomo core'), coreVer, coreState, btnCore),
-					row(_('ClashWrt'), selfVer, selfState, btnSelf)
-				]),
-				E('div', { 'style': 'font-size:90%;opacity:0.75;margin-top:6px' },
-					_('Updating the core downloads the build for this CPU and restarts mihomo if it was running; your configuration is untouched. Updating ClashWrt re-runs the installer, which keeps /etc/config/clashwrt and config.yaml but replaces the LuCI pages — reload the page once it reports finished.')),
-				logBox,
-				out
-			]);
-		}, this, this);
-
-		/* ---------------- protocol split toggle ---------------- */
-		/* One button, because this is a thing people flip while testing.
-		 * It transforms whatever config is currently installed rather than
-		 * regenerating from the wizard's answers: plenty of configs were
-		 * written by hand and have no answers to regenerate from, and throwing
-		 * such a file away to turn one feature on would be a poor trade.
-		 * confctl validates the result before installing it, so a transform
-		 * that goes wrong cannot take the proxy down. */
-
-		s = m.section(form.NamedSection, 'config', 'clashwrt');
-		s.render = L.bind(function () {
-			var out = E('div');
-			var state = E('strong', {}, _('checking…'));
-			var btn = E('button', { 'class': 'cbi-button cbi-button-action', 'disabled': 'disabled' },
-				_('Enable protocol split'));
-
-			var udpFilter = uci.get('clashwrt', 'wizard', 'udp_filter') || '(?i)(hysteria|hy2|tuic)';
-			var on = false;
-
-			function paint() {
-				dom.content(state, on ? _('enabled') : _('disabled'));
-				btn.className = 'cbi-button ' + (on ? 'cbi-button-reset' : 'cbi-button-action');
-				dom.content(btn, on ? _('Disable protocol split') : _('Enable protocol split'));
-			}
-
-			function report(ok, text) {
-				dom.content(out, E('div', {
-					'class': ok ? 'alert-message success' : 'alert-message warning',
-					'style': 'white-space:pre-wrap;margin-top:8px'
-				}, text));
-			}
-
-			fs.exec('/usr/libexec/clashwrt/confctl.sh', ['read']).then(function (res) {
-				on = gen.detectSplit(res.stdout || '').on;
-				btn.disabled = false;
-				paint();
-			}).catch(function (e) {
-				dom.content(state, _('unknown'));
-				report(false, (e.stderr || e.message || String(e)));
-			});
-
-			btn.addEventListener('click', function () {
-				btn.disabled = true;
-				dom.content(out, E('em', {}, _('Applying…')));
-
-				fs.exec('/usr/libexec/clashwrt/confctl.sh', ['read']).then(function (res) {
-					var cur = res.stdout || '';
-					var next = on
-						? gen.disableSplit(cur)
-						: gen.enableSplit(cur, { udpFilter: udpFilter });
-
-					return fs.write('/tmp/clashwrt-staging', next)
-						.then(function () { return fs.exec('/usr/libexec/clashwrt/confctl.sh', ['apply']); })
-						.then(function (r) {
-							on = !on;
-							paint();
-							btn.disabled = false;
-							report(true, (r.stdout || '') + (r.stderr || ''));
-						});
-				}).catch(function (e) {
-					btn.disabled = false;
-					report(false, (e.stdout || '') + (e.stderr || '') || String(e.message || e));
-				});
-			});
-
-			return E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('TCP / UDP protocol split')),
-				E('p', {}, [
-					_('Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and everything else to the TCP-based ones. Currently') + ' ',
-					state, '.'
-				]),
-				E('p', { 'style': 'font-size:90%;opacity:0.75' },
-					_('Applies to the configuration that is installed now, whether the wizard wrote it or you did. The result is checked before it replaces anything.')),
-				btn,
-				out
-			]);
-		}, this, this);
-
-		/* ---------------- general ---------------- */
-
-		s = m.section(form.NamedSection, 'config', 'clashwrt', _('General'));
 		s.anonymous = true;
+		s.tab('basic', _('Basic'));
+		s.tab('bypass', _('Bypass'));
+		s.tab('advanced', _('Advanced'));
+		s.tab('maintenance', _('Maintenance'));
 
-		o = s.option(form.Flag, 'enabled', _('Enable'),
-			_('Build the ruleset and policy routing. Disabling tears both down and leaves traffic direct.'));
-		o.rmempty = false;
+		function basic()  { return s.taboption.apply(s, ['basic'].concat([].slice.call(arguments))); }
+		function bypass() { return s.taboption.apply(s, ['bypass'].concat([].slice.call(arguments))); }
+		function adv()    { return s.taboption.apply(s, ['advanced'].concat([].slice.call(arguments))); }
 
-		o = s.option(form.ListValue, 'mode', _('Interception mode'));
+		/* ---------------- basic ---------------- */
+
+		o = basic(form.ListValue, 'mode', _('Interception mode'));
 		o.value('tproxy', _('TPROXY — TCP + UDP'));
 		o.value('tproxy_tun', _('TPROXY for TCP + tun for UDP'));
 		o.value('tun', _('Tun — TCP + UDP'));
@@ -544,55 +630,47 @@ return view.extend({
 		 * while every extractor sees four separate literals -- so the lookup
 		 * misses and the text renders untranslated. */
 		o.description =
+			_('How LAN traffic is caught. The default works on every kernel.') +
+			'<details><summary>' + _('Which one should I pick?') + '</summary>' +
 			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket.') + ' ' +
 			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device.') + ' ' +
 			_('<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput.') + ' ' +
-			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.');
+			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.') +
+			'</details>';
 
-		o = s.option(form.Value, 'lan_device', _('LAN device'),
-			_('Only traffic arriving on this device is intercepted.'));
+		o = basic(form.Value, 'lan_device', _('LAN device'),
+			_('Only traffic arriving on this device is intercepted. Default: br-lan.'));
 		o.default = 'br-lan';
 		o.rmempty = false;
 
-		o = s.option(form.Value, 'tun_device', _('Tun device'),
-			_('Must match <code>tun.device</code> in mihomo\'s config.yaml.'));
-		o.default = 'clash-tun';
-		o.depends({ mode: 'tproxy', '!reverse': true });
-
-		o = s.option(form.Value, 'mihomo_dir', _('Mihomo directory'),
-			_('Where config.yaml lives. Listening ports are read from it, so the firewall cannot drift from the daemon.'));
-		o.default = '/etc/mihomo';
-
-		/* ---------------- behaviour ---------------- */
-
-		s = m.section(form.NamedSection, 'config', 'clashwrt', _('Behaviour'));
-		s.anonymous = true;
-
-		o = s.option(form.Flag, 'manage_zone', _('Manage firewall zone'),
-			_('Create and maintain an fw4 zone for the tun device. Without it fw4\'s own forward chain rejects forwarded tun traffic no matter what any other table accepts.'));
-		o.default = '1';
-
-		o = s.option(form.Flag, 'block_quic', _('Block QUIC'),
-			_('Reject UDP/443 so browsers fall back to TCP. Only useful when UDP is not proxied well.'));
+		o = basic(form.Flag, 'dns_hijack', _('Hijack LAN DNS'),
+			_('Sends LAN DNS queries to mihomo. Default: off. Leave off if dnsmasq already forwards to mihomo.'));
 		o.default = '0';
 
-		o = s.option(form.Flag, 'dns_hijack', _('Hijack LAN DNS'),
-			_('Redirect port 53 from the LAN into mihomo\'s resolver. Leave off if dnsmasq already forwards to mihomo.'));
+		o = basic(form.Flag, 'block_quic', _('Block QUIC'),
+			_('Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well.'));
 		o.default = '0';
 
-		o = s.option(form.DynamicList, 'bypass_net', _('Bypass destinations'),
-			_('Destination networks that are never proxied.'));
+		o = basic(form.Flag, 'watchdog', _('VPN watchdog'),
+			_('Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off.') +
+			'<details><summary>' + _('How it works') + '</summary>' +
+			_('It tests the proxy every few seconds. After repeated failures with the internet itself up, LAN traffic goes direct until the proxy answers again. Switching the proxy off yourself always wins.') + ' ' +
+			_('While it is bypassed, DNS is switched to your uplink resolver, and switched back when the proxy returns.') +
+			'</details>');
+		o.default = '0';
+		o.rmempty = false;
+		var wdFlag = o;
+		customNode(s, 'basic', '_n_wdtoggle', function () { return buildWatchdogToggle(m, wdFlag); });
+
+		/* ---------------- bypass ---------------- */
+
+		o = bypass(form.DynamicList, 'bypass_net', _('Bypass destinations'),
+			_('Destination networks that are never proxied. Default: none.'));
 		o.datatype = 'cidr4';
 
-		o = s.option(form.DynamicList, 'bypass_src', _('Bypass clients'),
-			_('LAN source addresses that are never proxied.'));
+		o = bypass(form.DynamicList, 'bypass_src', _('Bypass clients'),
+			_('LAN devices that are never proxied. Default: none.'));
 		o.datatype = 'ip4addr';
-
-		/* ---------------- kernel bypass set ---------------- */
-
-		s = m.section(form.NamedSection, 'config', 'clashwrt', _('Kernel bypass set'));
-		s.anonymous = true;
-		s.description = _('Decide in the kernel, before any marking happens, that a set of destinations skips the proxy — which is faster than reaching the same conclusion inside mihomo. Works in all four interception modes.');
 
 		/* One question, not two.
 		 *
@@ -604,13 +682,10 @@ return view.extend({
 		 * only ever be answered wrongly or redundantly.
 		 *
 		 * The direction is a real question for a list of your own, and it is
-		 * asked there and nowhere else. */
-		/* Every line answers the same question -- what skips the proxy -- because
-		 * that is what the set is for. Saying "Russian networks go direct" next
-		 * to "intercept only what is blocked" describes one entry by what
-		 * bypasses and the next by what does not, and leaves the reader turning
-		 * every other line around in their head to compare them. */
-		o = s.option(form.ListValue, 'bypass_set_profile', _('Skip the proxy for'));
+		 * asked there and nowhere else. Every line answers the same question
+		 * -- what skips the proxy -- so the entries can be compared at a glance. */
+		o = bypass(form.ListValue, 'bypass_set_profile', _('Skip the proxy for'),
+			_('Skips mihomo in the kernel, which is faster. Default: nothing.'));
 		o.value('off', _('Nothing — everything goes to mihomo'));
 		o.value('ru', _('Russian networks (ipdeny)'));
 		o.value('ru-geoip', _('Russian networks (meta-rules-dat)'));
@@ -644,12 +719,11 @@ return view.extend({
 		};
 		o.remove = function (sid) { uci.set('clashwrt', sid, 'bypass_set_mode', 'off'); };
 
-		/* Which way round the set goes is not really a preference: it follows
-		 * from what mihomo does with traffic that matches no rule, and mihomo
-		 * says that in one line — its terminal MATCH rule. So the default is
-		 * to read it. The two explicit answers stay for the config the parser
-		 * cannot read, and for anyone who means something else by it. */
-		o = s.option(form.ListValue, 'bypass_set_mode', _('Which way round'));
+		/* Which way round the set goes follows from what mihomo does with
+		 * traffic that matches no rule, and mihomo says that in one line --
+		 * its terminal MATCH rule. So the default is to read it. */
+		o = bypass(form.ListValue, 'bypass_set_mode', _('Which way round'),
+			_('Default: work it out from your mihomo routing.'));
 		o.value('auto', _('Work it out from mihomo\'s routing'));
 		o.value('exclude', _('Skip the proxy for the listed addresses'));
 		o.value('include', _('Skip the proxy for everything except the listed addresses'));
@@ -659,23 +733,23 @@ return view.extend({
 		 * not mean being cleared. */
 		o.retain = true;
 
-		o = s.option(form.Value, 'bypass_set_url', _('List URL'),
+		o = bypass(form.Value, 'bypass_set_url', _('List URL'),
 			_('Plain CIDR per line, or a YAML <code>payload:</code> list. Anything that is not an IPv4 network is ignored.'));
 		o.depends('bypass_set_profile', 'custom');
 
-		o = s.option(form.Value, 'bypass_set_interval', _('Refresh interval (seconds)'));
+		o = bypass(form.Value, 'bypass_set_interval', _('Refresh interval (seconds)'),
+			_('How often the list is downloaded again. Default: 86400 (one day).'));
 		o.datatype = 'uinteger';
 		o.default = '86400';
 		o.depends({ bypass_set_profile: 'off', '!reverse': true });
 
 		/* The status block is where a derived direction becomes visible, so it
 		 * has to be filled on arrival rather than only after someone presses
-		 * Refresh — an automatic decision nobody can see is worse than a
-		 * question. cfgvalue is called more than once per render, hence the
+		 * Refresh. cfgvalue is called more than once per render, hence the
 		 * guard: one read, not one per call. */
 		var setStatusRead = false;
 
-		o = s.option(form.DummyValue, '_setstatus', _('Status'));
+		o = bypass(form.DummyValue, '_setstatus', _('Status'));
 		o.rawhtml = true;
 		o.depends({ bypass_set_profile: 'off', '!reverse': true });
 		o.cfgvalue = function () {
@@ -686,7 +760,7 @@ return view.extend({
 
 			var paint = function (text) {
 				var target = document.getElementById('clashwrt-set-status') || node;
-				dom.content(target, E('pre', { 'style': 'margin:0' }, text));
+				dom.content(target, E('pre', { 'style': 'margin:0' }, [ text ]));
 			};
 			fs.exec('/usr/libexec/clashwrt/setctl.sh', ['status'])
 				.then(function (r) { paint((r.stdout || '') + (r.stderr || '')); })
@@ -694,71 +768,125 @@ return view.extend({
 			return node;
 		};
 
-		o = s.option(form.Button, '_setupdate', _('Refresh now'));
+		o = bypass(form.Button, '_setupdate', _('Refresh now'));
 		o.inputstyle = 'action';
 		o.depends({ bypass_set_profile: 'off', '!reverse': true });
-		o.onclick = function (ev) {
+		o.onclick = function () {
 			var out = document.getElementById('clashwrt-set-status');
 			dom.content(out, E('em', {}, _('Downloading…')));
 			return fs.exec('/usr/libexec/clashwrt/setctl.sh', ['update', 'force'])
 				.then(function () { return fs.exec('/usr/libexec/clashwrt/setctl.sh', ['status']); })
-				.then(function (r) { dom.content(out, E('pre', { 'style': 'margin:0' }, r.stdout || '')); })
-				.catch(function (e) { dom.content(out, E('pre', {}, String(e.message || e))); });
+				.then(function (r) { dom.content(out, E('pre', { 'style': 'margin:0' }, [ r.stdout || '' ])); })
+				.catch(function (e) { dom.content(out, E('pre', {}, [ String(e.message || e) ])); });
 		};
 
 		/* ---------------- advanced ---------------- */
 
-		s = m.section(form.NamedSection, 'config', 'clashwrt', _('Advanced'));
-		s.anonymous = true;
+		o = adv(form.Value, 'tun_device', _('Tun device'),
+			_('Must match <code>tun.device</code> in config.yaml. Default: clash-tun.'));
+		o.default = 'clash-tun';
+		o.depends({ mode: 'tproxy', '!reverse': true });
 
-		o = s.option(form.Value, 'tproxy_port', _('TPROXY port'),
-			_('Leave empty to read <code>tproxy-port</code> from config.yaml.'));
+		o = adv(form.Value, 'mihomo_dir', _('Mihomo directory'),
+			_('Where config.yaml lives; ports are read from it. Default: /etc/mihomo.'));
+		o.default = '/etc/mihomo';
+
+		o = adv(form.Flag, 'manage_zone', _('Manage firewall zone'),
+			_('Keeps an fw4 zone for the tun device. Default: on. Without it fw4 rejects forwarded tun traffic.'));
+		o.default = '1';
+
+		o = adv(form.Value, 'tproxy_port', _('TPROXY port'),
+			_('Leave empty to read <code>tproxy-port</code> from config.yaml. Default: empty.'));
 		o.datatype = 'port';
 		o.depends('mode', 'tproxy');
 		o.depends('mode', 'tproxy_tun');
 
-		o = s.option(form.Value, 'redir_port', _('Redirect port'),
-			_('Leave empty to read <code>redir-port</code> from config.yaml.'));
+		o = adv(form.Value, 'redir_port', _('Redirect port'),
+			_('Leave empty to read <code>redir-port</code> from config.yaml. Default: empty.'));
 		o.datatype = 'port';
 		o.depends('mode', 'redirect_tun');
 
-		o = s.option(form.Value, 'dns_port', _('Mihomo DNS port'));
+		o = adv(form.Value, 'dns_port', _('Mihomo DNS port'),
+			_('Where mihomo\'s resolver listens. Default: 1053.'));
 		o.datatype = 'port';
 		o.default = '1053';
 
-		o = s.option(form.Value, 'api_port', _('Mihomo API port'));
+		o = adv(form.Value, 'api_port', _('Mihomo API port'),
+			_('Used by the dashboard and the watchdog. Default: 9090.'));
 		o.datatype = 'port';
 		o.default = '9090';
 
-		o = s.option(form.Value, 'self_mark', _('Mihomo routing mark'),
-			_('Must match <code>routing-mark</code> in config.yaml. Traffic carrying it is never re-intercepted, otherwise mihomo\'s own connections loop back into mihomo.'));
+		o = adv(form.Value, 'self_mark', _('Mihomo routing mark'),
+			_('Must match <code>routing-mark</code> in config.yaml, or mihomo\'s own traffic loops back into itself. Default: 2.'));
 		o.datatype = 'uinteger';
 		o.default = '2';
 
-		o = s.option(form.Value, 'mark_tproxy', _('TCP fwmark'));
+		o = adv(form.Value, 'mark_tproxy', _('TCP fwmark'),
+			_('Firewall mark for TPROXY traffic. Default: 1.'));
 		o.datatype = 'uinteger';
 		o.default = '1';
 
-		o = s.option(form.Value, 'mark_tun', _('Tun fwmark'));
+		o = adv(form.Value, 'mark_tun', _('Tun fwmark'),
+			_('Firewall mark for tun traffic. Default: 3.'));
 		o.datatype = 'uinteger';
 		o.default = '3';
 
-		o = s.option(form.Value, 'table_tproxy', _('TPROXY routing table'));
+		o = adv(form.Value, 'table_tproxy', _('TPROXY routing table'),
+			_('Routing table number for TPROXY. Default: 100.'));
 		o.datatype = 'uinteger';
 		o.default = '100';
 
-		o = s.option(form.Value, 'table_tun', _('Tun routing table'));
+		o = adv(form.Value, 'table_tun', _('Tun routing table'),
+			_('Routing table number for tun. Default: 151.'));
 		o.datatype = 'uinteger';
 		o.default = '151';
 
-		o = s.option(form.Value, 'rule_pref', _('Rule preference'));
+		o = adv(form.Value, 'rule_pref', _('Rule preference'),
+			_('Priority of the policy-routing rules. Default: 1002.'));
 		o.datatype = 'uinteger';
 		o.default = '1002';
 
-		o = s.option(form.Value, 'tun_wait', _('Tun wait (seconds)'),
-			_('How long to wait for the tun device at startup. It is created by mihomo, so it may not exist yet; hotplug re-applies the route regardless once it appears.'));
+		o = adv(form.Value, 'tun_wait', _('Tun wait (seconds)'),
+			_('How long to wait for the tun device at startup. Default: 10. Hotplug re-applies the route once it appears.'));
 		o.datatype = 'uinteger';
 		o.default = '10';
+
+		function wd(name, title, desc, def) {
+			var w = adv(form.Value, name, title, desc);
+			w.datatype = 'min(1)';
+			w.default = def;
+			w.placeholder = def;
+			w.depends('watchdog', '1');
+			return w;
+		}
+
+		o = adv(form.Value, 'watchdog_group', _('Watchdog proxy group'),
+			_('Group whose delay is tested. Default: empty, read from config.yaml.'));
+		o.depends('watchdog', '1');
+
+		wd('watchdog_fail', _('Watchdog: failures before bypass'),
+			_('Failed tests in a row, with the internet up, before traffic goes direct. Default: 3.'), '3');
+		wd('watchdog_ok', _('Watchdog: successes before restore'),
+			_('Good tests in a row before the proxy comes back. Default: 3.'), '3');
+		wd('watchdog_interval', _('Watchdog: test interval (seconds)'),
+			_('Time between tests while all is well. Default: 20.'), '20');
+		wd('watchdog_fast', _('Watchdog: fast interval (seconds)'),
+			_('Time between tests after a failure. Default: 5.'), '5');
+		wd('watchdog_hold', _('Watchdog: minimum bypass (seconds)'),
+			_('Traffic stays direct at least this long. Default: 120.'), '120');
+		wd('watchdog_hold_max', _('Watchdog: maximum bypass hold (seconds)'),
+			_('The hold doubles on repeated flips, up to this. Default: 900.'), '900');
+		wd('watchdog_grace', _('Watchdog: boot grace (seconds)'),
+			_('No bypass this long after the proxy starts. Default: 90.'), '90');
+		wd('watchdog_timeout', _('Watchdog: test timeout (seconds)'),
+			_('How long one test waits for an answer. Default: 5.'), '5');
+
+		/* ---------------- maintenance ---------------- */
+
+		customNode(s, 'maintenance', '_n_status', function () { return buildStatus(statusText); });
+		customNode(s, 'maintenance', '_n_updates', buildUpdates);
+		customNode(s, 'maintenance', '_n_split', buildSplit);
+		customNode(s, 'maintenance', '_n_dash', function () { return dashui.render(dashData); });
 
 		return m.render();
 	}

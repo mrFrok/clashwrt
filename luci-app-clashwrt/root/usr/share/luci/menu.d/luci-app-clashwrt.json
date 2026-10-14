@@ -14,12 +14,12 @@
 			}
 		}
 	},
-	"admin/services/clashwrt/settings": {
-		"title": "Settings",
+	"admin/services/clashwrt/overview": {
+		"title": "Overview",
 		"order": 10,
 		"action": {
 			"type": "view",
-			"path": "clashwrt/settings"
+			"path": "clashwrt/overview"
 		}
 	},
 	"admin/services/clashwrt/wizard": {
@@ -38,28 +38,32 @@
 			"path": "clashwrt/config-editor"
 		}
 	},
-	"admin/services/clashwrt/files": {
-		"title": "Rule files",
+	"admin/services/clashwrt/settings": {
+		"title": "Settings",
 		"order": 40,
 		"action": {
 			"type": "view",
-			"path": "clashwrt/files"
-		}
-	},
-	"admin/services/clashwrt/dashboard": {
-		"title": "Web dashboard",
-		"order": 50,
-		"action": {
-			"type": "view",
-			"path": "clashwrt/dashboard"
+			"path": "clashwrt/settings"
 		}
 	},
 	"admin/services/clashwrt/logs": {
 		"title": "Logs",
-		"order": 45,
+		"order": 50,
 		"action": {
 			"type": "view",
 			"path": "clashwrt/logs"
+		}
+	},
+	"admin/services/clashwrt/files": {
+		"action": {
+			"type": "alias",
+			"path": "admin/services/clashwrt/editor"
+		}
+	},
+	"admin/services/clashwrt/dashboard": {
+		"action": {
+			"type": "alias",
+			"path": "admin/services/clashwrt/settings"
 		}
 	}
 }

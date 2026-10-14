@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 'use strict';
-'require view';
+'require baseclass';
 'require fs';
 'require uci';
 'require ui';
@@ -12,7 +12,7 @@ function say(node, ok, text) {
 	dom.content(node, E('div', {
 		'class': ok ? 'alert-message success' : 'alert-message warning',
 		'style': 'white-space:pre-wrap;margin:8px 0 0 0'
-	}, text || (ok ? '' : _('No output.'))));
+	}, [ text || (ok ? '' : _('No output.')) ]));
 }
 
 /* fs.exec rejects with an Error when the command fails or is not permitted,
@@ -25,7 +25,7 @@ function describe(e) {
 	return String(e.message || e);
 }
 
-return view.extend({
+return baseclass.extend({
 	load: function () {
 		return Promise.all([
 			uci.load('clashwrt'),
@@ -47,11 +47,11 @@ return view.extend({
 		var uiUrl = 'http://' + window.location.hostname + ':' + apiPort + '/ui/';
 
 		var out = E('div');
-		var cur = E('strong', {}, current || '—');
+		var cur = E('strong', {}, [ current || '—' ]);
 
 		var sel = E('select', { 'class': 'cbi-input-select' },
 			list.length
-				? list.map(function (d) { return E('option', { 'value': d.id }, d.title); })
+				? list.map(function (d) { return E('option', { 'value': d.id }, [ d.title ]); })
 				: [E('option', { 'value': '' }, _('unavailable'))]);
 
 		var customUrl = E('input', {
@@ -67,7 +67,7 @@ return view.extend({
 					'class': 'alert-message success',
 					'style': 'white-space:pre-wrap;margin:8px 0 0 0'
 				}, [
-					E('div', {}, (res.stdout || '') + (res.stderr || '')),
+					E('div', {}, [ (res.stdout || '') + (res.stderr || '') ]),
 					/* A dashboard already open in another tab is held by its
 					 * own service worker until the next navigation, so the
 					 * panel can still look unchanged right after installing. */
@@ -76,7 +76,7 @@ return view.extend({
 				]));
 				btn.disabled = false;
 				return fs.exec(UICTL, ['current']).then(function (r) {
-					dom.content(cur, (r.stdout || '').trim() || '—');
+					dom.content(cur, [ (r.stdout || '').trim() || '—' ]);
 				});
 			}).catch(function (e) {
 				say(out, false, describe(e));
@@ -129,36 +129,28 @@ return view.extend({
 			'style': 'margin-left:6px'
 		}, _('Open dashboard'));
 
-		return E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, _('Web dashboard')),
-			E('div', { 'class': 'cbi-map-descr' },
-				_('The panel mihomo serves at its API port. Any of these can be swapped at any time; the previous one is only removed once the new copy has been checked.')),
+		return E('div', { 'class': 'cbi-section' }, [
+			E('h3', {}, _('Web dashboard')),
+			E('p', {}, [ _('Currently installed:') + ' ', cur ]),
+			E('p', {}, [
+				_('Address:') + ' ',
+				E('a', { 'href': uiUrl, 'target': '_blank', 'rel': 'noopener' }, uiUrl)
+			]),
+			E('div', {}, [ openLink, btnRestart ]),
 
-			E('div', { 'class': 'cbi-section' }, [
-				E('p', {}, [ _('Currently installed:') + ' ', cur ]),
-				E('p', {}, [
-					_('Address:') + ' ',
-					E('a', { 'href': uiUrl, 'target': '_blank', 'rel': 'noopener' }, uiUrl)
-				]),
-				E('div', {}, [ openLink, btnRestart ]),
+			E('div', { 'style': 'margin-top:14px' }, [
+				E('label', { 'style': 'margin-right:6px' }, _('Dashboard:')),
+				sel, btnInstall
+			]),
 
-				E('div', { 'style': 'margin-top:14px' }, [
-					E('label', { 'style': 'margin-right:6px' }, _('Dashboard:')),
-					sel, btnInstall
-				]),
+			E('details', { 'style': 'margin-top:14px' }, [
+				E('summary', {}, _('Install from a URL')),
+				E('div', { 'style': 'font-size:90%;opacity:0.75;margin:6px 0' },
+					_('Or install any other dashboard from a .tar.gz archive containing index.html. Note that .zip is not supported: OpenWrt images routinely ship without unzip.')),
+				customUrl, btnCustom
+			]),
 
-				E('div', { 'style': 'margin-top:14px' }, [
-					E('div', { 'style': 'font-size:90%;opacity:0.75;margin-bottom:4px' },
-						_('Or install any other dashboard from a .tar.gz archive containing index.html. Note that .zip is not supported: OpenWrt images routinely ship without unzip.')),
-					customUrl, btnCustom
-				]),
-
-				out
-			])
+			out
 		]);
-	},
-
-	handleSave: null,
-	handleSaveApply: null,
-	handleReset: null
+	}
 });
