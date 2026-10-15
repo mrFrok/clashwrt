@@ -134,6 +134,7 @@ return view.extend({
 		var cfgRes = data && data[1];
 		var cfgText = (cfgRes && cfgRes.code === 0) ? (cfgRes.stdout || '') : '';
 		var cfg = gen.parseConfig(cfgText);
+		var secret = gen.newSecret();
 		var hasCfg = cfgText.trim().length > 0;
 		var a = this.readAnswers(cfg, hasCfg);
 		var previewKind = '';
@@ -393,7 +394,10 @@ return view.extend({
 				udpFilter: ans.udpFilter,
 				tcpFilter: ans.tcpFilter,
 				extraDomains: gen.normDomains(ans.extraDomains),
-				extraGroup: ans.extraGroup
+				extraGroup: ans.extraGroup,
+				/* keep the installed one, so a dashboard already logged in
+				 * stays logged in; otherwise make one */
+				secret: cfg.secret || secret
 			};
 		}
 

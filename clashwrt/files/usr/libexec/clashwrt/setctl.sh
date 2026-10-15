@@ -57,6 +57,12 @@ CONF_LIST="$STATE_DIR/config4.list"
 CONF_DOMAINS="$STATE_DIR/config-domains.list"
 CONF_NOTES="$STATE_DIR/config.notes"
 
+# The largest of the preset lists is a few hundred KB and well under 100000
+# networks; ten times that is a list from somewhere that should not be
+# trusted with a router's memory.
+MAX_LIST_BYTES=16777216
+MAX_LIST_ENTRIES=500000
+
 log() { logger -t "$NAME" "$@"; [ -t 1 ] && echo "$NAME: $*" >&2; return 0; }
 die() { logger -t "$NAME" "ERROR: $*"; echo "$NAME: ERROR: $*" >&2; exit 1; }
 
@@ -558,20 +564,29 @@ do_update() {
 	fi
 
 	mkdir -p "$STATE_DIR"
-	local tmp="/tmp/clashwrt-set.$$"
+	local tmp
+	tmp="$(mktemp /tmp/clashwrt-set.XXXXXX)" || die "cannot create a temporary file"
 	log "fetching $url"
-	if ! curl -sSL --fail -m 180 -o "$tmp" "$url"; then
+	# Bounded twice over: a list host serving gigabytes would otherwise fill
+	# the RAM /tmp lives in, and millions of entries would follow it into
+	# flash and into the kernel set on every apply.
+	if ! curl -sSL --fail -m 180 --max-filesize "$MAX_LIST_BYTES" -o "$tmp" "$url"; then
 		rm -f "$tmp"
 		# keep whatever we had: an empty set would silently proxy everything
 		[ -s "$LIST" ] && { log "download failed, keeping the previous list"; return 0; }
 		die "download failed and no previous list exists"
 	fi
 
-	parse_list < "$tmp" > "$tmp.parsed"
+	parse_list < "$tmp" | head -n "$((MAX_LIST_ENTRIES + 1))" > "$tmp.parsed"
 	rm -f "$tmp"
 
 	local n
 	n="$(grep -c . "$tmp.parsed" 2>/dev/null || echo 0)"
+	if [ "$n" -gt "$MAX_LIST_ENTRIES" ]; then
+		rm -f "$tmp.parsed"
+		[ -s "$LIST" ] && { log "more than $MAX_LIST_ENTRIES networks in $url, keeping the previous list"; return 0; }
+		die "more than $MAX_LIST_ENTRIES networks in $url -- not a list this router should load"
+	fi
 	if [ "$n" -lt 10 ]; then
 		rm -f "$tmp.parsed"
 		[ -s "$LIST" ] && { log "only $n networks parsed, keeping the previous list"; return 0; }

@@ -104,4 +104,41 @@ t('enableSplit/disableSplit round-trip on a multiword base group', function () {
 		gen.groupNames(BASE.split('\n')));
 });
 
+/* A vmess link is base64 JSON from somebody else. */
+function vmess(o) { return 'vmess://' + Buffer.from(JSON.stringify(o)).toString('base64'); }
+var NODE = { ps: 'n', add: 'h.example', port: 443, net: 'tcp' };
+function topKeys(y) {
+	return y.split('\n').filter(function (l) { return /^[A-Za-z]/.test(l); })
+		.map(function (l) { return l.split(':')[0]; });
+}
+
+t('a vmess field that is an object is refused, not written as a nested map', function () {
+	var evil = Object.assign({}, NODE,
+		{ id: { 'x: 1}\nsecret: attacker\nlisteners: [{port: 1080}]\nz: #': 1 } });
+	var r = gen.parseLinks(vmess(evil));
+	assert.strictEqual(r.proxies.length, 0);
+	assert.strictEqual(r.failed, 1);
+});
+
+t('line breaks in a node name stay inside its quoted scalar', function () {
+	var r = gen.parseLinks(vmess(Object.assign({}, NODE, { id: 'u', ps: "a'\nsecret: x\n" })));
+	var y = gen.generate({ proxies: r.proxies, mode: 'tproxy', routing: 'direct_except_list' });
+	assert.strictEqual(topKeys(y).indexOf('secret'), -1);
+});
+
+t('inlineMap refuses a key that is not the generator\'s own', function () {
+	assert.throws(function () {
+		gen.generate({ proxies: [{ name: 'n', type: 'ss', server: 's', port: 1, 'a\nb': 1 }],
+			mode: 'tproxy', routing: 'direct_except_list' });
+	});
+});
+
+t('the controller gets the secret it is given, and parseConfig reads it back', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', secret: 'S3cret' });
+	assert.ok(/^secret: S3cret$/m.test(y));
+	assert.strictEqual(gen.parseConfig(y).secret, 'S3cret');
+	var none = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' });
+	assert.strictEqual(topKeys(none).indexOf('secret'), -1);
+});
+
 console.log(n + ' generator tests passed');

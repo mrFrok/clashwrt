@@ -329,6 +329,9 @@ idir "$MIHOMO_DIR"
 
 if [ ! -f "$MIHOMO_DIR/config.yaml" ]; then
 	say "writing a placeholder config (the wizard will replace it)"
+	# The controller listens on every interface so the dashboard works from
+	# the LAN; without a secret anyone there could drive it.
+	API_SECRET="$(tr -dc 'A-Za-z0-9' < /dev/urandom 2>/dev/null | head -c 24)"
 	cat > "$MIHOMO_DIR/config.yaml" <<EOF
 # Placeholder written by the clashwrt installer.
 # Use Services -> ClashWrt -> Setup wizard to generate a real one.
@@ -337,6 +340,7 @@ log-level: info
 ipv6: false
 allow-lan: false
 external-controller: 0.0.0.0:9090
+secret: '$API_SECRET'
 external-ui: $MIHOMO_DIR/ui
 routing-mark: 2
 redir-port: 7893

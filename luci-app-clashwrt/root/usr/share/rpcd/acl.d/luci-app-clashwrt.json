@@ -2,44 +2,8 @@
 	"luci-app-clashwrt": {
 		"description": "Grant access to mihomo transparent proxy settings",
 		"read": {
-			"file": {
-				"/usr/libexec/clashwrt/fw.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/confctl.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/filectl.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/uictl.sh": [
-					"exec"
-				],
-				"/etc/init.d/clashwrt": [
-					"exec"
-				],
-				"/etc/init.d/mihomo": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/logctl.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/updctl.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/setctl.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/powerctl.sh": [
-					"exec"
-				],
-				"/usr/libexec/clashwrt/watchdog.sh": [
-					"exec"
-				]
-			},
 			"ubus": {
 				"file": [
-					"exec",
 					"read",
 					"stat"
 				],

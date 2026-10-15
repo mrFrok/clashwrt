@@ -33,13 +33,13 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 # A config references its rule-set files by relative path, so the probe
 # directory mirrors the real one by symlink and only config.yaml is replaced.
 validate_file() {
-	local candidate="$1"
-	local probe="/tmp/clashwrt-probe.$$"
+	local candidate="$1" probe
 
 	[ -s "$candidate" ] || { echo "candidate is empty" >&2; return 1; }
 
-	rm -rf "$probe"
-	mkdir -p "$probe" || return 1
+	# a fresh directory of its own: a name in /tmp that is merely likely to
+	# be unused is one somebody else can create first
+	probe="$(mktemp -d /tmp/clashwrt-probe.XXXXXX)" || return 1
 
 	local entry base
 	for entry in "$MIHOMO_DIR"/* "$MIHOMO_DIR"/.[!.]*; do
@@ -131,8 +131,20 @@ do_read() {
 	cat "$CONF"
 }
 
+# The staged file is moved out of /tmp before anything looks at it: what is
+# validated is then exactly what gets installed, and nobody can swap or
+# relink the file in between. A symlink or anything but a plain file is not
+# a staged config.
+take_staged() {
+	local f
+	[ -f "$STAGING" ] && [ ! -L "$STAGING" ] || { echo "nothing staged at $STAGING" >&2; return 1; }
+	f="$(mktemp /tmp/clashwrt-staged.XXXXXX)" || return 1
+	mv -f "$STAGING" "$f" || { rm -f "$f"; return 1; }
+	echo "$f"
+}
+
 do_validate() {
-	[ -f "$STAGING" ] || die "nothing staged at $STAGING"
+	[ -f "$STAGING" ] && [ ! -L "$STAGING" ] || die "nothing staged at $STAGING"
 	if validate_file "$STAGING"; then
 		echo "OK: configuration is valid"
 		return 0
@@ -141,8 +153,10 @@ do_validate() {
 }
 
 do_apply() {
-	[ -f "$STAGING" ] || die "nothing staged at $STAGING"
-	validate_file "$STAGING" || die "refusing to install an invalid configuration"
+	# global, not local: the EXIT trap runs after this function has returned
+	STAGED="$(take_staged)" || exit 1
+	trap 'rm -f "$STAGED"' EXIT
+	validate_file "$STAGED" || die "refusing to install an invalid configuration"
 
 	mkdir -p "$BACKUP_DIR"
 	if [ -f "$CONF" ]; then
@@ -154,8 +168,7 @@ do_apply() {
 		rotate_backups
 	fi
 
-	cat "$STAGING" > "$CONF"
-	rm -f "$STAGING"
+	cat "$STAGED" > "$CONF"
 	echo "installed $CONF"
 
 	# only now, with a good config in place and a fresh backup beside it
@@ -181,12 +194,13 @@ do_backups() {
 do_restore() {
 	local which="$1"
 	[ -n "$which" ] || die "which backup?"
-	case "$which" in
-		*/*|..*) die "invalid backup name" ;;
-	esac
+	# the same rule as rename and delete, rather than a looser one of its own
+	valid_backup_name "$which" || die "invalid backup name"
 	local src="$BACKUP_DIR/$which"
-	[ -f "$src" ] || die "no such backup: $which"
-	cp "$src" "$STAGING"
+	[ -f "$src" ] && [ ! -L "$src" ] || die "no such backup: $which"
+	# staged through a new file of its own rather than the shared name in /tmp
+	rm -f "$STAGING"
+	cp "$src" "$STAGING.$$" && mv -f "$STAGING.$$" "$STAGING" || die "could not stage $which"
 	do_apply
 }
 

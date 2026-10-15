@@ -206,8 +206,20 @@ core_installed() {
 }
 
 core_latest() {
-	curl -sSL -m 30 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest 2>/dev/null \
-		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1
+	local t
+	t="$(curl -sSL -m 30 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest 2>/dev/null \
+		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+	valid_tag "$t" && echo "$t"
+}
+
+# A release tag goes into the download URL twice, so it must be a tag and
+# nothing else: no '/', '..', '#' or '?' that could point the download of a
+# file that is then run as root somewhere other than mihomo's releases.
+valid_tag() {
+	case "$1" in
+		""|*[!A-Za-z0-9._-]*|*..*|[.-]*) return 1 ;;
+	esac
+	[ "${#1}" -le 64 ]
 }
 
 do_core_status() {
@@ -590,6 +602,7 @@ do_core_install() {
 		ver="$(core_latest)"
 	fi
 	[ -n "$ver" ] || die "could not determine the mihomo version (pass it as an argument, or set MIHOMO_VERSION)"
+	valid_tag "$ver" || die "not a release tag: $ver"
 
 	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/mihomo-linux-${arch}-${ver}.gz"
 
@@ -731,10 +744,14 @@ do_self_update() {
 	fi
 
 	local url="https://raw.githubusercontent.com/$SLUG/$want/install.sh"
-	local script="/tmp/clashwrt-selfupdate.sh"
-	local runner="/tmp/clashwrt-selfupdate-run.sh"
+	# The installer is run as root, so it is fetched into a directory only
+	# this process created: nothing can be planted there or swapped in
+	# between the check below and the run.
+	local dir script runner
+	dir="$(mktemp -d /tmp/clashwrt-selfupdate.XXXXXX)" || die "cannot create a temporary directory"
+	script="$dir/install.sh"
+	runner="$dir/run.sh"
 
-	rm -f "$script" "$runner"
 	curl -sSL --fail -m 120 -o "$script" "$url" || die "could not download $url"
 	[ -s "$script" ] || die "the downloaded installer is empty"
 
@@ -753,10 +770,11 @@ SKIP_CORE=1 REPO_URL='$src' sh '$script'
 _rc=\$?
 echo
 echo "=== clashwrt update finished, rc=\$_rc ==="
+rm -rf '$dir'
 RUNNER
 	chmod +x "$runner"
 
-	: > "$LOG"
+	rm -f "$LOG"
 
 	# setsid puts the installer in its own session, so the rpcd restart at
 	# the end of install.sh cannot take down the process performing it.

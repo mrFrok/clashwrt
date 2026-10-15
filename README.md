@@ -270,6 +270,8 @@ Two views. The live one is mihomo's own log, streamed straight from its API into
 
 Installs metacubexd, zashboard or Yacd, or any `.tar.gz` containing an `index.html` (not `.zip` — OpenWrt images routinely ship without `unzip`). The installer is under Settings → Maintenance; the Overview links straight to the panel and has a button to restart mihomo, which is needed when `external-ui` has just changed.
 
+The panel talks to mihomo's API, which listens on every interface so it can be reached from the LAN. The installer's placeholder config and every config the wizard writes therefore set a random `secret:`; the wizard keeps the one already installed, so a logged-in panel stays logged in. Enter that value as the panel's secret (it is the `secret:` line of `config.yaml`, shown in Configuration → Editor). A config written by hand is left as it is: if it has no `secret:`, add one.
+
 ## Configuration
 
 **Services → ClashWrt → Settings**, or `/etc/config/clashwrt`. Every setting has a safe default and a one-line reason next to it.

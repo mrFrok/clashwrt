@@ -61,7 +61,7 @@ do_read() {
 
 do_save() {
 	check_name "$1"
-	[ -f "$STAGING" ] || die "nothing staged at $STAGING"
+	[ -f "$STAGING" ] && [ ! -L "$STAGING" ] || die "nothing staged at $STAGING"
 	mkdir -p "$BASE"
 	cat "$STAGING" > "$BASE/$1"
 	rm -f "$STAGING"
@@ -78,6 +78,8 @@ do_delete() {
 # Reloading rule providers does not need a full restart: mihomo re-reads
 # file-backed providers on demand through its API.
 do_reload() {
+	# the name goes into a URL path on the local API
+	check_name "$1"
 	config_get API_PORT config api_port 9090
 	curl -s -m 5 -X PUT "http://127.0.0.1:${API_PORT}/providers/rules/${1}" >/dev/null 2>&1 \
 		&& echo "asked mihomo to reload provider ${1}" \

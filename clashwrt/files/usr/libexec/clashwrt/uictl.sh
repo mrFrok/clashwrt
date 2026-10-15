@@ -86,10 +86,9 @@ do_current() {
 
 install_from() {
 	local url="$1" label="$2"
-	local tmp="/tmp/clashwrt-ui.$$"
-	local tgz="$tmp/ui.tar.gz"
-
-	rm -rf "$tmp"; mkdir -p "$tmp" || die "cannot create $tmp"
+	local tmp tgz
+	tmp="$(mktemp -d /tmp/clashwrt-ui.XXXXXX)" || die "cannot create a temporary directory"
+	tgz="$tmp/ui.tar.gz"
 
 	echo "downloading $url"
 	if ! curl -sSL --fail -m 180 -o "$tgz" "$url"; then
