@@ -1193,3 +1193,12 @@ msgstr "Сторож не запущен"
 
 msgid "Watchdog idle, the proxy is off"
 msgstr "Сторож отдыхает, прокси выключен"
+
+msgid "Whatever config.yaml does not send to the proxy"
+msgstr "Всё, что config.yaml не отправляет в прокси"
+
+msgid "Add the rules from config.yaml"
+msgstr "Добавить правила из config.yaml"
+
+msgid "Also uses the addresses and domains your config.yaml rules send to the proxy (or, with a list of what skips the proxy, the addresses they send direct). Domains need the dnsmasq-full package. Default: on."
+msgstr "Берёт ещё и адреса и домены, которые правила вашего config.yaml отправляют в прокси (а для списка того, что идёт мимо прокси, — адреса, которые они отправляют напрямую). Для доменов нужен пакет dnsmasq-full. По умолчанию: включено."

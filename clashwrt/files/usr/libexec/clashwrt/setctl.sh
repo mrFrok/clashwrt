@@ -33,17 +33,29 @@
 # mihomo states that default in one line -- its terminal MATCH rule -- and
 # reading it is exact where guessing from the addresses would not be.
 #
+# A downloaded list is not the only thing that says which traffic needs the
+# proxy: config.yaml says so too, rule by rule. With 'include', a destination
+# that a config rule sends to the proxy but no list happens to contain never
+# reached mihomo at all, so the rule could not fire. bypass_set_from_config
+# adds what the config's own rules name (see the "from config.yaml" section).
+#
 # Usage: setctl.sh update [force] | load | status | clear | sources
-#        setctl.sh direction | detect
+#        setctl.sh direction | detect | from-config
 
-. /lib/functions.sh
+# The CLASHWRT_* overrides exist so tests/ can run this file off the router.
+# shellcheck source=/dev/null
+. "${CLASHWRT_FUNCTIONS:-/lib/functions.sh}"
 
 NAME="clashwrt"
 TABLE="inet clashwrt"
 SET4="bypass4"
-STATE_DIR="/etc/clashwrt"
+SET4_DNS="bypass4_dns"
+STATE_DIR="${CLASHWRT_STATE_DIR:-/etc/clashwrt}"
 LIST="$STATE_DIR/bypass4.list"
 STAMP="$STATE_DIR/bypass4.stamp"
+CONF_LIST="$STATE_DIR/config4.list"
+CONF_DOMAINS="$STATE_DIR/config-domains.list"
+CONF_NOTES="$STATE_DIR/config.notes"
 
 log() { logger -t "$NAME" "$@"; [ -t 1 ] && echo "$NAME: $*" >&2; return 0; }
 die() { logger -t "$NAME" "ERROR: $*"; echo "$NAME: ERROR: $*" >&2; exit 1; }
@@ -54,7 +66,13 @@ load_cfg() {
 	config_get set_source   config bypass_set_source   ru
 	config_get set_url      config bypass_set_url      ""
 	config_get set_interval config bypass_set_interval 86400
+	config_get from_config  config bypass_set_from_config 1
+	config_get dns_hijack   config dns_hijack          0
 	config_get mihomo_dir   config mihomo_dir          /etc/mihomo
+
+	# 'config' is a source with nothing to download: the set is only what
+	# config.yaml names, so taking from the config is not optional there.
+	[ "$set_source" = "config" ] && from_config=1
 
 	MIHOMO_CONF="$mihomo_dir/config.yaml"
 
@@ -158,6 +176,7 @@ source_url() {
 		ru-geoip)  echo "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geoip/ru.yaml" ;;
 		refilter)  echo "https://github.com/1andrevich/Re-filter-lists/releases/latest/download/ipsum.lst" ;;
 		custom)    echo "$set_url" ;;
+		config)    echo "" ;;
 		*)         return 1 ;;
 	esac
 }
@@ -167,6 +186,7 @@ do_sources() {
 	echo "ru-geoip	exclude	Russian networks (meta-rules-dat geoip)"
 	echo "refilter	include	Re-filter blocked IP ranges"
 	echo "custom	any	A URL of your own"
+	echo "config	any	Only what the rules in config.yaml name"
 }
 
 # Which direction a list is meant for. Getting this backwards is not a subtle
@@ -231,13 +251,294 @@ parse_list() {
 	sed -e 's/#.*//' -e 's/^[[:space:]]*-[[:space:]]*//' -e 's/[[:space:]]//g' \
 		-e "s/['\"]//g" \
 	| grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$' \
-	| awk '!seen[$0]++'
+	| awk -F '[./]' '
+		# the shape alone lets 999.1.1.1 or /99 through, and nft refuses the
+		# whole load for one such line; /0 would swallow every address
+		{ for (i = 1; i <= 4; i++) if ($i > 255) next }
+		NF == 5 && ($5 > 32 || $5 == 0) { next }
+		# 010.0.0.1 is the same address to nft only once written as 10.0.0.1
+		{ a = ($1 + 0) "." ($2 + 0) "." ($3 + 0) "." ($4 + 0); if (NF == 5) a = a "/" ($5 + 0) }
+		!seen[a]++ { print a }
+	'
+}
+
+# ---------------------------------------------------------------------------
+# from config.yaml
+# ---------------------------------------------------------------------------
+#
+# Which of the config's rules can go into the set depends on the direction,
+# and on which mistake is affordable:
+#
+#   include  the set is what reaches mihomo. Every rule that sends something
+#            anywhere but DIRECT is taken, addresses and domains alike. Too
+#            much in the set only means mihomo sees a connection it then
+#            sends direct itself -- slower, never wrong.
+#
+#   exclude  the set is what skips mihomo. Only address rules to DIRECT are
+#            taken, and only those before the first rule that sends anything
+#            elsewhere: mihomo matches top down, so an earlier rule could have
+#            proxied that address, and skipping mihomo for it would leak it.
+#            Domains are never taken here -- a DIRECT site on a shared CDN
+#            would take every other site on that CDN out of the proxy.
+#
+# Addresses go into the set directly. Domains have no address until somebody
+# looks them up, so dnsmasq adds what it resolves for them to a second set
+# (nftset=, which needs dnsmasq-full). Rule providers are read from the files
+# mihomo has already downloaded; the binary .mrs format cannot be read here.
+
+# config.yaml as tab-separated records:
+#   P <name> <behavior> <path> <format>    one per rule provider
+#   R <type> <value> <target>              one per plain rule, in order
+#   F <range>                              the fake-ip range, when fake-ip is on
+config_records() {
+	awk '
+	function unq(s) {
+		sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s)
+		if (s ~ /^".*"$/ || s ~ /^\047.*\047$/) s = substr(s, 2, length(s) - 2)
+		return s
+	}
+	function flush_p() {
+		if (pname != "") print "P\t" pname "\t" pbeh "\t" ppath "\t" pfmt
+		pname = ""; pbeh = ""; ppath = ""; pfmt = ""
+	}
+	function prop(k, v) {
+		if (k == "behavior") pbeh = v
+		else if (k == "path") ppath = v
+		else if (k == "format") pfmt = v
+	}
+	# a provider written as { type: http, behavior: domain, ... } on one line
+	function inline(s,   n, i, parts, c) {
+		gsub(/^[ \t]*\{|\}[ \t]*$/, "", s)
+		n = split(s, parts, ",")
+		for (i = 1; i <= n; i++) {
+			c = index(parts[i], ":")
+			if (c) prop(unq(substr(parts[i], 1, c - 1)), unq(substr(parts[i], c + 1)))
+		}
+	}
+	{ sub(/\r$/, "") }
+	/^[A-Za-z0-9_-]+:/ {
+		if (sec == "rule-providers") flush_p()
+		sec = $0; sub(/:.*/, "", sec)
+		next
+	}
+	/^[ \t]*(#|$)/ { next }
+	sec == "rule-providers" {
+		match($0, /^[ \t]*/); ind = RLENGTH
+		line = $0; sub(/^[ \t]+/, "", line); sub(/[ \t]+#.*/, "", line)
+		c = index(line, ":")
+		if (pind == 0 || ind <= pind) {
+			flush_p(); pind = ind
+			pname = unq(substr(line, 1, c - 1))
+			if (substr(line, c + 1) ~ /\{/) inline(substr(line, c + 1))
+			next
+		}
+		prop(unq(substr(line, 1, c - 1)), unq(substr(line, c + 1)))
+		next
+	}
+	sec == "dns" && /^[ \t]+(enhanced-mode|fake-ip-range):/ {
+		line = $0; sub(/^[ \t]+/, "", line); sub(/[ \t]+#.*/, "", line)
+		c = index(line, ":")
+		if (substr(line, 1, c - 1) == "enhanced-mode") emode = unq(substr(line, c + 1))
+		else frange = unq(substr(line, c + 1))
+		next
+	}
+	sec == "rules" && /^[ \t]*-/ {
+		line = $0; sub(/^[ \t]*-[ \t]*/, "", line); sub(/[ \t]+#.*/, "", line)
+		line = unq(line)
+		# a compound rule cannot go in the set, but where it sends traffic
+		# still matters to which later rules may (see pick_rules)
+		if (line ~ /^(AND|OR|NOT|SUB-RULE),/) {
+			t = line; sub(/.*,/, "", t)
+			print "R\tCOMPOUND\t\t" unq(t)
+			next
+		}
+		n = split(line, f, ",")
+		if (unq(f[1]) == "MATCH" && n >= 2) { print "R\tMATCH\t\t" unq(f[2]); next }
+		if (n >= 3) print "R\t" unq(f[1]) "\t" unq(f[2]) "\t" unq(f[3])
+	}
+	END {
+		if (sec == "rule-providers") flush_p()
+		if (emode == "fake-ip") print "F\t" (frange == "" ? "198.18.0.1/16" : frange)
+	}
+	' "$MIHOMO_CONF"
+}
+
+# Domains, one per line, as dnsmasq wants them: "+.x", ".x" and "*.x" all
+# become "x", which dnsmasq matches together with every subdomain. Anything
+# with a wildcard elsewhere, or that is not a host name, is dropped.
+parse_domains() {
+	sed -e 's/#.*//' -e 's/^[[:space:]]*-[[:space:]]*//' -e 's/[[:space:]]//g' \
+		-e "s/['\"]//g" -e 's/^+\.//' -e 's/^\*\.//' -e 's/^\.//' \
+	| tr 'A-Z' 'a-z' \
+	| grep -E '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
+}
+
+# One provider file by its behavior: addresses appended to $3, domains to $4.
+read_provider() {
+	local beh="$1" file="$2" ips="$3" doms="$4"
+	case "$beh" in
+		ipcidr) parse_list < "$file" >> "$ips" ;;
+		domain) parse_domains < "$file" >> "$doms" ;;
+		classical)
+			sed -e 's/#.*//' -e 's/^[[:space:]]*-[[:space:]]*//' -e "s/['\"]//g" -e 's/[[:space:]]//g' "$file" |
+				awk -F, -v ips="$ips" -v doms="$doms" '
+					$1 == "IP-CIDR" { print $2 >> ips }
+					$1 == "DOMAIN" || $1 == "DOMAIN-SUFFIX" { print $2 >> doms }
+				'
+			;;
+	esac
+}
+
+# The rules the direction allows (see above), as "IP <cidr>", "DOMAIN <name>",
+# "SET <provider> [ip-only]" or "SKIP <type>" for rule types that name traffic
+# but cannot become addresses.
+pick_rules() {
+	awk -F '\t' -v dir="$set_mode" '
+		$1 != "R" || $2 == "MATCH" { next }
+		$2 == "COMPOUND" { if ($4 != "DIRECT") closed = 1; next }
+		dir == "exclude" {
+			if ($4 != "DIRECT") { closed = 1; next }
+			if (closed) next
+			if ($2 == "IP-CIDR") print "IP\t" $3
+			else if ($2 == "RULE-SET") print "SET\t" $3 "\tip-only"
+			next
+		}
+		$4 == "DIRECT" { next }
+		$2 == "IP-CIDR" { print "IP\t" $3; next }
+		$2 == "DOMAIN" || $2 == "DOMAIN-SUFFIX" { print "DOMAIN\t" $3; next }
+		$2 == "RULE-SET" { print "SET\t" $3; next }
+		$2 ~ /^(DOMAIN-KEYWORD|DOMAIN-REGEX|DOMAIN-WILDCARD|GEOSITE|GEOIP|IP-ASN)$/ { print "SKIP\t" $2 }
+	' "$1"
+}
+
+# Fills CONF_LIST, CONF_DOMAINS and CONF_NOTES from config.yaml for the
+# current direction. The notes say what could not be used and why.
+do_from_config() {
+	local recs="$STATE_DIR/.recs.$$" ips="$STATE_DIR/.ips.$$" doms="$STATE_DIR/.doms.$$" notes="$STATE_DIR/.notes.$$"
+	local kind val extra line beh path fmt file tab
+	tab="$(printf '\t')"
+	mkdir -p "$STATE_DIR"
+	: > "$ips"; : > "$doms"; : > "$notes"
+
+	if [ -f "$MIHOMO_CONF" ]; then
+		config_records > "$recs"
+	else
+		echo "no $MIHOMO_CONF yet" >> "$notes"
+		: > "$recs"
+	fi
+
+	pick_rules "$recs" > "$recs.pick"
+	while IFS="$tab" read -r kind val extra; do
+		case "$kind" in
+		IP)     echo "$val" | parse_list >> "$ips" ;;
+		DOMAIN) echo "$val" | parse_domains >> "$doms" ;;
+		SKIP)   echo "skipped: $val rules have no fixed addresses or domains" >> "$notes" ;;
+		SET)
+			line="$(awk -F '\t' -v n="$val" '$1 == "P" && $2 == n' "$recs" | head -n1)"
+			[ -n "$line" ] || { echo "skipped: rule-set $val has no rule-providers entry" >> "$notes"; continue; }
+			beh="$(echo "$line" | cut -f3)"
+			path="$(echo "$line" | cut -f4)"
+			fmt="$(echo "$line" | cut -f5)"
+			[ "$extra" = "ip-only" ] && [ "$beh" != "ipcidr" ] && continue
+			[ "$fmt" = "mrs" ] && { echo "skipped: rule-set $val is in the binary mrs format" >> "$notes"; continue; }
+			# mihomo keeps providers under its own directory; so does this
+			case "$path" in
+				""|*..*) echo "skipped: rule-set $val has no usable path" >> "$notes"; continue ;;
+				"$mihomo_dir"/*) file="$path" ;;
+				/*) echo "skipped: rule-set $val is outside $mihomo_dir" >> "$notes"; continue ;;
+				*)  file="$mihomo_dir/${path#./}" ;;
+			esac
+			[ -f "$file" ] && [ ! -L "$file" ] && [ -s "$file" ] || { echo "skipped: rule-set $val is not downloaded yet ($file)" >> "$notes"; continue; }
+			read_provider "$beh" "$file" "$ips" "$doms"
+			;;
+		esac
+	done < "$recs.pick"
+
+	# with fake-ip, every name mihomo answers for resolves into this range,
+	# so with 'include' it must reach mihomo whatever else the set holds
+	[ "$set_mode" = "include" ] && awk -F '\t' '$1 == "F" { print $2 }' "$recs" | parse_list >> "$ips"
+
+	# written aside and renamed: status runs this too, and a load reading
+	# the files at the same moment must see a whole list, old or new
+	parse_list < "$ips" > "$CONF_LIST.$$"
+	if [ "$set_mode" = "include" ]; then
+		parse_domains < "$doms" | awk '!seen[$0]++' > "$CONF_DOMAINS.$$"
+	else
+		: > "$CONF_DOMAINS.$$"
+	fi
+	sort -u "$notes" > "$CONF_NOTES.$$"
+	mv -f "$CONF_LIST.$$" "$CONF_LIST"
+	mv -f "$CONF_DOMAINS.$$" "$CONF_DOMAINS"
+	mv -f "$CONF_NOTES.$$" "$CONF_NOTES"
+	rm -f "$recs" "$recs.pick" "$ips" "$doms" "$notes"
+}
+
+# ---------------------------------------------------------------------------
+# domains through dnsmasq
+# ---------------------------------------------------------------------------
+
+# Past this many the dnsmasq config costs more memory than it is worth on a
+# router; the first ones are kept and the status says how many were not.
+MAX_DOMAINS=20000
+DNSMASQ_FILE="clashwrt-nftset.conf"
+
+dnsmasq_has_nftset() {
+	dnsmasq --version 2>/dev/null | grep -qw 'nftset' &&
+		! dnsmasq --version 2>/dev/null | grep -qw 'no-nftset'
+}
+
+# Where the running dnsmasq reads extra files from: the conf-dir in the config
+# procd generated for it, else the UCI confdir, else OpenWrt's default.
+dnsmasq_confdir() {
+	local d
+	d="$(sed -n 's/^conf-dir=\([^,]*\).*/\1/p' /var/etc/dnsmasq.conf.* 2>/dev/null | head -n1)"
+	[ -n "$d" ] || d="$(uci -q get 'dhcp.@dnsmasq[0].confdir')"
+	echo "${d:-/tmp/dnsmasq.d}"
+}
+
+# Whether LAN clients are actually answered by this router's dnsmasq for the
+# domains to be seen. With dns_hijack, port 53 goes to mihomo instead.
+domains_usable() {
+	[ "$set_mode" = "include" ] && [ "$from_config" = 1 ] &&
+		[ "$dns_hijack" != 1 ] && dnsmasq_has_nftset
+}
+
+# Writes nftset= lines for CONF_DOMAINS into dnsmasq's conf dir, or removes
+# them when there is nothing to write. dnsmasq reads them only on start, so
+# it is restarted, and only when the file actually changed.
+dns_sync_domains() {
+	local dir file tmp
+	dir="$(dnsmasq_confdir)"
+	file="$dir/$DNSMASQ_FILE"
+
+	if ! domains_usable || [ ! -s "$CONF_DOMAINS" ]; then
+		[ -e "$file" ] || return 0
+		rm -f "$file"
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
+		log "removed the dnsmasq domain rules"
+		return 0
+	fi
+
+	mkdir -p "$dir"
+	tmp="$file.$$"
+	head -n "$MAX_DOMAINS" "$CONF_DOMAINS" |
+		awk -v set="4#inet#clashwrt#$SET4_DNS" '{ print "nftset=/" $0 "/" set }' > "$tmp"
+	if cmp -s "$tmp" "$file"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	mv -f "$tmp" "$file"
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+	log "dnsmasq adds the addresses of $(grep -c . "$file") config domains to $SET4_DNS"
 }
 
 do_update() {
 	load_cfg
 	[ "$set_mode_raw" = "off" ] && { log "bypass set disabled"; return 0; }
 	require_direction
+
+	# nothing to download: the config is the list
+	[ "$set_source" = "config" ] && { do_load; return; }
 
 	check_pairing
 	check_against_routing
@@ -286,28 +587,57 @@ do_update() {
 # Elements are loaded from one generated script rather than a call per entry:
 # these lists run to tens of thousands of networks and per-element nft calls
 # take minutes.
+#
+# The set is the downloaded list (unless the source is 'config') plus what the
+# config's own rules name, read afresh on every load so that a changed
+# config.yaml is picked up by the next apply.
 do_load() {
 	load_cfg
-	[ "$set_mode_raw" = "off" ] && return 0
+	# off leaves no domain rules behind in dnsmasq (set_mode is "off" here,
+	# so dns_sync_domains removes them)
+	[ "$set_mode_raw" = "off" ] && { dns_sync_domains; return 0; }
 	require_direction
-	nft list table $TABLE >/dev/null 2>&1 || { log "table not present yet; nothing to load into"; return 0; }
-	[ -s "$LIST" ] || { log "no list to load"; return 0; }
 
-	local f="/tmp/clashwrt-set-load.$$"
+	if [ "$from_config" = 1 ]; then
+		do_from_config
+	else
+		: > "$CONF_LIST"; : > "$CONF_DOMAINS"; : > "$CONF_NOTES"
+	fi
+	dns_sync_domains
+
+	nft list table $TABLE >/dev/null 2>&1 || { log "table not present yet; nothing to load into"; return 0; }
+
+	local all="$STATE_DIR/.load.$$" f="$STATE_DIR/.load.$$.nft"
+	{
+		[ "$set_source" = "config" ] || cat "$LIST" 2>/dev/null
+		cat "$CONF_LIST" 2>/dev/null
+	} | awk '!seen[$0]++' > "$all"
+
 	{
 		echo "flush set $TABLE $SET4"
-		echo "add element $TABLE $SET4 {"
-		awk 'NR>1{printf ",\n"} {printf "  %s", $0}' "$LIST"
-		echo ""
-		echo "}"
+		if [ -s "$all" ]; then
+			echo "add element $TABLE $SET4 {"
+			awk 'NR>1{printf ",\n"} {printf "  %s", $0}' "$all"
+			echo ""
+			echo "}"
+		fi
 	} > "$f"
 
+	# With 'include' an empty set sends every connection direct. A list that
+	# came out empty -- a config that did not parse, a provider not yet
+	# downloaded -- is a fault, not an instruction, so the old set stays.
+	if [ "$set_mode" = "include" ] && [ ! -s "$all" ]; then
+		rm -f "$f" "$all"
+		log "WARNING: nothing to load into $SET4; keeping what it holds rather than sending all traffic direct"
+		return 1
+	fi
+
 	if nft -f "$f" 2>/dev/null; then
-		log "loaded $(grep -c . "$LIST") networks into $SET4"
-		rm -f "$f"
+		log "loaded $(grep -c . "$all") networks into $SET4 ($(grep -c . "$CONF_LIST") from config.yaml)"
+		rm -f "$f" "$all"
 		return 0
 	fi
-	rm -f "$f"
+	rm -f "$f" "$all"
 	log "WARNING: could not load the set"
 	return 1
 }
@@ -332,12 +662,32 @@ do_status() {
 			echo "WARNING:  $DETECT_WHY says the direction should be '$DETECT_DIR', not '$set_mode'"
 		fi
 	fi
-	echo "url:      $(source_url "$set_source" 2>/dev/null)"
-	echo "list:     $([ -s "$LIST" ] && grep -c . "$LIST" || echo 0) networks"
-	if [ -f "$STAMP" ]; then
-		echo "updated:  $(( ( $(date +%s) - $(cat "$STAMP") ) / 60 )) minutes ago"
-	else
-		echo "updated:  never"
+	if [ "$set_source" != "config" ]; then
+		echo "url:      $(source_url "$set_source" 2>/dev/null)"
+		echo "list:     $([ -s "$LIST" ] && grep -c . "$LIST" || echo 0) networks"
+		if [ -f "$STAMP" ]; then
+			echo "updated:  $(( ( $(date +%s) - $(cat "$STAMP") ) / 60 )) minutes ago"
+		else
+			echo "updated:  never"
+		fi
+	fi
+	if [ "$from_config" = 1 ] && [ -n "$set_mode" ]; then
+		# read afresh: the files are only as new as the last load
+		do_from_config
+		echo "config:   $([ -s "$CONF_LIST" ] && grep -c . "$CONF_LIST" || echo 0) networks from config.yaml rules"
+		if [ "$set_mode" = "include" ]; then
+			local nd
+			nd="$([ -s "$CONF_DOMAINS" ] && grep -c . "$CONF_DOMAINS" || echo 0)"
+			if [ "$dns_hijack" = 1 ]; then
+				echo "domains:  $nd in config.yaml, NOT used: DNS hijack sends LAN lookups to mihomo, not dnsmasq"
+			elif ! dnsmasq_has_nftset; then
+				echo "domains:  $nd in config.yaml, NOT used: this dnsmasq has no nftset support (install dnsmasq-full)"
+			else
+				echo "domains:  $nd in config.yaml, resolved addresses added by dnsmasq"
+				[ "$nd" -gt "$MAX_DOMAINS" ] && echo "WARNING:  only the first $MAX_DOMAINS domains are used"
+			fi
+		fi
+		[ -s "$CONF_NOTES" ] && sed 's/^/note:     /' "$CONF_NOTES"
 	fi
 	echo -n "in_kernel: "
 	nft list set $TABLE $SET4 2>/dev/null | grep -c "elements" >/dev/null 2>&1 \
@@ -370,10 +720,28 @@ do_detect() {
 }
 
 do_clear() {
-	rm -f "$LIST" "$STAMP"
+	rm -f "$LIST" "$STAMP" "$CONF_LIST" "$CONF_DOMAINS" "$CONF_NOTES"
 	nft flush set $TABLE $SET4 2>/dev/null
+	nft flush set $TABLE $SET4_DNS 2>/dev/null
+	# set_mode is unset here, so this takes the dnsmasq rules away
+	dns_sync_domains
 	log "cleared"
 }
+
+# What the config contributes, without loading anything: for the settings
+# page, and for checking a config before switching to it.
+do_show_config() {
+	load_cfg
+	require_direction
+	do_from_config
+	echo "direction: $set_mode"
+	echo "networks:  $(grep -c . "$CONF_LIST")"
+	[ "$set_mode" = "include" ] && echo "domains:   $(grep -c . "$CONF_DOMAINS")"
+	[ -s "$CONF_NOTES" ] && sed 's/^/note:      /' "$CONF_NOTES"
+	return 0
+}
+
+[ -n "${CLASHWRT_TEST:-}" ] && return 0 2>/dev/null
 
 case "${1:-}" in
 	update)  do_update "${2:-}" ;;
@@ -383,5 +751,6 @@ case "${1:-}" in
 	sources) do_sources ;;
 	direction) do_direction ;;
 	detect)  do_detect ;;
-	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect" >&2; exit 1 ;;
+	from-config) do_show_config ;;
+	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config" >&2; exit 1 ;;
 esac

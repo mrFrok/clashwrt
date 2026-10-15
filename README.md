@@ -237,9 +237,19 @@ The set holds the exceptions to whatever mihomo does by default, so the default 
 /usr/libexec/clashwrt/setctl.sh detect   # the direction, and where it came from
 /usr/libexec/clashwrt/setctl.sh status   # plus list age and what is in the kernel
 /usr/libexec/clashwrt/setctl.sh update force
+/usr/libexec/clashwrt/setctl.sh from-config  # what config.yaml adds, and what it could not
 ```
 
 Choosing a preset by hand that contradicts your routing is warned about rather than refused — the detected routing is evidence, not authority.
+
+**Your own rules go into the set too** (`bypass_set_from_config`, on by default). A downloaded list knows nothing about `config.yaml`: with "everything except the list", a site your rules send to the proxy but the list happens to miss used to go straight out the WAN before mihomo ever saw it. So the set also takes what the config's rules name, by direction:
+
+| direction | what is taken from `config.yaml` |
+|---|---|
+| everything except the list | `IP-CIDR`, `DOMAIN`, `DOMAIN-SUFFIX` and `RULE-SET` rules that send traffic to any group other than `DIRECT`, plus the fake-ip range |
+| the list | `IP-CIDR` and IP `RULE-SET` rules sent to `DIRECT`, but only those above the first rule that sends anything elsewhere — mihomo matches top down, and an earlier rule might have proxied that address |
+
+Domains have no address until they are looked up, so they go to dnsmasq instead: it adds every address it resolves for them to a second set (`nftset=`). That needs the **`dnsmasq-full`** package (stock `dnsmasq` has no nftset support), and only helps devices that ask the router for DNS; with `dns_hijack` on, lookups go to mihomo and the domains are not used. The status block says which of these applies. Rule providers are read from the files mihomo has already downloaded; providers in the binary `mrs` format, and rules with no fixed address or domain (`DOMAIN-KEYWORD`, `GEOSITE`, `GEOIP`…), are listed as skipped. Pick **Whatever config.yaml does not send to the proxy** to use only the config's rules, with nothing downloaded.
 
 ### Configuration and rule files
 

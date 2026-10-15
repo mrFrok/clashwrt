@@ -1187,3 +1187,12 @@ msgstr ""
 
 msgid "Watchdog idle, the proxy is off"
 msgstr ""
+
+msgid "Whatever config.yaml does not send to the proxy"
+msgstr ""
+
+msgid "Add the rules from config.yaml"
+msgstr ""
+
+msgid "Also uses the addresses and domains your config.yaml rules send to the proxy (or, with a list of what skips the proxy, the addresses they send direct). Domains need the dnsmasq-full package. Default: on."
+msgstr ""

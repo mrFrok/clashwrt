@@ -696,6 +696,7 @@ return view.extend({
 		o.value('ru', _('Russian networks (ipdeny)'));
 		o.value('ru-geoip', _('Russian networks (meta-rules-dat)'));
 		o.value('refilter', _('Everything except what is blocked in Russia (Re-filter)'));
+		o.value('config', _('Whatever config.yaml does not send to the proxy'));
 		o.value('custom', _('A list of your own'));
 		o.default = 'off';
 
@@ -712,6 +713,12 @@ return view.extend({
 				return;
 			}
 			uci.set('clashwrt', sid, 'bypass_set_source', value);
+			/* the config's own rules only make sense the way round its
+			 * MATCH rule says, so that is not asked */
+			if (value === 'config') {
+				uci.set('clashwrt', sid, 'bypass_set_mode', 'auto');
+				return;
+			}
 			if (value === 'custom') {
 				/* the direction is settled below; only seed it, so that
 				 * switching to a custom list cannot leave the set off */
@@ -739,6 +746,18 @@ return view.extend({
 		 * not mean being cleared. */
 		o.retain = true;
 
+		/* A downloaded list does not know about the config's own rules: with
+		 * "everything except the list", a site a rule sends to the proxy but
+		 * the list happens to miss went direct before mihomo could see it. */
+		o = bypass(form.Flag, 'bypass_set_from_config', _('Add the rules from config.yaml'),
+			_('Also uses the addresses and domains your config.yaml rules send to the proxy (or, with a list of what skips the proxy, the addresses they send direct). Domains need the dnsmasq-full package. Default: on.'));
+		o.default = '1';
+		o.rmempty = false;
+		o.depends('bypass_set_profile', 'ru');
+		o.depends('bypass_set_profile', 'ru-geoip');
+		o.depends('bypass_set_profile', 'refilter');
+		o.depends('bypass_set_profile', 'custom');
+
 		o = bypass(form.Value, 'bypass_set_url', _('List URL'),
 			_('Plain CIDR per line, or a YAML <code>payload:</code> list. Anything that is not an IPv4 network is ignored.'));
 		o.depends('bypass_set_profile', 'custom');
@@ -747,7 +766,10 @@ return view.extend({
 			_('How often the list is downloaded again. Default: 86400 (one day).'));
 		o.datatype = 'uinteger';
 		o.default = '86400';
-		o.depends({ bypass_set_profile: 'off', '!reverse': true });
+		o.depends('bypass_set_profile', 'ru');
+		o.depends('bypass_set_profile', 'ru-geoip');
+		o.depends('bypass_set_profile', 'refilter');
+		o.depends('bypass_set_profile', 'custom');
 
 		/* The status block is where a derived direction becomes visible, so it
 		 * has to be filled on arrival rather than only after someone presses

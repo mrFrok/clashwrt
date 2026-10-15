@@ -73,6 +73,12 @@ config clashwrt 'config'
 	option bypass_set_source 'ru'
 	# option bypass_set_url ''
 	option bypass_set_interval '86400'
+	# Also put into the set what config.yaml's own rules name: with
+	# 'include', the addresses and domains they send to a proxy (domains
+	# through dnsmasq's nftset=, which needs dnsmasq-full); with 'exclude',
+	# the addresses they send DIRECT. bypass_set_source 'config' uses only
+	# this, with nothing downloaded.
+	option bypass_set_from_config '1'
 
 	list bypass_net '0.0.0.0/8'
 	list bypass_net '10.0.0.0/8'

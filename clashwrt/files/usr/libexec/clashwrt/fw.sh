@@ -434,9 +434,12 @@ build_bypass() {
 	# marking, so everything it matches is handled by the kernel alone and
 	# never reaches mihomo -- a DIRECT rule inside mihomo would still relay
 	# the connection through userspace.
+	# With 'include', bypass4_dns holds what dnsmasq resolved for the domains
+	# config.yaml sends to the proxy (setctl.sh); an address in either set
+	# reaches mihomo. Its entries expire, since a name's addresses change.
 	case "$set_mode" in
 		exclude) nft add rule $TABLE mangle ip daddr @bypass4 return ;;
-		include) nft add rule $TABLE mangle ip daddr != @bypass4 return ;;
+		include) nft add rule $TABLE mangle ip daddr != @bypass4 ip daddr != @bypass4_dns return ;;
 	esac
 
 	# QUIC carries HTTP/3 over UDP/443. Rejecting it makes browsers fall back
@@ -461,6 +464,7 @@ apply_nft() {
 	# conditionally, but a set that only sometimes exists makes every other
 	# command here need a guard. "interval" is what allows CIDRs as elements.
 	nft add set $TABLE bypass4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
+	nft add set $TABLE bypass4_dns "{ type ipv4_addr ; flags timeout ; timeout 1d ; }"
 
 	# priority mangle(-150) so we see packets before conntrack/dstnat decide
 	nft add chain $TABLE mangle "{ type filter hook prerouting priority mangle ; }"
