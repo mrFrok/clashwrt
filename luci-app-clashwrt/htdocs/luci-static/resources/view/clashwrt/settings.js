@@ -335,7 +335,9 @@ function buildUpdates() {
 		b.disabled = true;
 		dom.content(out, E('em', {}, _('Downloading the core, this takes a while…')));
 		fs.exec(UPDCTL, ['core-install']).then(function (res) {
-			report(true, (res.stdout || '') + (res.stderr || ''));
+			/* the exit code is the verdict: a refusal for lack of room
+			 * resolves just like a success does */
+			report(res.code === 0, (res.stdout || '') + (res.stderr || ''));
 		}).catch(function (e) {
 			report(false, describe(e));
 		}).finally(function () {
@@ -400,8 +402,12 @@ function buildUpdates() {
 		dom.content(out, E('em', {}, _('Starting the update…')));
 		dom.content(logBox, '');
 		fs.exec(UPDCTL, ['self-update']).then(function (res) {
-			report(true, (res.stdout || '') + (res.stderr || ''));
-			follow();
+			report(res.code === 0, (res.stdout || '') + (res.stderr || ''));
+			/* refused before it started (no room, no release): no log to follow */
+			if (res.code === 0)
+				follow();
+			else
+				b.disabled = false;
 		}).catch(function (e) {
 			report(false, describe(e));
 			b.disabled = false;

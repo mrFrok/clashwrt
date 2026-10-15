@@ -23,6 +23,8 @@
 #
 # Usage: updctl.sh core-status|core-install [version]|cores|prune-cores
 #        updctl.sh self-status|self-update|log
+#
+# CLASHWRT_TMPDIR names a directory to unpack the core in ahead of /tmp.
 
 SLUG_DEFAULT="mrFrok/clashwrt"
 # Releases are the default channel: a router should not pick up whatever landed
@@ -227,6 +229,17 @@ do_core_status() {
 	fi
 }
 
+# --------------------------------------------------------------------------
+# room for a new core
+# --------------------------------------------------------------------------
+#
+# A core is ~45 MB unpacked, which is a lot on both of the places it passes
+# through: /tmp is RAM, and the overlay behind /usr/bin is often tens of MB
+# all told. Running out halfway through either leaves a truncated file, and
+# running out while replacing /usr/bin/mihomo leaves a router with no core.
+# So the room is measured before anything is downloaded, and again before
+# anything is replaced.
+
 # Available kilobytes on the filesystem holding $1. The device column wraps
 # onto its own line when the name is long, so the Available column is found
 # relative to the field ending in "%" rather than by a fixed position.
@@ -235,9 +248,202 @@ avail_kb() {
 		awk 'END { for (i = 1; i <= NF; i++) if ($i ~ /%$/) { print $(i-1); exit } }'
 }
 
+# The mount point of the filesystem holding $1: the last field of df's
+# last line, whether or not the device column wrapped.
+mount_of() {
+	df -k "$1" 2>/dev/null | awk 'END { print $NF }'
+}
+
+# The type and options /proc/mounts lists for mount point $1, the last entry
+# winning as it does for the kernel.
+mount_info() {
+	awk -v m="$1" '$2 == m { t = $3 " " $4 } END { print t }' /proc/mounts 2>/dev/null
+}
+
+size_kb() {
+	local n
+	[ -f "$1" ] || { echo 0; return; }
+	n="$(wc -c < "$1")" || n=0
+	echo $(( ${n:-0} / 1024 ))
+}
+
+# MemAvailable in kB. A file in tmpfs is held in RAM, and df on a tmpfs only
+# reports its size limit (half the RAM by default), not what is actually free
+# with mihomo itself loaded.
+mem_avail_kb() {
+	awk '/^MemAvailable:/ { print $2; f = 1 } END { if (!f) print 0 }' /proc/meminfo 2>/dev/null
+}
+
+# RAM left over for everything else when the core is unpacked into tmpfs.
+MEM_RESERVE_KB=16384
+
+# What a candidate directory can actually take: free space, and for a RAM
+# filesystem also what the RAM can spare.
+usable_kb() {
+	local dir="$1" a m mp
+	a="$(avail_kb "$dir")"
+	case "$a" in ''|*[!0-9]*) echo 0; return ;; esac
+	mp="$(mount_of "$dir")"
+	case "$(mount_info "$mp")" in
+		tmpfs\ *|ramfs\ *)
+			m=$(( $(mem_avail_kb) - MEM_RESERVE_KB ))
+			[ "$m" -lt "$a" ] && a="$m"
+			;;
+	esac
+	[ "$a" -gt 0 ] || a=0
+	echo "$a"
+}
+
+# Where the core may be unpacked, best first, one per line: an explicit
+# CLASHWRT_TMPDIR, then /tmp, then anything else mounted read-write that can
+# run programs -- a USB stick, an extroot, a data partition. The overlay
+# itself comes last, as /usr/bin: a core unpacked there costs the same room
+# as the staged copy it would need anyway, and is renamed into place.
+#
+# The candidate must allow exec, because the downloaded core is run once
+# (mihomo -v) to prove it suits this CPU before anything is replaced.
+work_candidates() {
+	local usr_mp
+	usr_mp="$(mount_of /usr/bin)"
+	{
+		[ -n "${CLASHWRT_TMPDIR:-}" ] && echo "$CLASHWRT_TMPDIR"
+		echo /tmp
+		awk '$4 ~ /(^|,)rw(,|$)/ && $4 !~ /(^|,)noexec(,|$)/ { print $2 }' /proc/mounts 2>/dev/null
+	} | while read -r d; do
+		case "$d" in
+			/|/rom|/rom/*|/overlay|/overlay/*|/proc|/proc/*|/sys|/sys/*|/dev|/dev/*) continue ;;
+			*\\*) continue ;;            # /proc/mounts escapes spaces as \040
+		esac
+		[ -d "$d" ] || continue
+		# a directory on the overlay is /usr/bin's case, handled last
+		[ "$(mount_of "$d")" = "$usr_mp" ] && continue
+		case " $(mount_info "$(mount_of "$d")") " in
+			*,noexec,*|*\ noexec,*|*,noexec\ *|*\ noexec\ *) continue ;;
+		esac
+		echo "$d"
+	done | awk '!seen[$0]++'
+	echo /usr/bin
+}
+
+# Kilobytes of spare cores prune_old_cores would remove, i.e. room that can
+# be had back on the overlay without touching anything in use.
+spare_cores_kb() {
+	local f t=0
+	[ "${KEEP_OLD_CORES:-0}" = "1" ] && { echo 0; return; }
+	for f in /usr/bin/mihomo?*; do
+		[ -f "$f" ] || continue
+		core_in_use "$f" && continue
+		"$f" -v 2>&1 | head -n1 | grep -qi mihomo || continue
+		t=$(( t + $(size_kb "$f") ))
+	done
+	echo "$t"
+}
+
+# The download size of $1 in kB, from the Content-Length of the final
+# response after GitHub's redirect. Empty when the server does not say.
+remote_kb() {
+	local n
+	n="$(curl -sSIL -m 30 "$1" 2>/dev/null | tr -d '\r' |
+		sed -n 's/^[Cc]ontent-[Ll]ength:[[:space:]]*\([0-9][0-9]*\)$/\1/p' | tail -n1)"
+	[ -n "$n" ] && [ "$n" -gt 0 ] && echo $(( n / 1024 ))
+}
+
+# Kilobytes the unpacked core will need, before it is downloaded. This only
+# decides whether a download is worth starting -- the real size is checked
+# again once the core is unpacked -- so it must not refuse a router that has
+# the room. The core already installed is the same program and the best
+# guide: a release grows it by a few percent, not by an eighth. Without one,
+# a Go binary compresses to roughly a third, so three times the .gz is a
+# ceiling; with neither, 64 MB covers every build mihomo publishes today.
+estimate_core_kb() {
+	local gz="$1" cur
+	cur="$(size_kb /usr/bin/mihomo)"
+	if [ "$cur" -gt 0 ]; then
+		echo $(( cur + cur / 8 ))
+	elif [ -n "$gz" ]; then
+		echo $(( gz * 3 ))
+	else
+		echo 65536
+	fi
+}
+
+# Can /usr/bin take a core of $1 kB? Prints how, or fails:
+#   stage    a second copy fits beside the old one: copy, then rename (atomic)
+#   inplace  only after the old one is gone: overwrite it
+#   stop     like inplace, but the old one is running and holds its blocks
+#            until it exits, so mihomo has to stop first
+# A running binary keeps its disk blocks after it is overwritten or renamed
+# over, until the process exits; only a core that is not running gives its
+# room back on the spot.
+install_plan() {
+	local need=$(( $1 + 1024 )) avail old=0
+	avail="$(usable_kb /usr/bin)"
+	[ -f /usr/bin/mihomo ] && old="$(size_kb /usr/bin/mihomo)"
+
+	if [ "$avail" -ge "$need" ]; then
+		echo stage
+	elif [ $(( avail + old )) -ge "$need" ]; then
+		if core_in_use /usr/bin/mihomo; then echo stop; else echo inplace; fi
+	else
+		return 1
+	fi
+}
+
+install_room_error() {
+	echo "ERROR: not enough room in /usr/bin for the new core: it needs about ${1}K," \
+		"there is $(usable_kb /usr/bin)K free and the current core frees $(size_kb /usr/bin/mihomo)K." \
+		"Free some space on the overlay (opkg remove, or delete files you added) and try again." >&2
+}
+
+# Before the download: could the overlay take a core of $1 kB at all, counting
+# the old core and any spare ones as room? Nothing is removed here -- a
+# download that then fails must not have cost anyone the cores they kept.
+install_possible() {
+	local need=$(( $1 + 1024 )) have
+	have=$(( $(usable_kb /usr/bin) + $(size_kb /usr/bin/mihomo) + $(spare_cores_kb) ))
+	[ "$have" -ge "$need" ] && return 0
+	install_room_error "$1"
+	return 1
+}
+
+# After the download, with the new core in hand: room on the overlay, freeing
+# spare cores if that is what it takes. Prints the plan; fails with the
+# numbers when even that is not enough.
+ensure_install_room() {
+	local kb="$1" plan
+	plan="$(install_plan "$kb")" && { echo "$plan"; return 0; }
+
+	if [ "$(spare_cores_kb)" -gt 0 ]; then
+		echo "the overlay is short of room; removing spare cores first" >&2
+		prune_old_cores >&2
+		plan="$(install_plan "$kb")" && { echo "$plan"; return 0; }
+	fi
+
+	install_room_error "$kb"
+	return 1
+}
+
+# The first candidate that can hold $1 kB, or fail listing what each had.
+pick_workdir() {
+	local need="$1" d free tried=""
+	for d in $(work_candidates); do
+		free="$(usable_kb "$d")"
+		if [ "$free" -ge "$need" ] && [ -w "$d" ]; then
+			echo "$d"
+			return 0
+		fi
+		tried="$tried $d=${free}K"
+	done
+	echo "ERROR: nowhere to unpack the core: it needs about ${need}K and the candidates have$tried." \
+		"Free some RAM or space, or set CLASHWRT_TMPDIR to a directory with room." >&2
+	return 1
+}
+
 # Replacing /usr/bin/mihomo cannot be a plain write while the daemon is up:
 # the kernel returns ETXTBSY for an open-for-write on a running executable.
-# There are two ways past that and neither is free.
+# How it is done is decided by install_plan, and said out loud:
+#
+# A core unpacked on the overlay already is simply renamed into place (move).
 #
 # Staging a copy alongside and renaming over the target is atomic -- either
 # the old core or the new one is there, never neither -- but it needs room for
@@ -245,33 +451,45 @@ avail_kb() {
 # unusual case, not the usual one: 46 MB of core against 41 MB free is what a
 # BPI-R4 with a full-ish overlay actually looks like.
 #
-# `cp -f` needs no extra room, because it unlinks the destination and
-# recreates it in place, but that leaves a moment with no core at all -- and
-# if the write then fails, the router stays that way.
-#
-# So: rename when the filesystem can hold the second copy, in-place when it
-# cannot, and say which one happened.
+# `cp -f` over the old file needs no extra room once the old one's blocks are
+# free, but that leaves a moment with no core at all -- and if the write then
+# fails, the router stays that way. That is why the room is checked first.
 install_core_binary() {
-	local src="$1"
-	local staged="/usr/bin/.mihomo.clashwrt-new"
-	local size_kb avail
-
-	size_kb=$(( $(wc -c < "$src") / 1024 ))
-	avail="$(avail_kb /usr/bin)"
-	case "$avail" in ''|*[!0-9]*) avail=0 ;; esac
+	local src="$1" plan="$2"
+	local staged="/usr/bin/.mihomo.clashwrt-new" i=0
 
 	rm -f "$staged"
 
-	# 1 MB of slack, so a swap does not fill the overlay to the last block
-	if [ "$avail" -gt $((size_kb + 1024)) ]; then
+	case "$plan" in
+	move)
+		mv -f "$src" /usr/bin/mihomo && return 0
+		echo "ERROR: could not move the new core into /usr/bin; the old core is untouched" >&2
+		return 1
+		;;
+	stage)
 		if cp -f "$src" "$staged" && chmod 0755 "$staged" && mv -f "$staged" /usr/bin/mihomo; then
 			return 0
 		fi
 		rm -f "$staged"
-		echo "could not stage a copy in /usr/bin, replacing in place instead" >&2
-	else
-		echo "not enough room in /usr/bin for a second copy (${avail}K free, needs ${size_kb}K); replacing in place"
-	fi
+		echo "ERROR: could not stage a copy in /usr/bin; the old core is untouched" >&2
+		return 1
+		;;
+	stop)
+		echo "the overlay has room for one core only; stopping mihomo while it is replaced"
+		/etc/init.d/mihomo stop >/dev/null 2>&1
+		while core_in_use /usr/bin/mihomo && [ "$i" -lt 10 ]; do
+			sleep 1
+			i=$((i + 1))
+		done
+		core_in_use /usr/bin/mihomo && {
+			echo "ERROR: mihomo did not stop, so its blocks cannot be reused; the old core is untouched" >&2
+			return 1
+		}
+		;;
+	inplace)
+		echo "not enough room in /usr/bin for a second copy; replacing in place"
+		;;
+	esac
 
 	cp -f "$src" /usr/bin/mihomo || { echo "ERROR: could not install /usr/bin/mihomo" >&2; return 1; }
 	chmod 0755 /usr/bin/mihomo
@@ -362,7 +580,7 @@ prune_old_cores() {
 
 do_core_install() {
 	local want="$1"
-	local arch ver url tmp running
+	local arch ver url tmp running need work gz_rc plan
 
 	arch="$(map_arch)" || die "unsupported CPU architecture: $(uname -m) -- set MIHOMO_ARCH to name a build"
 
@@ -373,23 +591,37 @@ do_core_install() {
 	fi
 	[ -n "$ver" ] || die "could not determine the mihomo version (pass it as an argument, or set MIHOMO_VERSION)"
 
-	# Unpacked in /tmp, which is tmpfs: the overlay is the scarce filesystem
-	# on these boxes and the core is ~46 MB, so it is not the place to be
-	# holding a working copy.
-	tmp="/tmp/clashwrt-core.$$"
+	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/mihomo-linux-${arch}-${ver}.gz"
+
+	# Everything about room is settled before the download, so a router that
+	# cannot take the core finds out in a second, not after a minute of
+	# downloading -- and nothing has been touched when it does.
+	need="$(estimate_core_kb "$(remote_kb "$url")")"
+	install_possible "$need" || exit 1
+	work="$(pick_workdir "$need")" || exit 1
+	echo "unpacking in $work (about ${need}K needed, $(usable_kb "$work")K usable)"
+
+	tmp="$work/.clashwrt-core.$$"
 	rm -rf "$tmp"; mkdir -p "$tmp" || die "cannot create $tmp"
 
-	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/mihomo-linux-${arch}-${ver}.gz"
+	# Downloaded and unpacked in one stream, so the .gz never needs room of
+	# its own. gzip checks the CRC at the end of the stream, so a cut-off
+	# download fails here instead of leaving a truncated core.
 	echo "downloading mihomo ${ver} for ${arch}"
-	if ! curl -sSL --fail -m 300 -o "$tmp/mihomo.gz" "$url"; then
+	{ curl -sSL --fail -m 300 "$url" 2>"$tmp/curl.err" || : > "$tmp/curl.failed"; } |
+		gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
+	gz_rc=$?
+	if [ -e "$tmp/curl.failed" ]; then
+		local why
+		why="$(awk 'NF { print; exit }' "$tmp/curl.err" 2>/dev/null)"
 		rm -rf "$tmp"
-		die "download failed: $url"
+		die "download failed: $url${why:+ ($why)}"
 	fi
 
 	# Report what gzip actually said rather than guessing at a cause. It
 	# opens with a blank line, so take the first line that has something on
-	# it rather than the first line.
-	if ! gzip -dc "$tmp/mihomo.gz" > "$tmp/mihomo" 2>"$tmp/gzip.err"; then
+	# it rather than the first line. A full disk shows up here too.
+	if [ "$gz_rc" != 0 ]; then
 		local why
 		why="$(awk 'NF { print; exit }' "$tmp/gzip.err" 2>/dev/null)"
 		rm -rf "$tmp"
@@ -409,7 +641,21 @@ do_core_install() {
 	running=0
 	pidof mihomo >/dev/null 2>&1 && running=1
 
-	install_core_binary "$tmp/mihomo" || { rm -rf "$tmp"; exit 1; }
+	# The estimate got the download this far; the real size decides how it
+	# goes into /usr/bin. A core unpacked on the overlay already holds its
+	# room and is only renamed, so there is nothing more to find.
+	if [ "$(mount_of "$tmp")" = "$(mount_of /usr/bin)" ]; then
+		plan=move
+	else
+		plan="$(ensure_install_room "$(size_kb "$tmp/mihomo")")" || { rm -rf "$tmp"; exit 1; }
+	fi
+
+	if ! install_core_binary "$tmp/mihomo" "$plan"; then
+		rm -rf "$tmp"
+		# a core stopped to make room comes back, still the old one
+		[ "$plan" = stop ] && [ "$running" = 1 ] && /etc/init.d/mihomo start >/dev/null 2>&1
+		exit 1
+	fi
 	rm -rf "$tmp"
 
 	echo "installed $(/usr/bin/mihomo -v 2>&1 | head -n1)"

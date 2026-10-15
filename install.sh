@@ -16,6 +16,7 @@
 #   SKIP_CORE=1       leave an existing mihomo binary alone
 #   MIHOMO_ARCH=      name the core build instead of detecting it
 #   SKIP_UI=1         do not download a dashboard
+#   CLASHWRT_TMPDIR=  where to unpack downloads when /tmp is short of room
 
 set -e
 
@@ -46,11 +47,33 @@ if [ -z "$REPO_URL" ]; then
 	fi
 fi
 MIHOMO_DIR="${MIHOMO_DIR:-/etc/mihomo}"
-TMP="/tmp/clashwrt-install.$$"
 
 say()  { echo "==> $*"; }
 warn() { echo "[!] $*" >&2; }
 die()  { echo "[x] $*" >&2; exit 1; }
+
+# Free kilobytes on the filesystem holding $1 (see updctl.sh avail_kb: the
+# Available column is found next to the "%" one, since long device names wrap).
+avail_kb() {
+	_a="$(df -k "$1" 2>/dev/null |
+		awk 'END { for (i = 1; i <= NF; i++) if ($i ~ /%$/) { print $(i-1); exit } }')"
+	case "$_a" in ''|*[!0-9]*) echo 0 ;; *) echo "$_a" ;; esac
+}
+
+# The source tarball and its unpacked tree take about 1 MB; 4 MB leaves room
+# for the tree to grow. /tmp is RAM and nearly always has that, but a router
+# with little RAM and a busy core may not -- then any writable mount will do,
+# the overlay last since it is the scarcest thing on the box.
+NEED_TMP_KB=4096
+TMP=""
+for _d in ${CLASHWRT_TMPDIR:-} /tmp $(awk '$4 ~ /(^|,)rw(,|$)/ { print $2 }' /proc/mounts 2>/dev/null) /root; do
+	case "$_d" in /|/rom*|/overlay*|/proc*|/sys*|/dev*|*\\*) continue ;; esac
+	[ -d "$_d" ] && [ -w "$_d" ] || continue
+	[ "$(avail_kb "$_d")" -ge "$NEED_TMP_KB" ] || continue
+	TMP="$_d/clashwrt-install.$$"
+	break
+done
+[ -n "$TMP" ] || die "no filesystem has ${NEED_TMP_KB}K free for the download (/tmp has $(avail_kb /tmp)K); free some space or set CLASHWRT_TMPDIR"
 
 # busybox has no `install` applet, and busybox is what OpenWrt actually ships,
 # so these do the same job with mkdir/cp/chmod.
@@ -191,6 +214,16 @@ if [ ! -d "$SRC/clashwrt/files" ]; then
 	[ -n "$inner" ] && [ -d "$inner/clashwrt/files" ] && SRC="$inner"
 fi
 [ -d "$SRC/clashwrt/files" ] || die "unexpected tarball layout (no clashwrt/files)"
+
+# Everything below writes to the overlay, and running out halfway would leave
+# new scripts beside old pages. What it writes is the unpacked tree's own
+# files, so their size is the measure; 512K of slack keeps the overlay off its
+# last block. Files that already exist are overwritten, so this overcounts on
+# an upgrade, which is the safe direction.
+_need=$(( $(du -sk "$SRC/clashwrt/files" "$SRC/luci-app-clashwrt" 2>/dev/null | awk '{ s += $1 } END { print s + 0 }') + 512 ))
+_have="$(avail_kb /usr/libexec)"
+[ "$_have" -ge "$_need" ] ||
+	die "not enough room on the overlay: ClashWrt needs about ${_need}K and there is ${_have}K free; nothing has been changed"
 
 # What the user last chose for the mihomo core, read before anything below can
 # create or enable it. Switching the core off from the Overview page disables
