@@ -359,7 +359,8 @@ return view.extend({
 
 			dom.content(pillBox, power.pill(c.tone, c.label));
 			pillBox.setAttribute('data-state', c.key);
-			dom.content(msgBox, c.message);
+			/* an array: a bare string would be set as HTML */
+			dom.content(msgBox, [ c.message ]);
 
 			switches.proxy.input.checked = proxyOn;
 			switches.core.input.checked = coreUp;

@@ -47,24 +47,27 @@ cleanup() {
 	[ -n "${SOCAT:-}" ] && kill "$SOCAT" 2>/dev/null
 	ip rule del fwmark $MARK table $RT_TABLE pref $RT_PREF 2>/dev/null
 	ip route flush table $RT_TABLE 2>/dev/null
-	rm -f /tmp/clashwrt_st.http /tmp/clashwrt_st.out /tmp/clashwrt_st.hits
+	[ -n "${ST:-}" ] && rm -rf "$ST"
 }
 trap cleanup EXIT
 cleanup
+
+# a directory of its own: root later appends to and serves these files
+ST="$(mktemp -d /tmp/clashwrt-st.XXXXXX)" || { echo "cannot create a temporary directory" >&2; exit 1; }
 
 # marked traffic must be delivered locally for a transparent socket to see it
 sysctl -qw net.ipv4.conf.all.route_localnet=1 2>/dev/null
 ip route replace local default dev lo table $RT_TABLE
 ip rule add fwmark $MARK table $RT_TABLE pref $RT_PREF
 
-printf 'HTTP/1.0 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nYES\n' > /tmp/clashwrt_st.http
-: > /tmp/clashwrt_st.hits
+printf 'HTTP/1.0 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nYES\n' > "$ST"/st.http
+: > "$ST"/st.hits
 
 # Each accepted connection appends one marker line. Counting socat's own
 # output instead would count its warnings as if they were connections.
 socat "TCP4-LISTEN:$PORT,bind=127.0.0.1,ip-transparent,reuseaddr,fork" \
-	SYSTEM:'cat /tmp/clashwrt_st.http; echo hit >> /tmp/clashwrt_st.hits' \
-	> /tmp/clashwrt_st.out 2>&1 &
+	SYSTEM:"cat $ST/st.http; echo hit >> $ST/st.hits" \
+	> "$ST"/st.out 2>&1 &
 SOCAT=$!
 sleep 1
 
@@ -76,7 +79,7 @@ if [ "$DIRECT" != "200" ]; then
 	exit 2
 fi
 # that sanity connection counts as a hit; start the real measurement from zero
-: > /tmp/clashwrt_st.hits
+: > "$ST"/st.hits
 
 nft add table $TABLE
 nft add chain $TABLE pre "{ type filter hook prerouting priority mangle ; }"
@@ -96,7 +99,7 @@ sleep 1
 
 RC=$(ip netns exec $NS curl -s -m6 -o /dev/null -w '%{http_code}' http://9.9.9.9/ 2>/dev/null)
 CNT=$(nft list chain $TABLE pre | grep -o 'counter packets [0-9]*' | awk '{print $3}')
-GOT=$(grep -c . /tmp/clashwrt_st.hits 2>/dev/null)
+GOT=$(grep -c . "$ST"/st.hits 2>/dev/null)
 
 echo "tproxy rule matched : ${CNT:-0} packets"
 echo "socket received     : ${GOT:-0}"

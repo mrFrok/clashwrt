@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashwrt
-PKG_VERSION:=1.2.0
+PKG_VERSION:=1.2.1
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-or-later
@@ -94,6 +94,25 @@ define Package/clashwrt/prerm
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 /etc/init.d/clashwrt stop
 [ "$${PKG_UPGRADE}" = "1" ] || /etc/init.d/clashwrt disable
+exit 0
+endef
+
+# What uci-defaults wrote outside the package's own files: the daily list
+# refresh and the route_localnet sysctl. Left behind, the first keeps firing
+# at a missing script and the second outlives the firewall that needed it.
+define Package/clashwrt/postrm
+#!/bin/sh
+[ -n "$${IPKG_INSTROOT}" ] && exit 0
+[ "$${PKG_UPGRADE}" = "1" ] && exit 0
+if [ -f /etc/crontabs/root ]; then
+	sed -i '\|/usr/libexec/clashwrt/setctl.sh|d' /etc/crontabs/root
+	/etc/init.d/cron restart >/dev/null 2>&1
+fi
+if [ -f /etc/sysctl.d/99-clashwrt.conf ]; then
+	rm -f /etc/sysctl.d/99-clashwrt.conf
+	sysctl -w net.ipv4.conf.all.route_localnet=0 >/dev/null 2>&1
+	sysctl -w net.ipv4.conf.default.route_localnet=0 >/dev/null 2>&1
+fi
 exit 0
 endef
 

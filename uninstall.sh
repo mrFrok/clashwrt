@@ -21,6 +21,20 @@
 
 MIHOMO_DIR="$(uci -q get clashwrt.config.mihomo_dir 2>/dev/null || echo /etc/mihomo)"
 
+# The directory comes from a free-text setting and is removed with rm -rf, so
+# it has to look like a directory of its own: absolute, at least two levels
+# deep, no '..', and not one of the system's own.
+mihomo_dir_safe() {
+	case "$1" in
+		/*/*) ;;
+		*) return 1 ;;
+	esac
+	case "$1" in
+		*..*|*" "*|/etc|/etc/|/usr|/usr/*|/bin*|/sbin*|/lib*|/proc*|/sys*|/dev*|/rom*|/overlay|/overlay/|/www|/www/|/root|/root/|/tmp|/tmp/|/var|/var/) return 1 ;;
+	esac
+	[ -d "$1" ] && [ ! -L "$1" ]
+}
+
 say()  { echo "==> $*"; }
 warn() { echo "[!] $*" >&2; }
 
@@ -134,6 +148,9 @@ rm -rf /usr/libexec/clashwrt
 rm -f  /etc/init.d/clashwrt
 rm -f  /etc/hotplug.d/net/30-clashwrt
 rm -f  /etc/sysctl.d/99-clashwrt.conf
+# the file only takes effect at boot; the running value stays until reset
+sysctl -w net.ipv4.conf.all.route_localnet=0 >/dev/null 2>&1
+sysctl -w net.ipv4.conf.default.route_localnet=0 >/dev/null 2>&1
 rm -f  /etc/uci-defaults/99-clashwrt
 
 rm -rf /www/luci-static/resources/view/clashwrt
@@ -146,10 +163,10 @@ rm -f  /usr/lib/lua/luci/i18n/clashwrt.*.lmo
 rm -f /tmp/clashwrt-staging
 
 # the scheduled list refresh would otherwise keep firing at a missing script
+# (sed rather than grep -v, which fails when that was the only line and so
+# used to leave it in place)
 if [ -f /etc/crontabs/root ]; then
-	grep -v "clashwrt/setctl.sh" /etc/crontabs/root > /tmp/cron.clashwrt.$$ 2>/dev/null &&
-		cat /tmp/cron.clashwrt.$$ > /etc/crontabs/root
-	rm -f /tmp/cron.clashwrt.$$
+	sed -i '\|/usr/libexec/clashwrt/setctl.sh|d' /etc/crontabs/root
 	/etc/init.d/cron restart >/dev/null 2>&1 || true
 fi
 rm -f /tmp/clashwrt-update.log /tmp/clashwrt-selfupdate.sh /tmp/clashwrt-selfupdate-run.sh
@@ -169,8 +186,12 @@ else
 fi
 
 if [ "${KEEP_CONFIG:-0}" != "1" ]; then
-	say "removing $MIHOMO_DIR and /etc/config/clashwrt"
-	rm -rf "$MIHOMO_DIR"
+	if mihomo_dir_safe "$MIHOMO_DIR"; then
+		say "removing $MIHOMO_DIR and /etc/config/clashwrt"
+		rm -rf "$MIHOMO_DIR"
+	else
+		warn "not removing '$MIHOMO_DIR': it does not look like mihomo's own directory; remove it by hand if it is"
+	fi
 	rm -f /etc/config/clashwrt
 else
 	say "keeping $MIHOMO_DIR and /etc/config/clashwrt"

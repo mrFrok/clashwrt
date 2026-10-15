@@ -73,6 +73,7 @@ load_cfg() {
 	config_get set_url      config bypass_set_url      ""
 	config_get set_interval config bypass_set_interval 86400
 	config_get from_config  config bypass_set_from_config 1
+	config_get max_domains_cfg config bypass_set_max_domains ""
 	config_get dns_hijack   config dns_hijack          0
 	config_get mihomo_dir   config mihomo_dir          /etc/mihomo
 
@@ -134,10 +135,10 @@ detect_direction() {
 
 	local last=""
 	if [ -f "$MIHOMO_CONF" ]; then
-		# Only list entries: a commented-out "# - MATCH,DIRECT" must not count,
-		# and neither must the word appearing in prose.
-		last="$(sed -n 's/^[[:space:]]*-[[:space:]]*MATCH,[[:space:]]*\([^ ,#]*\).*/\1/p' \
-			"$MIHOMO_CONF" 2>/dev/null | tail -n1)"
+		# Only list entries of the top-level rules: a commented-out
+		# "# - MATCH,DIRECT" must not count, nor one inside sub-rules.
+		last="$(awk '/^[A-Za-z0-9_-]+:/ { r = ($0 ~ /^rules:/) } r' "$MIHOMO_CONF" 2>/dev/null |
+			sed -n 's/^[[:space:]]*-[[:space:]]*MATCH,[[:space:]]*\([^ ,#]*\).*/\1/p' | tail -n1)"
 	fi
 
 	case "$last" in
@@ -290,7 +291,8 @@ parse_list() {
 # Addresses go into the set directly. Domains have no address until somebody
 # looks them up, so dnsmasq adds what it resolves for them to a second set
 # (nftset=, which needs dnsmasq-full). Rule providers are read from the files
-# mihomo has already downloaded; the binary .mrs format cannot be read here.
+# mihomo has already downloaded; the binary .mrs format is turned back into
+# text by mihomo itself (convert-ruleset), since nothing else here can read it.
 
 # config.yaml as tab-separated records:
 #   P <name> <behavior> <path> <format>    one per rule provider
@@ -379,6 +381,17 @@ parse_domains() {
 	| grep -E '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
 }
 
+# An .mrs provider as text, through mihomo's own converter, into $3. mrs
+# holds only domain and ipcidr sets, so classical is not asked for.
+mrs_to_text() {
+	local beh="$1" file="$2" out="$3"
+	case "$beh" in domain|ipcidr) ;; *) return 1 ;; esac
+	command -v mihomo >/dev/null 2>&1 || return 1
+	rm -f "$out"
+	mihomo convert-ruleset "$beh" mrs "$file" "$out" >/dev/null 2>&1
+	[ -s "$out" ]
+}
+
 # One provider file by its behavior: addresses appended to $3, domains to $4.
 read_provider() {
 	local beh="$1" file="$2" ips="$3" doms="$4"
@@ -446,7 +459,6 @@ do_from_config() {
 			path="$(echo "$line" | cut -f4)"
 			fmt="$(echo "$line" | cut -f5)"
 			[ "$extra" = "ip-only" ] && [ "$beh" != "ipcidr" ] && continue
-			[ "$fmt" = "mrs" ] && { echo "skipped: rule-set $val is in the binary mrs format" >> "$notes"; continue; }
 			# mihomo keeps providers under its own directory; so does this
 			case "$path" in
 				""|*..*) echo "skipped: rule-set $val has no usable path" >> "$notes"; continue ;;
@@ -455,6 +467,11 @@ do_from_config() {
 				*)  file="$mihomo_dir/${path#./}" ;;
 			esac
 			[ -f "$file" ] && [ ! -L "$file" ] && [ -s "$file" ] || { echo "skipped: rule-set $val is not downloaded yet ($file)" >> "$notes"; continue; }
+			if [ "$fmt" = "mrs" ]; then
+				mrs_to_text "$beh" "$file" "$recs.mrs" ||
+					{ echo "skipped: rule-set $val is in the binary mrs format and mihomo could not convert it" >> "$notes"; continue; }
+				file="$recs.mrs"
+			fi
 			read_provider "$beh" "$file" "$ips" "$doms"
 			;;
 		esac
@@ -476,16 +493,33 @@ do_from_config() {
 	mv -f "$CONF_LIST.$$" "$CONF_LIST"
 	mv -f "$CONF_DOMAINS.$$" "$CONF_DOMAINS"
 	mv -f "$CONF_NOTES.$$" "$CONF_NOTES"
-	rm -f "$recs" "$recs.pick" "$ips" "$doms" "$notes"
+	rm -f "$recs" "$recs.pick" "$recs.mrs" "$ips" "$doms" "$notes"
 }
 
 # ---------------------------------------------------------------------------
 # domains through dnsmasq
 # ---------------------------------------------------------------------------
 
-# Past this many the dnsmasq config costs more memory than it is worth on a
-# router; the first ones are kept and the status says how many were not.
-MAX_DOMAINS=20000
+# Each domain costs dnsmasq some memory for as long as it runs. Lists like
+# Re-filter's run past 80000 names, which a router with a few GB takes in its
+# stride and one with 128 MB does not, so the default follows the RAM: about
+# one domain per 4 KB, between 20000 and 300000. bypass_set_max_domains
+# overrides it. Past the limit the first ones are kept and status says so.
+max_domains() {
+	local m
+	m="$(num_or "$max_domains_cfg" "")"
+	if [ -z "$m" ]; then
+		m="$(awk '/^MemTotal:/ { print int($2 / 4) }' /proc/meminfo 2>/dev/null)"
+		m="$(num_or "$m" 20000)"
+		[ "$m" -ge 20000 ] || m=20000
+		[ "$m" -le 300000 ] || m=300000
+	fi
+	echo "$m"
+}
+
+num_or() {
+	case "$1" in ''|*[!0-9]*) echo "$2" ;; *) echo "$1" ;; esac
+}
 DNSMASQ_FILE="clashwrt-nftset.conf"
 
 dnsmasq_has_nftset() {
@@ -527,7 +561,7 @@ dns_sync_domains() {
 
 	mkdir -p "$dir"
 	tmp="$file.$$"
-	head -n "$MAX_DOMAINS" "$CONF_DOMAINS" |
+	head -n "$(max_domains)" "$CONF_DOMAINS" |
 		awk -v set="4#inet#clashwrt#$SET4_DNS" '{ print "nftset=/" $0 "/" set }' > "$tmp"
 	if cmp -s "$tmp" "$file"; then
 		rm -f "$tmp"
@@ -570,7 +604,10 @@ do_update() {
 	# Bounded twice over: a list host serving gigabytes would otherwise fill
 	# the RAM /tmp lives in, and millions of entries would follow it into
 	# flash and into the kernel set on every apply.
-	if ! curl -sSL --fail -m 180 --max-filesize "$MAX_LIST_BYTES" -o "$tmp" "$url"; then
+	# A custom list may be plain http on purpose (a box on the LAN), but a
+	# redirect is only followed to https, and never to file:// or the like.
+	if ! curl -sSL --fail --proto '=http,https' --proto-redir '=https' -m 180 \
+		--max-filesize "$MAX_LIST_BYTES" -o "$tmp" "$url"; then
 		rm -f "$tmp"
 		# keep whatever we had: an empty set would silently proxy everything
 		[ -s "$LIST" ] && { log "download failed, keeping the previous list"; return 0; }
@@ -699,7 +736,7 @@ do_status() {
 				echo "domains:  $nd in config.yaml, NOT used: this dnsmasq has no nftset support (install dnsmasq-full)"
 			else
 				echo "domains:  $nd in config.yaml, resolved addresses added by dnsmasq"
-				[ "$nd" -gt "$MAX_DOMAINS" ] && echo "WARNING:  only the first $MAX_DOMAINS domains are used"
+				[ "$nd" -gt "$(max_domains)" ] && echo "WARNING:  only the first $(max_domains) domains are used (bypass_set_max_domains)"
 			fi
 		fi
 		[ -s "$CONF_NOTES" ] && sed 's/^/note:     /' "$CONF_NOTES"

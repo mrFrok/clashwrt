@@ -345,6 +345,7 @@ spare_cores_kb() {
 	for f in /usr/bin/mihomo?*; do
 		[ -f "$f" ] || continue
 		core_in_use "$f" && continue
+		is_elf "$f" || continue
 		"$f" -v 2>&1 | head -n1 | grep -qi mihomo || continue
 		t=$(( t + $(size_kb "$f") ))
 	done
@@ -519,6 +520,12 @@ core_in_use() {
 	return 1
 }
 
+# Asking a file for its version runs it, as root, so only ELF executables are
+# asked: a script or anything else named mihomo-something is left alone.
+is_elf() {
+	[ -f "$1" ] && [ ! -L "$1" ] && [ "$(dd if="$1" bs=1 skip=1 count=3 2>/dev/null)" = "ELF" ]
+}
+
 # Every mihomo binary sitting in /usr/bin, live one included.
 #
 # Prints: path, size in KB, version, and what it is. A file that will not run
@@ -531,9 +538,10 @@ list_cores() {
 		case "$f" in /usr/bin/.*) continue ;; esac
 
 		sz=$(( $(wc -c < "$f") / 1024 ))
-		ver="$("$f" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
+		ver=""
+		is_elf "$f" && ver="$("$f" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
 
-		if "$f" -v 2>&1 | head -n1 | grep -qi mihomo; then
+		if is_elf "$f" && "$f" -v 2>&1 | head -n1 | grep -qi mihomo; then
 			if [ "$f" = "/usr/bin/mihomo" ]; then
 				what="live"
 				core_in_use "$f" && what="live, running"
@@ -576,6 +584,7 @@ prune_old_cores() {
 		case "$f" in /usr/bin/.*) continue ;; esac
 
 		core_in_use "$f" && { echo "keeping $f: it is running"; continue; }
+		is_elf "$f" || continue
 		"$f" -v 2>&1 | head -n1 | grep -qi mihomo || continue
 
 		sz=$(( $(wc -c < "$f") / 1024 ))
@@ -621,7 +630,7 @@ do_core_install() {
 	# its own. gzip checks the CRC at the end of the stream, so a cut-off
 	# download fails here instead of leaving a truncated core.
 	echo "downloading mihomo ${ver} for ${arch}"
-	{ curl -sSL --fail -m 300 "$url" 2>"$tmp/curl.err" || : > "$tmp/curl.failed"; } |
+	{ curl -sSL --fail --proto '=https' -m 300 "$url" 2>"$tmp/curl.err" || : > "$tmp/curl.failed"; } |
 		gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
 	gz_rc=$?
 	if [ -e "$tmp/curl.failed" ]; then
@@ -752,7 +761,7 @@ do_self_update() {
 	script="$dir/install.sh"
 	runner="$dir/run.sh"
 
-	curl -sSL --fail -m 120 -o "$script" "$url" || die "could not download $url"
+	curl -sSL --fail --proto '=https' -m 120 -o "$script" "$url" || die "could not download $url"
 	[ -s "$script" ] || die "the downloaded installer is empty"
 
 	# A truncated or redirected download would otherwise be executed as far

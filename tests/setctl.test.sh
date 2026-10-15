@@ -55,6 +55,8 @@ rules:
 Y
 printf '1.2.3.0/24\n0.0.0.0/0\n1.2.3.4/33\n' > "$TMP/mihomo/providers/blocked.txt"
 printf 'payload:\n  - "+.claude.ai"\n  - "*.bad*wild.com"\n' > "$TMP/mihomo/providers/ai.yaml"
+# a binary provider that is downloaded but that no converter is there to read
+printf 'binary' > "$TMP/mihomo/providers/b.mrs"
 
 loaded() { sed -n 's/^  \([0-9./]*\),*$/\1/p' "$NFT_LOADED" | tr '\n' ' ' | sed 's/ $//'; }
 nftset() { [ -e "$TMP/dnsmasq.d/clashwrt-nftset.conf" ] && sed 's/^nftset=\/\([^/]*\)\/.*/\1/' "$TMP/dnsmasq.d/clashwrt-nftset.conf" | tr '\n' ' ' | sed 's/ $//'; }
@@ -68,8 +70,8 @@ case "$(sh "$SETCTL" status)" in
 	*) fail "status says what is missing for domains" ;;
 esac
 case "$(sh "$SETCTL" from-config)" in
-	*"rule-set bin is in the binary mrs format"*) pass "mrs providers are reported, not guessed" ;;
-	*) fail "mrs providers are reported, not guessed" ;;
+	*"rule-set bin is in the binary mrs format and mihomo could not convert it"*) pass "an mrs provider mihomo cannot convert is reported, not guessed" ;;
+	*) fail "an mrs provider mihomo cannot convert is reported, not guessed" ;;
 esac
 
 NFTSET=nftset sh "$SETCTL" load
@@ -137,5 +139,33 @@ eq "domain rules present before off" "chatgpt.com" "$(nftset)"
 uci set clashwrt.config.bypass_set_mode=off
 NFTSET=nftset sh "$SETCTL" load
 eq "off removes the dnsmasq rules" "" "$(nftset)"
+
+# .mrs providers are read through mihomo's own converter
+uci set clashwrt.config.bypass_set_mode=auto
+cat > "$TMP/bin/mihomo" <<'X'
+#!/bin/sh
+# convert-ruleset <behavior> mrs <src> <dst>: the fake "mrs" is plain text
+[ "$1" = convert-ruleset ] && [ "$3" = mrs ] && cp "$4" "$5"
+X
+chmod +x "$TMP/bin/mihomo"
+printf '+.chatgpt.com\n+.openai.com\n' > "$TMP/mihomo/providers/rf.mrs"
+printf '104.18.32.0/20\n' > "$TMP/mihomo/providers/ip.mrs"
+cat > "$TMP/mihomo/config.yaml" <<'Y'
+rule-providers:
+  refilter_domains: { behavior: domain, format: mrs, path: ./providers/rf.mrs }
+  refilter_ipsum: { behavior: ipcidr, format: mrs, path: ./providers/ip.mrs }
+rules:
+  - RULE-SET,refilter_domains,Proxy
+  - RULE-SET,refilter_ipsum,Proxy
+  - MATCH,DIRECT
+Y
+NFTSET=nftset sh "$SETCTL" load
+eq "mrs ipcidr provider read through mihomo" "104.18.32.0/20" "$(loaded)"
+eq "mrs domain provider read through mihomo" "chatgpt.com openai.com" "$(nftset)"
+rm "$TMP/bin/mihomo"
+case "$(sh "$SETCTL" from-config)" in
+	*"mihomo could not convert it"*) pass "without a converter, mrs is reported" ;;
+	*) fail "without a converter, mrs is reported" ;;
+esac
 
 finish

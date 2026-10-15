@@ -273,6 +273,20 @@ function yamlScalar(v) {
 /* Keys are the generator's own (type, ws-opts, Host...), so anything else is
  * refused rather than quoted: a key that came out of a pasted link could
  * otherwise close the flow map and start new top-level config keys. */
+/* Settings values that are written into config.yaml outside a quoted
+ * scalar: a port or mark must be a number, a device name a plain word,
+ * a directory an absolute path without anything YAML would read. */
+function portOf(v, d) {
+	var n = parseInt(v, 10);
+	return (String(v).match(/^\d+$/) && n > 0 && n < 65536) ? n : d;
+}
+function wordOf(v, d) {
+	return /^[A-Za-z0-9_.-]{1,15}$/.test(String(v)) ? String(v) : d;
+}
+function pathOf(v) {
+	return /^\/[A-Za-z0-9_.\/-]*$/.test(String(v)) ? String(v) : '';
+}
+
 function yamlKey(k) {
 	if (!/^[A-Za-z0-9_.-]+$/.test(k))
 		throw new Error('refusing to write the key "' + String(k).slice(0, 40) + '"');
@@ -991,27 +1005,27 @@ return baseclass.extend({
 		L.push('allow-lan: false');
 		L.push('unified-delay: true');
 		L.push('tcp-concurrent: true');
-		L.push('external-controller: 0.0.0.0:' + (o.apiPort || 9090));
+		L.push('external-controller: 0.0.0.0:' + portOf(o.apiPort, 9090));
 		/* The controller listens on every interface so the dashboard works
 		 * from the LAN, and without a secret anyone there could switch the
 		 * proxy or read every device's connections. */
 		if (o.secret) L.push('secret: ' + yamlScalar(o.secret));
-		if (o.externalUi) L.push('external-ui: ' + o.externalUi);
+		if (pathOf(o.externalUi)) L.push('external-ui: ' + pathOf(o.externalUi));
 		L.push('');
 
 		/* Inbounds must match the firewall mode, which is the whole reason
 		 * this generator lives inside the package that owns the firewall. */
 		L.push('# inbounds for firewall mode: ' + o.mode);
 		if (o.mode === 'tproxy' || o.mode === 'tproxy_tun')
-			L.push('tproxy-port: ' + (o.tproxyPort || 7894));
+			L.push('tproxy-port: ' + portOf(o.tproxyPort, 7894));
 		if (o.mode === 'redirect_tun')
-			L.push('redir-port: ' + (o.redirPort || 7893));
-		L.push('routing-mark: ' + (o.selfMark || 2));
+			L.push('redir-port: ' + portOf(o.redirPort, 7893));
+		L.push('routing-mark: ' + (/^\d+$/.test(String(o.selfMark)) ? o.selfMark : 2));
 
 		if (o.mode !== 'tproxy') {
 			L.push('tun:');
 			L.push('  enable: true');
-			L.push('  device: ' + (o.tunDevice || 'clash-tun'));
+			L.push('  device: ' + wordOf(o.tunDevice, 'clash-tun'));
 			L.push('  stack: system');
 			L.push('  auto-route: false');
 			L.push('  auto-redirect: false');
@@ -1026,7 +1040,7 @@ return baseclass.extend({
 		L.push('dns:');
 		L.push('  enable: true');
 		L.push('  ipv6: false');
-		L.push('  listen: 0.0.0.0:' + (o.dnsPort || 1053));
+		L.push('  listen: 0.0.0.0:' + portOf(o.dnsPort, 1053));
 		L.push('  enhanced-mode: redir-host');
 		L.push('  default-nameserver:');
 		dnsServers.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });

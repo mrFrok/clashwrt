@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The one lock used by fw.sh and powerctl.sh. Sourced, not run.
+# The lock code used by fw.sh and powerctl.sh, each with its own lock file
+# (powerctl holds its lock while it runs fw.sh). Sourced, not run.
 #
 #   cw_lock LOCKFILE DEFAULT_WAIT WHAT
 #

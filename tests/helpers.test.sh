@@ -49,4 +49,21 @@ eq "an oversized list leaves the previous one in place" "1.2.3.0/24" "$(cat "$S/
 grep -q "more than 20 networks" "$S/log" && pass "and says why" || fail "and says why"
 grep -q -- "--max-filesize" "$L/setctl.sh" && pass "the download itself is capped" || fail "the download itself is capped"
 
+# uninstall.sh: only a directory that looks like mihomo's own is removed
+sed -n '/^mihomo_dir_safe() {/,/^}/p' "$T/../uninstall.sh" > "$TMP/mds.sh"
+. "$TMP/mds.sh"
+mkdir -p "$TMP/etc/mihomo"
+mihomo_dir_safe "$TMP/etc/mihomo" && pass "a real mihomo dir may be removed" || fail "a real mihomo dir may be removed"
+for d in / /etc /etc/ /usr/bin /root /tmp "$TMP/etc/../etc" relative/dir; do
+	mihomo_dir_safe "$d" && fail "refused: $d" || pass "refused: $d"
+done
+
+# updctl.sh: only ELF files are run to ask their version
+sed -n '/^is_elf() {/,/^}/p' "$L/updctl.sh" > "$TMP/elf.sh"
+. "$TMP/elf.sh"
+printf '#!/bin/sh\necho Mihomo\n' > "$TMP/mihomo-script"
+printf '\177ELF\002\001\001' > "$TMP/mihomo-elf"
+is_elf "$TMP/mihomo-script" && fail "a script is not run" || pass "a script is not run"
+is_elf "$TMP/mihomo-elf" && pass "an ELF file is recognised" || fail "an ELF file is recognised"
+
 finish

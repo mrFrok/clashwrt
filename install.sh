@@ -202,7 +202,9 @@ case "$REPO_URL" in
 esac
 
 say "fetching clashwrt"
-curl -sSL --fail -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
+# --proto: whatever this fetches is run as root, so a redirect to plain http
+# (or file://) is not followed
+curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
 mkdir -p "$TMP/src"
 # no --strip-components: busybox tar does not have it, and busybox is what
 # OpenWrt ships. Extract as-is and step into the wrapper directory instead.

@@ -54,7 +54,8 @@ die() {
 	exit 1
 }
 
-# One switch at a time, under the lock shared with fw.sh (see lock.sh). The
+# One switch at a time, under a lock of its own (the code is lock.sh's; the
+# file is not fw.sh's, which this script takes again through fw.sh). The
 # wait is bounded (CLASHWRT_LOCK_WAIT seconds, default 10) so a stuck holder
 # shows up as an error in LuCI rather than a request that never returns.
 # shellcheck source=lock.sh

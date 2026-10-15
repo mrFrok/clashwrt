@@ -63,7 +63,9 @@ svc_enabled() { ls "$RCD"/S[0-9][0-9]"$NAME" >/dev/null 2>&1; }
 wd_running() {
 	local pid
 	pid="$(sed -n 's/^pid:[[:space:]]*//p' "$RUNDIR/watchdog.state" 2>/dev/null | head -n1)"
-	[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+	case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+	# the pid must still be the watchdog, not whatever reused the number
+	tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'watchdog.sh run'
 }
 
 # Failures always go to stderr, tty or not: this runs from init scripts, from
@@ -77,7 +79,9 @@ die() {
 
 # Every action that changes the ruleset takes one lock, so the watchdog, the
 # init script, hotplug and LuCI cannot interleave a flush with an apply.
-# The lock itself lives in lock.sh, shared with powerctl.sh.
+# The lock code lives in lock.sh and is shared with powerctl.sh; the lock
+# files are not: powerctl holds its own while it calls this script, which
+# then takes this one, so one file would be a deadlock.
 # shellcheck source=lock.sh
 . "${CLASHWRT_LIBEXEC:-/usr/libexec/clashwrt}/lock.sh"
 fw_lock() { cw_lock "$LOCKFILE" 30 firewall; }
@@ -457,6 +461,15 @@ build_bypass() {
 }
 
 apply_nft() {
+	# What dnsmasq has resolved so far for the config's domains lives only in
+	# bypass4_dns, and only a new lookup puts an address back. Rebuilding the
+	# table would otherwise empty it, and with 'include' every site a client
+	# still has cached would go direct until its next lookup. So the
+	# addresses are carried over into the new table.
+	local dns_keep
+	dns_keep="$(nft list set $TABLE bypass4_dns 2>/dev/null |
+		grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ',' | sed 's/,$//')"
+
 	nft delete table $TABLE 2>/dev/null
 	nft add table $TABLE
 
@@ -465,6 +478,7 @@ apply_nft() {
 	# command here need a guard. "interval" is what allows CIDRs as elements.
 	nft add set $TABLE bypass4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
 	nft add set $TABLE bypass4_dns "{ type ipv4_addr ; flags timeout ; timeout 1d ; }"
+	[ -n "$dns_keep" ] && nft add element $TABLE bypass4_dns "{ $dns_keep }" 2>/dev/null
 
 	# priority mangle(-150) so we see packets before conntrack/dstnat decide
 	nft add chain $TABLE mangle "{ type filter hook prerouting priority mangle ; }"
@@ -776,6 +790,9 @@ do_autobypass() {
 	case "${1:-}" in
 	on)
 		[ "$enabled" = 1 ] || { echo "proxy is off, nothing to bypass"; exit 0; }
+		# switched off from the Overview: a watchdog caught mid-tick must not
+		# start changing dnsmasq behind it
+		svc_enabled || { echo "ClashWrt is switched off, nothing to bypass"; exit 0; }
 		mkdir -p "$RUNDIR"
 		: > "$FLAG"
 		do_flush_quiet

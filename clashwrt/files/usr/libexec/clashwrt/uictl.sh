@@ -91,7 +91,7 @@ install_from() {
 	tgz="$tmp/ui.tar.gz"
 
 	echo "downloading $url"
-	if ! curl -sSL --fail -m 180 -o "$tgz" "$url"; then
+	if ! curl -sSL --fail --proto '=https' --max-filesize 67108864 -m 180 -o "$tgz" "$url"; then
 		rm -rf "$tmp"
 		die "download failed"
 	fi
@@ -108,7 +108,7 @@ install_from() {
 	if [ ! -f "$root/index.html" ]; then
 		local only
 		only="$(find "$root" -mindepth 1 -maxdepth 1)"
-		if [ "$(echo "$only" | wc -l)" = "1" ] && [ -d "$only" ]; then
+		if [ "$(echo "$only" | wc -l)" = "1" ] && [ -d "$only" ] && [ ! -L "$only" ]; then
 			root="$only"
 		fi
 	fi
@@ -122,10 +122,17 @@ install_from() {
 	# download never leaves the router without a usable dashboard
 	neuter_service_worker "$root"
 
+	# /tmp is RAM and the dashboard goes to flash, so this mv is a copy that
+	# can run out of room halfway; the old copy goes only once it has not
 	rm -rf "$UI_DIR.old"
 	[ -d "$UI_DIR" ] && mv "$UI_DIR" "$UI_DIR.old"
 	mkdir -p "$(dirname "$UI_DIR")"
-	mv "$root" "$UI_DIR"
+	if ! mv "$root" "$UI_DIR"; then
+		rm -rf "$UI_DIR"
+		[ -d "$UI_DIR.old" ] && mv "$UI_DIR.old" "$UI_DIR"
+		rm -rf "$tmp"
+		die "could not copy the dashboard into $UI_DIR (out of space?); the previous one is back"
+	fi
 	echo "$label" > "$UI_DIR/.clashwrt-source"
 	rm -rf "$UI_DIR.old" "$tmp"
 
@@ -145,8 +152,10 @@ case "${1:-}" in
 		url="${2:-}"
 		[ -n "$url" ] || die "no URL given"
 		case "$url" in
-			https://*|http://*) ;;
-			*) die "URL must start with http:// or https://" ;;
+			# what this fetches runs in the browser next to the API secret,
+			# so it is not taken over a connection anyone on the way can edit
+			https://*) ;;
+			*) die "URL must start with https://" ;;
 		esac
 		install_from "$url" "custom: $url"
 		;;

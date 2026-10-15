@@ -122,7 +122,9 @@ detect_group() {
 		echo "$group_cfg"
 		return 0
 	fi
-	g="$(sed -n 's/^[[:space:]]*-[[:space:]]*MATCH,[[:space:]]*\([^ ,#]*\).*/\1/p' "$CONF" 2>/dev/null | tail -n1)"
+	# the terminal MATCH of the top-level rules, not one inside sub-rules
+	g="$(awk '/^[A-Za-z0-9_-]+:/ { r = ($0 ~ /^rules:/) } r' "$CONF" 2>/dev/null |
+		sed -n 's/^[[:space:]]*-[[:space:]]*MATCH,[[:space:]]*\([^ ,#]*\).*/\1/p' | tail -n1)"
 	case "$g" in
 		DIRECT|REJECT|"") g="Proxy" ;;
 	esac
@@ -233,7 +235,9 @@ write_state() {
 	local tmp="$STATE.$$"
 	mkdir -p "$RUNDIR"
 	{
-		echo "pid: $$"
+		# a stopped daemon names no pid: once it is gone the number can be
+		# reused, and 'stop' would then signal whatever got it
+		[ "$ST" = stopped ] && echo "pid:" || echo "pid: $$"
 		echo "state: $ST"
 		echo "why: $ST_WHY"
 		echo "group: ${GROUP:-}"
@@ -421,6 +425,14 @@ do_probe() {
 	fi
 }
 
+# Whether $1 is a live watchdog, not merely a live process: a pid from the
+# state file can outlive the daemon and be handed to something else.
+is_watchdog() {
+	case "$1" in ''|*[!0-9]*) return 1 ;; esac
+	kill -0 "$1" 2>/dev/null || return 1
+	tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null | grep -q 'watchdog.sh run'
+}
+
 state_get() {
 	[ -f "$STATE" ] || return 1
 	sed -n "s/^$1:[[:space:]]*//p" "$STATE" | head -n1
@@ -447,7 +459,7 @@ do_status() {
 
 	pid="$(state_get pid)"
 	running=no
-	if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+	if is_watchdog "$pid"; then
 		running=yes
 	fi
 	echo "wd_running:      $running"
@@ -504,8 +516,7 @@ do_reset() {
 do_stop() {
 	local pid i=0
 	pid="$(state_get pid)"
-	case "$pid" in ''|*[!0-9]*) echo "the watchdog is not running"; return 0 ;; esac
-	kill -0 "$pid" 2>/dev/null || { echo "the watchdog is not running"; return 0; }
+	is_watchdog "$pid" || { echo "the watchdog is not running"; return 0; }
 	kill -TERM "$pid" 2>/dev/null
 	while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 5 ]; do
 		sleep 1
