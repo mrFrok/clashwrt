@@ -347,7 +347,7 @@ var AUTO_UDP_GROUP = 'Auto UDP';
 
 /* Yandex public DNS over HTTPS. Used only for the RU domain set, never as
  * the default resolver. */
-var YANDEX_DOH = 'https://common.dns.yandex.net/dns-query';
+var YANDEX_DOH = 'https://common.dot.dns.yandex.net/dns-query';
 
 function indentOf(line) {
 	var m = line.match(/^(\s*)/);
