@@ -183,7 +183,7 @@ return view.extend({
 			var names = ['Proxy', 'DIRECT'];
 			try {
 				gen.parseConfig(text).groups.forEach(function (n) {
-					if (n !== gen.UDP_GROUP && names.indexOf(n) < 0) names.push(n);
+					if (n !== gen.UDP_GROUP && n !== gen.AUTO_UDP_GROUP && names.indexOf(n) < 0) names.push(n);
 				});
 			} catch (e) { /* keep the two that always exist */ }
 			dom.content(siteGroup, names.map(function (n) { return E('option', { 'value': n }, [ n ]); }));

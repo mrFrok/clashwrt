@@ -578,7 +578,16 @@ do_update() {
 	require_direction
 
 	# nothing to download: the config is the list
-	[ "$set_source" = "config" ] && { do_load; return; }
+	if [ "$set_source" = "config" ]; then
+		do_load
+		# what the set could cover may have changed with the providers
+		# mihomo has downloaded since; if so, the firewall rule must follow
+		local want have
+		want="$(do_direction 2>/dev/null)"
+		have="$(cat "${CLASHWRT_RUNDIR:-/var/run/clashwrt}/bypass.applied" 2>/dev/null)"
+		[ -n "$want" ] && [ "$want" != "$have" ] && /usr/libexec/clashwrt/fw.sh apply >/dev/null 2>&1
+		return 0
+	fi
 
 	check_pairing
 	check_against_routing
@@ -725,7 +734,9 @@ do_status() {
 	fi
 	if [ "$from_config" = 1 ] && [ -n "$set_mode" ]; then
 		# read afresh: the files are only as new as the last load
-		do_from_config
+		local gap
+		gap="$(coverage_gap)"
+		[ -n "$gap" ] && echo "HELD BACK: the set is not used, everything goes to mihomo: $gap"
 		echo "config:   $([ -s "$CONF_LIST" ] && grep -c . "$CONF_LIST" || echo 0) networks from config.yaml rules"
 		if [ "$set_mode" = "include" ]; then
 			local nd
@@ -753,7 +764,34 @@ do_direction() {
 	load_cfg
 	[ "$set_mode_raw" = "off" ] && { echo "off"; return 0; }
 	require_direction
+	if [ "$(coverage_gap)" ]; then
+		echo "off"
+		return 0
+	fi
 	echo "$set_mode"
+}
+
+# Why a set built from config.yaml alone cannot stand in for it, or nothing.
+#
+# With 'include' and source 'config', the set is the whole list of what
+# reaches mihomo, so whatever a rule proxies that the set cannot hold goes
+# out direct instead. Better to leave the set out (everything reaches mihomo,
+# which only costs speed) than to leak: so it is held back when a proxying
+# rule could not be read, or when there are domains and nothing to resolve
+# them into the set. A downloaded list is a list on purpose and is not judged.
+coverage_gap() {
+	[ "$set_source" = "config" ] && [ "$set_mode" = "include" ] || return 0
+	do_from_config
+	if [ -s "$CONF_DOMAINS" ]; then
+		if [ "$dns_hijack" = 1 ]; then
+			echo "DNS hijack is on, so dnsmasq never sees the lookups that would fill in the config's domains"
+			return 0
+		elif ! dnsmasq_has_nftset; then
+			echo "config.yaml proxies domains, and this dnsmasq cannot add their addresses to the set (install dnsmasq-full)"
+			return 0
+		fi
+	fi
+	grep -m1 '^skipped' "$CONF_NOTES" 2>/dev/null
 }
 
 # The answer with its evidence, for the settings page. Reports on 'auto'

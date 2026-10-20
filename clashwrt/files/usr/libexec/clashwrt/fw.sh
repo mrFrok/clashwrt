@@ -126,7 +126,10 @@ load_cfg() {
 	# living here and drifting from it. An answer it cannot give leaves the
 	# set out of the ruleset entirely: a rule built on a guess would send the
 	# wrong half of the traffic past the proxy, which is worse than no rule.
-	if [ "$set_mode" = "auto" ]; then
+	# setctl.sh is asked for every mode, not only 'auto': it is also what
+	# holds a set built from config.yaml back when the set could not cover
+	# everything config.yaml proxies.
+	if [ "$set_mode" != "off" ]; then
 		set_mode="$(/usr/libexec/clashwrt/setctl.sh direction 2>/dev/null)" || set_mode=""
 		case "$set_mode" in
 			exclude|include|off) ;;
@@ -670,6 +673,7 @@ do_apply() {
 	[ "$set_mode" != "off" ] && /usr/libexec/clashwrt/setctl.sh load >/dev/null 2>&1
 
 	fw_sig > "$SIGFILE"
+	mkdir -p "$RUNDIR" && echo "$set_mode" > "$RUNDIR/bypass.applied"
 	log "applied mode=$mode lan=$lan_device tun=$tun_device tproxy_port=${tproxy_port:-none} redir_port=${redir_port:-none} bypass_set=$set_mode"
 }
 

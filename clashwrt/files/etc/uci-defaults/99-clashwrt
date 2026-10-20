@@ -20,4 +20,26 @@ if ! grep -q "clashwrt/setctl.sh" /etc/crontabs/root 2>/dev/null; then
 	/etc/init.d/cron restart >/dev/null 2>&1 || true
 fi
 
+# 1.2.2 turns the kernel bypass set on by default, built from config.yaml's
+# own rules. A router that had it off gets the same, once: the marker keeps
+# a later "off" from being undone by the next upgrade, and a router that
+# chose a list of its own keeps it. setctl.sh holds the set back by itself
+# when config.yaml proxies something it cannot hold, so this cannot send
+# traffic past the proxy.
+if [ -f /etc/config/clashwrt ] && [ -z "$(uci -q get clashwrt.config.bypass_set_defaulted)" ]; then
+	case "$(uci -q get clashwrt.config.bypass_set_mode)" in
+		""|off)
+			uci -q set clashwrt.config.bypass_set_mode=auto
+			uci -q set clashwrt.config.bypass_set_source=config
+			BYPASS_NEW=1
+			;;
+	esac
+	uci -q set clashwrt.config.bypass_set_defaulted=1
+	uci -q commit clashwrt
+	# a running service builds the set now rather than at the next reboot
+	if [ -n "${BYPASS_NEW:-}" ] && [ -x /etc/init.d/clashwrt ]; then
+		/etc/init.d/clashwrt running >/dev/null 2>&1 && /usr/libexec/clashwrt/fw.sh apply >/dev/null 2>&1
+	fi
+fi
+
 exit 0

@@ -1202,3 +1202,21 @@ msgstr "Добавить правила из config.yaml"
 
 msgid "Also uses the addresses and domains your config.yaml rules send to the proxy (or, with a list of what skips the proxy, the addresses they send direct). Domains need the dnsmasq-full package. Default: on."
 msgstr "Берёт ещё и адреса и домены, которые правила вашего config.yaml отправляют в прокси (а для списка того, что идёт мимо прокси, — адреса, которые они отправляют напрямую). Для доменов нужен пакет dnsmasq-full. По умолчанию: включено."
+
+msgid "Fastest node"
+msgstr "Самый быстрый узел"
+
+msgid "On by default."
+msgstr "По умолчанию включено."
+
+msgid "Pick the fastest node automatically"
+msgstr "Автоматически выбирать самый быстрый узел"
+
+msgid "How it picks"
+msgstr "Как он выбирает"
+
+msgid "Adds an \"Auto\" group that times every node every five minutes and follows the fastest, and puts it first in Proxy, so a node can still be chosen by hand in the dashboard. With the protocol split, \"Auto UDP\" does the same for the QUIC nodes."
+msgstr "Добавляет группу «Auto», которая раз в пять минут замеряет задержку каждого узла и переключается на самый быстрый, и ставит её первой в Proxy — узел по-прежнему можно выбрать вручную в панели. При разделении протоколов группа «Auto UDP» делает то же для QUIC-узлов."
+
+msgid "Skips mihomo in the kernel, which is faster. Default: whatever config.yaml does not send to the proxy."
+msgstr "Обходит mihomo на уровне ядра — так быстрее. По умолчанию: всё, что config.yaml не отправляет в прокси."

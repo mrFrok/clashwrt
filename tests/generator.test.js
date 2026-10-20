@@ -141,4 +141,21 @@ t('the controller gets the secret it is given, and parseConfig reads it back', f
 	assert.strictEqual(topKeys(none).indexOf('secret'), -1);
 });
 
+t('autoBest adds url-test groups first in Proxy and ProxyUDP', function () {
+	var proxies = gen.parseLinks([
+		'vless://u@a.example:443?security=tls#V1',
+		'hysteria2://p@b.example:443#H1'
+	].join('\n')).proxies;
+	var y = gen.generate({ proxies: proxies, mode: 'tproxy', routing: 'direct_except_list', udpSplit: true });
+	var groups = gen.groupNames(y.split('\n'));
+	assert.deepStrictEqual(groups, ['Proxy', 'ProxyUDP', 'Auto', 'Auto UDP']);
+	assert.ok(/- name: Auto\n    type: url-test/.test(y));
+	assert.ok(/- name: Proxy\n    type: select\n    proxies:\n      - Auto\n/.test(y));
+	assert.ok(/- name: ProxyUDP\n    type: select\n    proxies:\n      - 'Auto UDP'\n      - H1\n/.test(y));
+	assert.ok(/- name: Auto UDP\n    type: url-test[\s\S]*?proxies:\n      - H1\n/.test(y));
+	assert.strictEqual(gen.parseConfig(y).autoBest, true);
+	var off = gen.generate({ proxies: proxies, mode: 'tproxy', routing: 'direct_except_list', autoBest: false });
+	assert.deepStrictEqual(gen.groupNames(off.split('\n')), ['Proxy']);
+});
+
 console.log(n + ' generator tests passed');

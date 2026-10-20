@@ -85,6 +85,7 @@ return view.extend({
 				routing: g('routing', 'direct_except_list'),
 				ruleSets: gl('ruleset'),
 				udpSplit: g('udp_split', '0') === '1',
+				autoBest: g('auto_best', '1') === '1',
 				yandexDns: g('yandex_dns', '0') === '1',
 				udpFilter: g('udp_filter', DEFAULT_UDP_FILTER),
 				tcpFilter: g('tcp_filter', ''),
@@ -99,7 +100,7 @@ return view.extend({
 		return {
 			source: 'none',
 			subs: '', links: '', dnsPreset: 'quad9', dnsCustom: '',
-			routing: 'direct_except_list', ruleSets: [], udpSplit: false,
+			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true,
 			yandexDns: false, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
 			extraDomains: [], extraGroup: 'Proxy'
 		};
@@ -121,6 +122,8 @@ return view.extend({
 			routing: cfg.routing || 'direct_except_list',
 			ruleSets: cfg.ruleSets,
 			udpSplit: cfg.udpSplit,
+			/* a config written elsewhere has no Auto group; offer it anyway */
+			autoBest: cfg.generatedByUs ? cfg.autoBest : true,
 			yandexDns: cfg.yandexDns,
 			udpFilter: cfg.udpFilter || DEFAULT_UDP_FILTER,
 			tcpFilter: cfg.tcpFilter,
@@ -185,6 +188,7 @@ return view.extend({
 		}));
 
 		var splitCb = E('input', { 'type': 'checkbox' });
+		var autoCb = E('input', { 'type': 'checkbox' });
 		var yandexCb = E('input', { 'type': 'checkbox' });
 		var udpFilter = E('input', {
 			'type': 'text', 'class': 'cbi-input-text', 'style': 'width:24em'
@@ -211,7 +215,7 @@ return view.extend({
 		function fillGroups(selected) {
 			var names = ['Proxy', 'DIRECT'];
 			cfg.groups.forEach(function (n) {
-				if (n !== gen.UDP_GROUP && names.indexOf(n) < 0) names.push(n);
+				if (n !== gen.UDP_GROUP && n !== gen.AUTO_UDP_GROUP && names.indexOf(n) < 0) names.push(n);
 			});
 			if (selected && names.indexOf(selected) < 0) names.push(selected);
 			dom.content(groupSel, names.map(function (n) {
@@ -295,6 +299,7 @@ return view.extend({
 				setBoxes[k].checked = ans.ruleSets.indexOf(k) >= 0;
 			});
 			splitCb.checked = ans.udpSplit;
+			autoCb.checked = ans.autoBest;
 			yandexCb.checked = ans.yandexDns;
 			udpFilter.value = ans.udpFilter;
 			tcpFilter.value = ans.tcpFilter;
@@ -356,6 +361,7 @@ return view.extend({
 				routing: routeSel.value,
 				ruleSets: sets,
 				udpSplit: splitCb.checked,
+				autoBest: autoCb.checked,
 				yandexDns: yandexCb.checked,
 				udpFilter: udpFilter.value,
 				tcpFilter: tcpFilter.value,
@@ -390,6 +396,7 @@ return view.extend({
 				routing: ans.routing,
 				ruleSets: ans.ruleSets,
 				udpSplit: ans.udpSplit,
+				autoBest: ans.autoBest,
 				yandexDns: ans.yandexDns,
 				udpFilter: ans.udpFilter,
 				tcpFilter: ans.tcpFilter,
@@ -419,6 +426,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'dns_preset', ans.dnsPreset);
 			uci.set('clashwrt', 'wizard', 'routing', ans.routing);
 			uci.set('clashwrt', 'wizard', 'udp_split', ans.udpSplit ? '1' : '0');
+			uci.set('clashwrt', 'wizard', 'auto_best', ans.autoBest ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'yandex_dns', ans.yandexDns ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'udp_filter', ans.udpFilter);
 			uci.set('clashwrt', 'wizard', 'tcp_filter', ans.tcpFilter);
@@ -652,6 +660,9 @@ return view.extend({
 				]),
 
 				step(4, _('Protocol split and apply'), _('Optional split, then generate and apply.'), false, [
+					label(_('Fastest node'), _('On by default.')),
+					E('label', {}, [ autoCb, ' ', _('Pick the fastest node automatically') ]),
+					more(_('How it picks'), _('Adds an "Auto" group that times every node every five minutes and follows the fastest, and puts it first in Proxy, so a node can still be chosen by hand in the dashboard. With the protocol split, "Auto UDP" does the same for the QUIC nodes.')),
 					label(_('Split TCP and UDP across protocols'), _('Off by default.')),
 					E('label', {}, [ splitCb, ' ', _('Enable protocol split') ]),
 					more(_('Why split?'), _('Sends UDP to QUIC-based nodes (Hysteria2, TUIC) and leaves everything else on the TCP-based ones. Worth doing when a subscription carries both: the QUIC protocols handle datagrams natively instead of tunnelling them.')),

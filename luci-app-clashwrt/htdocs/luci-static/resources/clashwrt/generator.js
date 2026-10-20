@@ -328,6 +328,9 @@ function proxyToYaml(p) {
  */
 
 var UDP_GROUP = 'ProxyUDP';
+/* url-test groups the wizard adds when it picks the fastest node itself */
+var AUTO_GROUP = 'Auto';
+var AUTO_UDP_GROUP = 'Auto UDP';
 
 /* Yandex public DNS over HTTPS. Used only for the RU domain set, never as
  * the default resolver. */
@@ -666,7 +669,8 @@ function parseConfig(text) {
 	var res = {
 		subs: [], links: 0, dnsServers: [], routing: '', ruleSets: [],
 		udpSplit: false, udpFilter: '', tcpFilter: '', yandexDns: false,
-		extraDomains: [], extraGroup: 'Proxy', groups: [], generatedByUs: false, secret: ''
+		extraDomains: [], extraGroup: 'Proxy', groups: [], generatedByUs: false, secret: '',
+		autoBest: false
 	};
 	var i, r, m;
 
@@ -725,6 +729,7 @@ function parseConfig(text) {
 	res.udpFilter = filterOf(lines, UDP_GROUP);
 	res.tcpFilter = filterOf(lines, 'Proxy');
 	res.groups = groupNames(lines);
+	res.autoBest = res.groups.indexOf(AUTO_GROUP) >= 0;
 
 	r = sectionRange(lines, 'rules');
 	if (r) {
@@ -817,6 +822,8 @@ return baseclass.extend({
 	RULESETS: RULESETS,
 	DNS_PRESETS: DNS_PRESETS,
 	UDP_GROUP: UDP_GROUP,
+	AUTO_GROUP: AUTO_GROUP,
+	AUTO_UDP_GROUP: AUTO_UDP_GROUP,
 	SITE_PRESETS: SITE_PRESETS,
 
 	siteDomains: siteDomains,
@@ -1101,34 +1108,52 @@ return baseclass.extend({
 			L.push('');
 		}
 
-		/* proxy groups */
+		/* proxy groups
+		 *
+		 * With autoBest the rules still point at the select groups, Proxy
+		 * and ProxyUDP, but their first member is a url-test group over the
+		 * same nodes: mihomo then times every node itself and follows the
+		 * fastest, while a node can still be picked by hand in the
+		 * dashboard. url-test times through the node, so it works for the
+		 * QUIC protocols in the UDP group as much as for vless. */
 		var names = proxies.map(function (p) { return p.name; });
-		L.push('proxy-groups:');
-		L.push('  - name: Proxy');
-		L.push('    type: select');
-		if (names.length) {
-			L.push('    proxies:');
-			names.forEach(function (n) { L.push('      - ' + yamlScalar(n)); });
-		}
-		if (providerNames.length) {
-			L.push('    use: [' + providerNames.join(', ') + ']');
-			if (o.tcpFilter) L.push('    filter: ' + yamlScalar(o.tcpFilter));
-		}
-
-		if (udpSplit) {
-			var udpNames = names.filter(function (n, i) {
-				return UDP_NATIVE.indexOf(proxies[i].type) >= 0;
-			});
-			L.push('  - name: ProxyUDP');
-			L.push('    type: select');
-			if (udpNames.length) {
+		var autoBest = o.autoBest !== false;
+		var members = function (list, filter) {
+			if (list.length) {
 				L.push('    proxies:');
-				udpNames.forEach(function (n) { L.push('      - ' + yamlScalar(n)); });
+				list.forEach(function (n) { L.push('      - ' + yamlScalar(n)); });
 			}
 			if (providerNames.length) {
 				L.push('    use: [' + providerNames.join(', ') + ']');
-				L.push('    filter: ' + yamlScalar(o.udpFilter || '(?i)(hysteria|hy2|tuic)'));
+				if (filter) L.push('    filter: ' + yamlScalar(filter));
 			}
+		};
+		var urlTest = function (name, list, filter) {
+			L.push('  - name: ' + name);
+			L.push('    type: url-test');
+			L.push('    url: https://www.gstatic.com/generate_204');
+			L.push('    interval: 300');
+			L.push('    tolerance: 50');
+			L.push('    lazy: true');
+			members(list, filter);
+		};
+		var udpNames = names.filter(function (n, i) {
+			return UDP_NATIVE.indexOf(proxies[i].type) >= 0;
+		});
+		var udpFilter = o.udpFilter || '(?i)(hysteria|hy2|tuic)';
+
+		L.push('proxy-groups:');
+		L.push('  - name: Proxy');
+		L.push('    type: select');
+		members(autoBest ? [AUTO_GROUP].concat(names) : names, o.tcpFilter);
+		if (udpSplit) {
+			L.push('  - name: ' + UDP_GROUP);
+			L.push('    type: select');
+			members(autoBest ? [AUTO_UDP_GROUP].concat(udpNames) : udpNames, udpFilter);
+		}
+		if (autoBest) {
+			urlTest(AUTO_GROUP, names, o.tcpFilter);
+			if (udpSplit) urlTest(AUTO_UDP_GROUP, udpNames, udpFilter);
 		}
 		L.push('');
 

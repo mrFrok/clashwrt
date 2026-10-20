@@ -69,8 +69,10 @@ config clashwrt 'config'
 	#            whatever mihomo does by default, so the default decides which
 	#            way round it goes. 'setctl.sh detect' shows the answer and
 	#            where it came from.
-	option bypass_set_mode 'off'
-	option bypass_set_source 'ru'
+	option bypass_set_mode 'auto'
+	option bypass_set_source 'config'
+	# set once the default above has been applied; see uci-defaults
+	option bypass_set_defaulted '1'
 	# option bypass_set_url ''
 	option bypass_set_interval '86400'
 	# Also put into the set what config.yaml's own rules name: with

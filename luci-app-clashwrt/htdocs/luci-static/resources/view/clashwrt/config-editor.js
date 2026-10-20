@@ -358,7 +358,7 @@ return view.extend({
 			var keep = siteGroup.value || 'Proxy';
 			var names = ['Proxy', 'DIRECT'];
 			gen.parseConfig(area.value).groups.forEach(function (n) {
-				if (n !== gen.UDP_GROUP && names.indexOf(n) < 0) names.push(n);
+				if (n !== gen.UDP_GROUP && n !== gen.AUTO_UDP_GROUP && names.indexOf(n) < 0) names.push(n);
 			});
 			dom.content(siteGroup, names.map(function (n) {
 				return E('option', { 'value': n, 'selected': n === keep ? '' : null }, [ n ]);

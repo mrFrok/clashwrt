@@ -1196,3 +1196,21 @@ msgstr ""
 
 msgid "Also uses the addresses and domains your config.yaml rules send to the proxy (or, with a list of what skips the proxy, the addresses they send direct). Domains need the dnsmasq-full package. Default: on."
 msgstr ""
+
+msgid "Fastest node"
+msgstr ""
+
+msgid "On by default."
+msgstr ""
+
+msgid "Pick the fastest node automatically"
+msgstr ""
+
+msgid "How it picks"
+msgstr ""
+
+msgid "Adds an \"Auto\" group that times every node every five minutes and follows the fastest, and puts it first in Proxy, so a node can still be chosen by hand in the dashboard. With the protocol split, \"Auto UDP\" does the same for the QUIC nodes."
+msgstr ""
+
+msgid "Skips mihomo in the kernel, which is faster. Default: whatever config.yaml does not send to the proxy."
+msgstr ""

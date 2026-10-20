@@ -168,4 +168,16 @@ case "$(sh "$SETCTL" from-config)" in
 	*) fail "without a converter, mrs is reported" ;;
 esac
 
+# source 'config' with include is held back when it could not cover config.yaml
+uci set clashwrt.config.bypass_set_mode=auto
+uci set clashwrt.config.bypass_set_source=config
+printf 'rules:\n  - DOMAIN-SUFFIX,chatgpt.com,Proxy\n  - IP-CIDR,1.2.3.0/24,Proxy\n  - MATCH,DIRECT\n' > "$TMP/mihomo/config.yaml"
+eq "no dnsmasq-full: the set is held back" "off" "$(sh "$SETCTL" direction)"
+case "$(sh "$SETCTL" status)" in *"HELD BACK"*"dnsmasq-full"*) pass "status says why it is held back" ;; *) fail "status says why it is held back" ;; esac
+eq "with dnsmasq-full: include" "include" "$(NFTSET=nftset sh "$SETCTL" direction)"
+printf 'rules:\n  - GEOSITE,openai,Proxy\n  - IP-CIDR,1.2.3.0/24,Proxy\n  - MATCH,DIRECT\n' > "$TMP/mihomo/config.yaml"
+eq "a GEOSITE rule to the proxy holds it back" "off" "$(NFTSET=nftset sh "$SETCTL" direction)"
+uci set clashwrt.config.bypass_set_source=refilter
+eq "a downloaded list is not judged" "include" "$(NFTSET=nftset sh "$SETCTL" direction)"
+
 finish

@@ -691,14 +691,14 @@ return view.extend({
 		 * asked there and nowhere else. Every line answers the same question
 		 * -- what skips the proxy -- so the entries can be compared at a glance. */
 		o = bypass(form.ListValue, 'bypass_set_profile', _('Skip the proxy for'),
-			_('Skips mihomo in the kernel, which is faster. Default: nothing.'));
+			_('Skips mihomo in the kernel, which is faster. Default: whatever config.yaml does not send to the proxy.'));
 		o.value('off', _('Nothing — everything goes to mihomo'));
 		o.value('ru', _('Russian networks (ipdeny)'));
 		o.value('ru-geoip', _('Russian networks (meta-rules-dat)'));
 		o.value('refilter', _('Everything except what is blocked in Russia (Re-filter)'));
 		o.value('config', _('Whatever config.yaml does not send to the proxy'));
 		o.value('custom', _('A list of your own'));
-		o.default = 'off';
+		o.default = 'config';
 
 		/* A virtual option: it carries no UCI key of its own and instead reads
 		 * and writes the two the engine actually reads. */
