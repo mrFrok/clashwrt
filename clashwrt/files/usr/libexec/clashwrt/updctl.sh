@@ -36,6 +36,18 @@ LOG="/tmp/clashwrt-update.log"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
+# Downloads go through the proxy first (net.sh); a copy of this script run
+# on its own, without net.sh beside it, fetches directly.
+CW_NET="${CLASHWRT_LIBEXEC:-$(dirname "$0")}/net.sh"
+if [ -f "$CW_NET" ]; then
+	# shellcheck source=net.sh
+	. "$CW_NET"
+else
+	cw_proxy_url() { return 1; }
+	cw_curl() { curl "$@"; }
+fi
+
+
 # --------------------------------------------------------------------------
 # where this copy came from
 # --------------------------------------------------------------------------
@@ -118,7 +130,7 @@ cached() {
 
 remote_tag() {
 	local t
-	t="$(curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
+	t="$(cw_curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
 		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
 	case "$t" in
 		"" | *[!A-Za-z0-9._-]*) return 1 ;;
@@ -131,7 +143,7 @@ remote_tag() {
 # body, an HTML error page, nothing at all -- is discarded rather than shown.
 remote_commit() {
 	local sha
-	sha="$(curl -sSL -m 25 -H 'Accept: application/vnd.github.sha' \
+	sha="$(cw_curl -sSL -m 25 -H 'Accept: application/vnd.github.sha' \
 		"https://api.github.com/repos/$SLUG/commits/$REF" 2>/dev/null)"
 	case "$sha" in
 		"" | *[!0-9a-f]*) return 1 ;;
@@ -234,7 +246,7 @@ core_installed() {
 
 core_latest() {
 	local t
-	t="$(curl -sSL -m 30 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest 2>/dev/null \
+	t="$(cw_curl -sSL -m 30 https://api.github.com/repos/MetaCubeX/mihomo/releases/latest 2>/dev/null \
 		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
 	valid_tag "$t" && echo "$t"
 }
@@ -383,7 +395,7 @@ spare_cores_kb() {
 # response after GitHub's redirect. Empty when the server does not say.
 remote_kb() {
 	local n
-	n="$(curl -sSIL -m 30 "$1" 2>/dev/null | tr -d '\r' |
+	n="$(cw_curl -sSIL -m 30 "$1" 2>/dev/null | tr -d '\r' |
 		sed -n 's/^[Cc]ontent-[Ll]ength:[[:space:]]*\([0-9][0-9]*\)$/\1/p' | tail -n1)"
 	[ -n "$n" ] && [ "$n" -gt 0 ] && echo $(( n / 1024 ))
 }
@@ -656,10 +668,26 @@ do_core_install() {
 	# Downloaded and unpacked in one stream, so the .gz never needs room of
 	# its own. gzip checks the CRC at the end of the stream, so a cut-off
 	# download fails here instead of leaving a truncated core.
-	echo "downloading mihomo ${ver} for ${arch}"
-	{ curl -sSL --fail --proto '=https' -m 300 "$url" 2>"$tmp/curl.err" || : > "$tmp/curl.failed"; } |
-		gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
-	gz_rc=$?
+	# Through the proxy first and directly second (see net.sh). The stream is
+	# unpacked as it arrives, so each route starts the whole pipeline afresh
+	# rather than appending to what a failed one left behind.
+	local route proxy
+	for route in proxy direct; do
+		proxy=""
+		if [ "$route" = proxy ]; then
+			proxy="$(cw_proxy_url)" || continue
+			echo "downloading mihomo ${ver} for ${arch} through the proxy"
+		else
+			echo "downloading mihomo ${ver} for ${arch}"
+		fi
+		rm -f "$tmp/curl.failed" "$tmp/mihomo"
+		{ curl ${proxy:+--proxy "$proxy"} -sSL --fail --proto '=https' -m 300 "$url" 2>"$tmp/curl.err" ||
+			: > "$tmp/curl.failed"; } |
+			gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
+		gz_rc=$?
+		[ ! -e "$tmp/curl.failed" ] && [ "$gz_rc" = 0 ] && break
+		[ "$route" = proxy ] && echo "that failed; trying directly"
+	done
 	if [ -e "$tmp/curl.failed" ]; then
 		local why
 		why="$(awk 'NF { print; exit }' "$tmp/curl.err" 2>/dev/null)"
@@ -788,7 +816,7 @@ do_self_update() {
 	script="$dir/install.sh"
 	runner="$dir/run.sh"
 
-	curl -sSL --fail --proto '=https' -m 120 -o "$script" "$url" || die "could not download $url"
+	cw_curl -sSL --fail --proto '=https' -m 120 -o "$script" "$url" || die "could not download $url"
 	[ -s "$script" ] || die "the downloaded installer is empty"
 
 	# A truncated or redirected download would otherwise be executed as far

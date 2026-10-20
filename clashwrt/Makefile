@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashwrt
-PKG_VERSION:=1.2.5
+PKG_VERSION:=1.2.6
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-or-later
@@ -58,6 +58,7 @@ define Package/clashwrt/install
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/powerctl.sh $(1)/usr/libexec/clashwrt/powerctl.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/watchdog.sh $(1)/usr/libexec/clashwrt/watchdog.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/lock.sh $(1)/usr/libexec/clashwrt/lock.sh
+	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/net.sh $(1)/usr/libexec/clashwrt/net.sh
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/clashwrt $(1)/etc/init.d/clashwrt

@@ -375,6 +375,11 @@ return view.extend({
 
 		/* ---------------- advanced ---------------- */
 
+		o = adv(form.Flag, 'fetch_via_proxy', _('Download through the proxy'),
+			_('The core, ClashWrt updates, dashboards and bypass lists are fetched through the proxy first, and directly only if that fails. Default: on.'));
+		o.default = '1';
+		o.rmempty = false;
+
 		o = adv(form.Value, 'tun_device', _('Tun device'),
 			_('Must match <code>tun.device</code> in config.yaml. Default: clash-tun.'));
 		o.default = 'clash-tun';

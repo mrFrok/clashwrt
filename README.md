@@ -65,6 +65,8 @@ Then open **Services → ClashWrt**, run the setup wizard, and switch the proxy 
 
 ### Updating
 
+Everything the router downloads for itself — the core, ClashWrt's updates, dashboards, bypass lists — goes **through the proxy first and directly only if that fails**, so a blocked or throttled GitHub does not stop an update. The wizard's config has a listener for this, `clashwrt-fetch` on `127.0.0.1:7899` (`fetch_port`), that sends whatever comes in to the `Proxy` group regardless of the rules; a hand-written config without it falls back to its own `mixed-port` or `socks-port`, which do follow the rules. `fetch_via_proxy '0'` (Settings → Advanced) fetches directly. The watchdog's checks stay direct on purpose: they test the VPN from outside it.
+
 Two things update independently, and Overview → Maintenance has a button for each — it shows the installed mihomo version against the latest release, and the installed commit against the head of `main`.
 
 **Update core** downloads the mihomo build for this CPU and restarts the daemon if it was running. Your configuration is not touched.

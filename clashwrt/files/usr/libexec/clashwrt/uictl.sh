@@ -16,6 +16,16 @@
 # Usage: uictl.sh list|current|install <name>|install-url <url>
 
 . /lib/functions.sh
+# Downloads go through the proxy first (net.sh); a copy of this script run
+# on its own, without net.sh beside it, fetches directly.
+CW_NET="${CLASHWRT_LIBEXEC:-$(dirname "$0")}/net.sh"
+if [ -f "$CW_NET" ]; then
+	# shellcheck source=net.sh
+	. "$CW_NET"
+else
+	cw_proxy_url() { return 1; }
+	cw_curl() { curl "$@"; }
+fi
 
 config_load clashwrt
 config_get MIHOMO_DIR config mihomo_dir /etc/mihomo
@@ -91,7 +101,7 @@ install_from() {
 	tgz="$tmp/ui.tar.gz"
 
 	echo "downloading $url"
-	if ! curl -sSL --fail --proto '=https' --max-filesize 67108864 -m 180 -o "$tgz" "$url"; then
+	if ! cw_curl -sSL --fail --proto '=https' --max-filesize 67108864 -m 180 -o "$tgz" "$url"; then
 		rm -rf "$tmp"
 		die "download failed"
 	fi

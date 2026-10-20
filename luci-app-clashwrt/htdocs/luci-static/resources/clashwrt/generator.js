@@ -331,6 +331,7 @@ function proxyToYaml(p) {
 
 var UDP_GROUP = 'ProxyUDP';
 var DEFAULT_DNS = 'quad9-doh';
+var FETCH_LISTENER = 'clashwrt-fetch';
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -1054,6 +1055,19 @@ return baseclass.extend({
 			L.push('  auto-redirect: false');
 			L.push('  auto-detect-interface: false');
 		}
+		L.push('');
+
+		/* The router's own downloads (core, updates, dashboards, bypass lists)
+		 * come in here, on loopback only, and go to the Proxy group whatever
+		 * the rules say: under "direct except the lists" a plain mixed-port
+		 * would send github.com DIRECT, which is the one route that may be
+		 * blocked. See net.sh. */
+		L.push('listeners:');
+		L.push('  - name: ' + FETCH_LISTENER);
+		L.push('    type: mixed');
+		L.push('    port: ' + portOf(o.fetchPort, 7899));
+		L.push('    listen: 127.0.0.1');
+		L.push('    proxy: Proxy');
 		L.push('');
 
 		/* DNS */

@@ -30,11 +30,20 @@ CHANNEL="${CHANNEL:-release}"
 REPO_URL="${REPO_URL:-}"
 SRC_TAG=""
 
+# An upgrade (or the Update button, which runs this) already has a mihomo to
+# fetch through: the proxy first, then directly, as everything else here
+# fetches (net.sh). A first install has neither, and fetches directly.
+if [ -f /usr/libexec/clashwrt/net.sh ]; then
+	. /usr/libexec/clashwrt/net.sh
+else
+	cw_curl() { curl "$@"; }
+fi
+
 if [ -z "$REPO_URL" ]; then
 	if [ "$CHANNEL" = "main" ]; then
 		REPO_URL="https://github.com/$SLUG/archive/refs/heads/main.tar.gz"
 	else
-		SRC_TAG="$(curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
+		SRC_TAG="$(cw_curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
 			| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)" || SRC_TAG=""
 		case "$SRC_TAG" in
 			"" | *[!A-Za-z0-9._-]*) SRC_TAG="" ;;
@@ -192,7 +201,7 @@ case "$REPO_URL" in
 		_ref="${REPO_URL##*/heads/}"; _ref="${_ref%.tar.gz}"
 		# `set -e` is on and an assignment carries its command's status, so
 		# an unreachable API would otherwise abort the whole install.
-		SRC_COMMIT="$(curl -sSL -m 25 -H 'Accept: application/vnd.github.sha' \
+		SRC_COMMIT="$(cw_curl -sSL -m 25 -H 'Accept: application/vnd.github.sha' \
 			"https://api.github.com/repos/$_slug/commits/$_ref" 2>/dev/null)" \
 			|| SRC_COMMIT=""
 		# a rate-limit body or an error page is not a commit
@@ -205,7 +214,7 @@ esac
 say "fetching clashwrt"
 # --proto: whatever this fetches is run as root, so a redirect to plain http
 # (or file://) is not followed
-curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
+cw_curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
 mkdir -p "$TMP/src"
 # no --strip-components: busybox tar does not have it, and busybox is what
 # OpenWrt ships. Extract as-is and step into the wrapper directory instead.

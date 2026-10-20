@@ -1292,3 +1292,9 @@ msgstr "Полная скорость канала на слабом проце�
 
 msgid "Only what would go direct anyway is let past: what the proxy has to carry still reaches mihomo."
 msgstr "Мимо пропускается только то, что всё равно пошло бы напрямую: то, что должно идти через прокси, по-прежнему попадает в mihomo."
+
+msgid "Download through the proxy"
+msgstr "Скачивать через прокси"
+
+msgid "The core, ClashWrt updates, dashboards and bypass lists are fetched through the proxy first, and directly only if that fails. Default: on."
+msgstr "Ядро, обновления ClashWrt, панели и списки обхода сначала скачиваются через прокси и только при неудаче — напрямую. По умолчанию: включено."

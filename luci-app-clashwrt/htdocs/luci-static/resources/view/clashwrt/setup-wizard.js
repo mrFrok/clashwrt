@@ -392,6 +392,7 @@ return view.extend({
 				tunDevice: uciGet('tun_device', 'clash-tun'),
 				dnsPort: uciGet('dns_port', 1053),
 				apiPort: uciGet('api_port', 9090),
+				fetchPort: uciGet('fetch_port', 7899),
 				selfMark: uciGet('self_mark', 2),
 				externalUi: uciGet('mihomo_dir', '/etc/mihomo') + '/ui',
 				subscriptions: gen.subscriptionsOf(ans.subs),

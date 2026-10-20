@@ -45,6 +45,16 @@
 # The CLASHWRT_* overrides exist so tests/ can run this file off the router.
 # shellcheck source=/dev/null
 . "${CLASHWRT_FUNCTIONS:-/lib/functions.sh}"
+# Downloads go through the proxy first (net.sh); a copy of this script run
+# on its own, without net.sh beside it, fetches directly.
+CW_NET="${CLASHWRT_LIBEXEC:-$(dirname "$0")}/net.sh"
+if [ -f "$CW_NET" ]; then
+	# shellcheck source=net.sh
+	. "$CW_NET"
+else
+	cw_proxy_url() { return 1; }
+	cw_curl() { curl "$@"; }
+fi
 
 NAME="clashwrt"
 TABLE="inet clashwrt"
@@ -641,7 +651,7 @@ do_update() {
 	# flash and into the kernel set on every apply.
 	# A custom list may be plain http on purpose (a box on the LAN), but a
 	# redirect is only followed to https, and never to file:// or the like.
-	if ! curl -sSL --fail --proto '=http,https' --proto-redir '=https' -m 180 \
+	if ! cw_curl -sSL --fail --proto '=http,https' --proto-redir '=https' -m 180 \
 		--max-filesize "$MAX_LIST_BYTES" -o "$tmp" "$url"; then
 		rm -f "$tmp"
 		# keep whatever we had: an empty set would silently proxy everything

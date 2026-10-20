@@ -1286,3 +1286,9 @@ msgstr ""
 
 msgid "Only what would go direct anyway is let past: what the proxy has to carry still reaches mihomo."
 msgstr ""
+
+msgid "Download through the proxy"
+msgstr ""
+
+msgid "The core, ClashWrt updates, dashboards and bypass lists are fetched through the proxy first, and directly only if that fails. Default: on."
+msgstr ""

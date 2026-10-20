@@ -190,4 +190,9 @@ t('mihomo logs at warning by default', function () {
 	assert.ok(/^log-level: warning$/m.test(gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' })));
 });
 
+t('the fetch listener sends the router downloads to Proxy, on loopback', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', fetchPort: '7899' });
+	assert.ok(/\nlisteners:\n  - name: clashwrt-fetch\n    type: mixed\n    port: 7899\n    listen: 127\.0\.0\.1\n    proxy: Proxy\n/.test(y));
+});
+
 console.log(n + ' generator tests passed');
