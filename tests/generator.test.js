@@ -175,4 +175,19 @@ t('fakeIp writes fake-ip with a filter, and parseConfig reads it back', function
 	assert.strictEqual(gen.parseConfig(gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' })).fakeIp, false);
 });
 
+t('the Yandex DNS set is used for DNS only, never as a proxy rule', function () {
+	[false, true].forEach(function (split) {
+		var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list',
+			ruleSets: Object.keys(gen.RULESETS).slice(0, 1), yandexDns: true, udpSplit: split });
+		var rules = y.slice(y.indexOf('\nrules:'));
+		assert.ok(/\n  ru_domains:\n/.test(y), 'provider present');
+		assert.ok(/'rule-set:ru_domains'/.test(y), 'nameserver-policy present');
+		assert.strictEqual(rules.indexOf('ru_domains'), -1, 'not in rules (split=' + split + ')');
+	});
+});
+
+t('mihomo logs at warning by default', function () {
+	assert.ok(/^log-level: warning$/m.test(gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' })));
+});
+
 console.log(n + ' generator tests passed');

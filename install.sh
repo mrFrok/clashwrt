@@ -338,7 +338,7 @@ if [ ! -f "$MIHOMO_DIR/config.yaml" ]; then
 # Placeholder written by the clashwrt installer.
 # Use Services -> ClashWrt -> Setup wizard to generate a real one.
 mode: rule
-log-level: info
+log-level: warning
 ipv6: false
 allow-lan: false
 external-controller: 0.0.0.0:9090
