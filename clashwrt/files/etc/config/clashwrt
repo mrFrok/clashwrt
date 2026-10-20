@@ -123,6 +123,11 @@ config clashwrt 'config'
 
 	option watchdog '0'
 
+	# What the watchdog does when the proxy path dies but the internet is fine:
+	# 'direct' lets traffic out past the proxy (fail-open), 'block' cuts the
+	# LAN off from the internet until the path is back (kill switch).
+	option watchdog_action 'direct'
+
 	# Which proxy group to time. Empty = the group named by the terminal
 	# MATCH rule of config.yaml, else "Proxy".
 	option watchdog_group ''

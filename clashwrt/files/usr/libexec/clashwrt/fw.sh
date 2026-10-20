@@ -110,6 +110,7 @@ load_cfg() {
 	config_get dns_port      config dns_port      1053
 	config_get block_ipv6    config block_ipv6    1
 	config_get block_dot     config block_dot     1
+	config_get wd_action     config watchdog_action direct
 	config_get block_doh     config block_doh     0
 	config_get api_port      config api_port      9090
 	config_get block_quic    config block_quic    0
@@ -714,8 +715,36 @@ dns_restore() {
 }
 
 # DNS follows the flag: forwards are out while it exists, back when it is gone
+# What the watchdog did when the proxy path died: 'direct' (traffic let out
+# past the proxy) or 'block' (the kill switch: LAN cut off from the internet
+# until the path is back). Nothing when it did neither.
+flag_action() {
+	[ -e "$FLAG" ] || return 1
+	[ "$(cat "$FLAG" 2>/dev/null)" = block ] && echo block || echo direct
+}
+
+# DNS follows the flag: forwards are out while traffic goes direct, back when
+# it is gone. A kill switch leaves DNS alone -- nothing is meant to get out.
 dns_sync() {
-	if [ -e "$FLAG" ]; then dns_fallback_on; else dns_restore; fi
+	if [ "$(flag_action)" = direct ]; then dns_fallback_on; else dns_restore; fi
+}
+
+# The kill switch's whole ruleset: LAN traffic to anywhere but the LAN is
+# refused, IPv4 and IPv6 alike, as one transaction like apply_nft's.
+apply_block() {
+	NFT_BATCH="$(mktemp /tmp/clashwrt-nft.XXXXXX)" || die "cannot create a temporary file"
+	nb add table $TABLE
+	nb delete table $TABLE
+	nb add table $TABLE
+	nb add chain $TABLE killswitch "{ type filter hook forward priority filter - 5 ; }"
+	nb add rule $TABLE killswitch iifname $lan_set oifname != $lan_set reject with icmpx type admin-prohibited
+	local err
+	if ! err="$(nft -f "$NFT_BATCH" 2>&1)"; then
+		rm -f "$NFT_BATCH"
+		die "nft refused the kill switch: $err"
+	fi
+	rm -f "$NFT_BATCH"
+	flush_rules
 }
 
 # ---------------------------------------------------------------------------
@@ -726,7 +755,10 @@ do_apply() {
 	load_cfg
 	dns_sync
 	[ "$enabled" = 1 ] || { log "disabled in UCI, nothing to do"; do_flush_quiet; exit 0; }
-	[ ! -e "$FLAG" ] || { log "auto-bypass is active, leaving traffic direct (the watchdog restores it)"; do_flush_quiet; exit 0; }
+	case "$(flag_action)" in
+		direct) log "auto-bypass is active, leaving traffic direct (the watchdog restores it)"; do_flush_quiet; exit 0 ;;
+		block)  log "the kill switch is on, the LAN stays cut off (the watchdog restores it)"; apply_block; exit 0 ;;
+	esac
 	# Whoever asks -- a late watchdog restore, a hand-run start or restart --
 	# a service switched off stays off.
 	svc_enabled || { log "ClashWrt is switched off, nothing to do"; do_flush_quiet; exit 0; }
@@ -801,8 +833,11 @@ do_status() {
 	[ "$wd" = "1" ] && echo on || echo off
 	echo -n "wd_running:   "
 	wd_running && echo yes || echo no
+	echo "autobypass_action: $(flag_action || echo none)"
 	echo -n "egress:       "
-	if [ -e "$FLAG" ]; then
+	if [ "$(flag_action)" = block ]; then
+		echo blocked
+	elif [ -e "$FLAG" ]; then
 		echo bypassed
 	else
 		eg="$(sed -n 's/^state:[[:space:]]*//p' "$RUNDIR/watchdog.state" 2>/dev/null | head -n1)"
@@ -876,10 +911,17 @@ do_autobypass() {
 		# start changing dnsmasq behind it
 		svc_enabled || { echo "ClashWrt is switched off, nothing to bypass"; exit 0; }
 		mkdir -p "$RUNDIR"
-		: > "$FLAG"
-		do_flush_quiet
-		dns_sync
-		log "auto-bypass ON: proxy path is down, traffic goes direct"
+		if [ "$wd_action" = block ]; then
+			echo block > "$FLAG"
+			do_flush_quiet
+			apply_block
+			log "kill switch ON: proxy path is down, the LAN is cut off from the internet"
+		else
+			echo direct > "$FLAG"
+			do_flush_quiet
+			dns_sync
+			log "auto-bypass ON: proxy path is down, traffic goes direct"
+		fi
 		;;
 	off)
 		rm -f "$FLAG"

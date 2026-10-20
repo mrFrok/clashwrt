@@ -91,4 +91,11 @@ t('bypassLine: on, held back, off', function () {
 	assert.strictEqual(power.bypassLine('mode:     off\n').key, 'off');
 });
 
+t('a kill switch reads as blocked, red', function () {
+	var c = power.classify(st({ autobypass: 'yes', autobypass_action: 'block', rules: 'absent' }));
+	assert.strictEqual(c.key, 'blocked');
+	assert.strictEqual(c.tone, 'red');
+	assert.strictEqual(power.classify(st({ autobypass: 'yes', autobypass_action: 'direct', rules: 'absent' })).key, 'bypassed');
+});
+
 console.log(n + ' power tests passed');

@@ -278,6 +278,8 @@ return view.extend({
 			if (w === 'grace') return _('The watchdog has just started and is still looking around.');
 			if (w === 'failing')
 				return _('The VPN stopped responding. Checking again (%s of %s).').format(s['wd_fails'] || '?', s['wd_fail_limit'] || '?');
+			if (w === 'bypassed' && s['autobypass_action'] === 'block')
+				return _('The VPN is not responding, so the kill switch keeps your network offline. It can come back in %s s at the earliest.').format(s['wd_hold_left'] || '0');
 			if (w === 'bypassed')
 				return _('The VPN is not responding, so the internet goes direct. It can come back in %s s at the earliest.').format(s['wd_hold_left'] || '0');
 			if (w === 'wan_down') return _('There is no internet at all, so the VPN is not to blame. Waiting.');

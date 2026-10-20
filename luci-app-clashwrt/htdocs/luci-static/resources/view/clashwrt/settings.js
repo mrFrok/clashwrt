@@ -242,6 +242,13 @@ return view.extend({
 		var wdFlag = o;
 		customNode(s, 'basic', '_n_wdtoggle', function () { return buildWatchdogToggle(m, wdFlag); });
 
+		o = basic(form.ListValue, 'watchdog_action', _('When the VPN fails'),
+			_('What the watchdog does when the VPN stops working while the internet is fine. Default: let traffic go direct.'));
+		o.value('direct', _('Let traffic go direct (the internet keeps working, without the VPN)'));
+		o.value('block', _('Cut the network off (kill switch: nothing leaves without the VPN)'));
+		o.default = 'direct';
+		o.depends('watchdog', '1');
+
 		/* ---------------- bypass ---------------- */
 
 		o = bypass(form.DynamicList, 'bypass_net', _('Bypass destinations'),

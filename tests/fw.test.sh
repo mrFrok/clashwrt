@@ -55,4 +55,19 @@ apply_nft
 grep -q 'mangle iifname != { "br-lan", "br-guest", "iot0" } return' "$TMP/batch" &&
 	pass "every LAN is intercepted" || fail "every LAN is intercepted"
 
+# kill switch: the LAN cut off from everything but the LAN
+lan_device=br-lan; resolve_devices
+apply_block
+grep -q 'add chain inet clashwrt killswitch { type filter hook forward' "$TMP/batch" &&
+	pass "kill switch on the forward hook" || fail "kill switch on the forward hook"
+grep -q 'iifname { "br-lan" } oifname != { "br-lan" } reject' "$TMP/batch" &&
+	pass "LAN to anywhere else is rejected" || fail "LAN to anywhere else is rejected"
+grep -q 'mangle\|tproxy' "$TMP/batch" && fail "nothing is steered meanwhile" || pass "nothing is steered meanwhile"
+
+# the flag says which action is active; an old empty flag means direct
+RUNDIR="$TMP"; FLAG="$TMP/autobypass"
+rm -f "$FLAG"; flag_action >/dev/null && fail "no flag, no action" || pass "no flag, no action"
+: > "$FLAG"; eq "an empty flag is direct" "direct" "$(flag_action)"
+echo block > "$FLAG"; eq "block" "block" "$(flag_action)"
+
 finish

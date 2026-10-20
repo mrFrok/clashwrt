@@ -112,6 +112,10 @@ do_status() {
 	core_boot && echo enabled || echo disabled
 	echo -n "autobypass:      "
 	[ -e "$FLAG" ] && echo yes || echo no
+	echo -n "autobypass_action: "
+	if [ ! -e "$FLAG" ]; then echo none
+	elif [ "$(cat "$FLAG" 2>/dev/null)" = block ]; then echo block
+	else echo direct; fi
 	[ -x "$WATCHDOG" ] && "$WATCHDOG" status 2>/dev/null
 	return 0
 }

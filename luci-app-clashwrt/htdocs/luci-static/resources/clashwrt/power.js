@@ -95,6 +95,10 @@ function classifyLive(st) {
 				: _('Everything is off. All traffic goes out directly.') };
 	}
 
+	if (st['autobypass'] === 'yes' && st['autobypass_action'] === 'block')
+		return { key: 'blocked', tone: 'red', label: _('Blocked'),
+			message: _('The VPN is down and the kill switch is on: your network has no internet until the VPN is back.') };
+
 	if (st['autobypass'] === 'yes' && !steered)
 		return { key: 'bypassed', tone: 'amber', label: _('Bypassed'),
 			message: _('The proxy path is down, so traffic goes direct until it recovers.') };
