@@ -402,6 +402,24 @@ return view.extend({
 
 		/* ---------------- advanced ---------------- */
 
+		o = adv(form.Flag, 'providers_in_ram', _('Keep rule and proxy providers in RAM'),
+			_('Their daily refreshes then cost the flash no writes. Only while RAM can spare it: on routers under 256 MB, or when free RAM or /tmp runs low, they stay on (or go back to) flash. Default: on.'));
+		o.default = '1';
+		o.rmempty = false;
+
+		o = adv(form.DummyValue, '_provstatus', _('Providers now'));
+		o.cfgvalue = function () {
+			var node = E('span', {}, [ _('checking…') ]);
+			fs.exec('/usr/libexec/clashwrt/provctl.sh', ['status']).then(function (r) {
+				var t = ((r && r.stdout) || '').replace(/^providers:\s*/, '').trim();
+				var m = /^ram (\d+) KB/.exec(t);
+				dom.content(node, [ m ? _('in RAM, %d MB').format(Math.ceil(+m[1] / 1024))
+					: /^flash/.test(t) ? _('on flash: %s').format(t.replace(/^flash:\s*/, ''))
+					: t === 'none' ? _('the config names no providers') : t ]);
+			}).catch(function () { dom.content(node, [ '?' ]); });
+			return node;
+		};
+
 		o = adv(form.Flag, 'fetch_via_proxy', _('Download through the proxy'),
 			_('The core, ClashWrt updates, dashboards and bypass lists are fetched through the proxy first, and directly only if that fails. Default: on.'));
 		o.default = '1';

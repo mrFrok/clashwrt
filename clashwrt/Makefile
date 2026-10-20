@@ -59,6 +59,7 @@ define Package/clashwrt/install
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/watchdog.sh $(1)/usr/libexec/clashwrt/watchdog.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/lock.sh $(1)/usr/libexec/clashwrt/lock.sh
 	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/net.sh $(1)/usr/libexec/clashwrt/net.sh
+	$(INSTALL_BIN) ./files/usr/libexec/clashwrt/provctl.sh $(1)/usr/libexec/clashwrt/provctl.sh
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etc/init.d/clashwrt $(1)/etc/init.d/clashwrt

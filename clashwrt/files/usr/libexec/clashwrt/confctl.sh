@@ -174,6 +174,9 @@ do_apply() {
 	# only now, with a good config in place and a fresh backup beside it
 	prune_legacy_backups
 
+	# a new config may name new provider directories
+	/usr/libexec/clashwrt/provctl.sh place >/dev/null 2>&1
+
 	if pidof mihomo >/dev/null 2>&1; then
 		/etc/init.d/mihomo restart >/dev/null 2>&1
 		echo "mihomo restarted"

@@ -113,6 +113,11 @@ config clashwrt 'config'
 	option block_doh '0'
 	# list doh_extra '203.0.113.53'
 
+	# Keep mihomo's rule and proxy providers in RAM, so their refreshes do not
+	# wear the flash -- only while RAM can spare it (provctl.sh): never under
+	# 256 MB, and back to flash when free RAM or /tmp runs low.
+	option providers_in_ram '1'
+
 	option fetch_via_proxy '1'
 	option fetch_port '7899'
 

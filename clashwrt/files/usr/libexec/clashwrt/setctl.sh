@@ -668,6 +668,8 @@ do_doh_load() {
 }
 
 do_update() {
+	# the daily run: providers into or out of RAM as the room now allows
+	"${CLASHWRT_LIBEXEC:-/usr/libexec/clashwrt}/provctl.sh" place >/dev/null 2>&1
 	# the DoH list is independent of the bypass set and refreshed regardless
 	do_doh_update "${1:-}"
 	load_cfg

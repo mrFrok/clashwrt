@@ -32,6 +32,10 @@ boot() {
 # (fw.sh reload), so a toggle or a save of unrelated settings costs the LAN
 # no traffic.
 start_service() {
+	# before mihomo (START=99) reads its providers: refill them into RAM
+	# after a reboot, or keep them on flash if RAM cannot take them now
+	/usr/libexec/clashwrt/provctl.sh place >/dev/null 2>&1
+
 	local wd=0
 	[ "$(uci -q get clashwrt.config.enabled)" = "1" ] &&
 		[ "$(uci -q get clashwrt.config.watchdog)" = "1" ] && wd=1
