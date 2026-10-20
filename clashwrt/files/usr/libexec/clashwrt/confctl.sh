@@ -14,6 +14,7 @@
 # always kept.
 #
 # Usage: confctl.sh read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>
+#        confctl.sh export|import
 
 . /lib/functions.sh
 
@@ -242,13 +243,82 @@ do_rename_backup() {
 	echo "renamed $old -> $new"
 }
 
+# ---------------------------------------------------------------------------
+# settings export / import
+# ---------------------------------------------------------------------------
+#
+# One archive with what a person set up: /etc/config/clashwrt, config.yaml
+# and the hand-kept rule files. Downloaded lists, providers and backups are
+# left out -- they come back by themselves. LuCI fetches and uploads the
+# archive at a fixed path, the way its own backup page does.
+
+EXPORT_FILE="/tmp/clashwrt-settings.tar.gz"
+IMPORT_FILE="/tmp/clashwrt-settings-restore.tar.gz"
+
+do_export() {
+	local dir lists
+	config_get lists config list_subdir lst
+	dir="$(mktemp -d /tmp/clashwrt-export.XXXXXX)" || die "cannot create a temporary directory"
+	mkdir -p "$dir/settings/lists"
+	cp /etc/config/clashwrt "$dir/settings/clashwrt.uci" || { rm -rf "$dir"; die "cannot read /etc/config/clashwrt"; }
+	[ -f "$CONF" ] && cp "$CONF" "$dir/settings/config.yaml"
+	[ -d "$MIHOMO_DIR/$lists" ] && cp -a "$MIHOMO_DIR/$lists/." "$dir/settings/lists/"
+	rm -f "$EXPORT_FILE"
+	tar -czf "$EXPORT_FILE" -C "$dir" settings || { rm -rf "$dir"; die "could not write the archive"; }
+	rm -rf "$dir"
+	echo "$EXPORT_FILE"
+}
+
+# Unpacked into a private directory, nothing taken from it but the three
+# known things, each checked before anything is replaced: the UCI file must
+# parse, config.yaml must pass mihomo -t. The current config.yaml is backed
+# up by the same apply path as any other change.
+do_import() {
+	local dir s lists
+	[ -f "$IMPORT_FILE" ] && [ ! -L "$IMPORT_FILE" ] || die "nothing uploaded at $IMPORT_FILE"
+	dir="$(mktemp -d /tmp/clashwrt-import.XXXXXX)" || die "cannot create a temporary directory"
+	trap 'rm -rf "$dir" "$IMPORT_FILE"' EXIT
+	tar -xzf "$IMPORT_FILE" -C "$dir" 2>/dev/null || die "not a ClashWrt settings archive"
+	s="$dir/settings"
+	[ -f "$s/clashwrt.uci" ] && [ ! -L "$s/clashwrt.uci" ] || die "the archive has no ClashWrt settings"
+	mkdir -p "$dir/uci" && cp "$s/clashwrt.uci" "$dir/uci/clashwrt"
+	uci -c "$dir/uci" -q show clashwrt >/dev/null 2>&1 || die "the settings in the archive do not parse"
+
+	if [ -f "$s/config.yaml" ] && [ ! -L "$s/config.yaml" ]; then
+		validate_file "$s/config.yaml" || die "the config.yaml in the archive is not accepted by mihomo; nothing was changed"
+	fi
+
+	cp "$s/clashwrt.uci" /etc/config/clashwrt || die "could not write /etc/config/clashwrt"
+	echo "settings restored"
+	config_load clashwrt
+	config_get lists config list_subdir lst
+	if [ -d "$s/lists" ]; then
+		case "$lists" in */*|.*|"") lists=lst ;; esac
+		mkdir -p "$MIHOMO_DIR/$lists"
+		find "$s/lists" -maxdepth 1 -type f | while read -r f; do
+			cp "$f" "$MIHOMO_DIR/$lists/"
+		done
+		echo "rule files restored"
+	fi
+	local yaml=""
+	[ -f "$s/config.yaml" ] && [ ! -L "$s/config.yaml" ] && { cp "$s/config.yaml" "$STAGING"; yaml=1; }
+	# done with the archive; do_apply sets a trap of its own
+	rm -rf "$dir" "$IMPORT_FILE"
+	trap - EXIT
+	/etc/init.d/clashwrt reload >/dev/null 2>&1
+	[ -n "$yaml" ] && do_apply
+	return 0
+}
+
 case "${1:-}" in
 	read)     do_read ;;
+	export)   do_export ;;
+	import)   do_import ;;
 	validate) do_validate ;;
 	apply)    do_apply ;;
 	backups)  do_backups ;;
 	restore)  do_restore "${2:-}" ;;
 	delete-backup) do_delete_backup "${2:-}" ;;
 	rename-backup) do_rename_backup "${2:-}" "${3:-}" ;;
-	*) echo "usage: $0 read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>" >&2; exit 1 ;;
+	*) echo "usage: $0 read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>|export|import" >&2; exit 1 ;;
 esac

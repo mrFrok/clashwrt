@@ -531,6 +531,72 @@ function buildSplit() {
 }
 
 
+/* Export and import of the settings, through fixed paths in /tmp the way
+ * LuCI's own backup page moves its archive. */
+function buildBackup() {
+	var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
+	var out = E('div');
+	function report(ok, text) {
+		dom.content(out, E('div', {
+			'class': ok ? 'alert-message success' : 'alert-message warning',
+			'style': 'white-space:pre-wrap;margin-top:8px'
+		}, [ text ]));
+	}
+
+	var btnExport = E('button', {
+		'class': 'cbi-button cbi-button-action',
+		'click': function (ev) {
+			var b = ev.target;
+			b.disabled = true;
+			fs.exec(CONFCTL, ['export']).then(function (r) {
+				if (r.code !== 0) throw new Error((r.stderr || r.stdout || '').trim());
+				return fs.read_direct((r.stdout || '').trim(), 'blob');
+			}).then(function (blob) {
+				var a = E('a', {
+					'href': URL.createObjectURL(blob),
+					'download': 'clashwrt-settings-' + new Date().toISOString().slice(0, 10) + '.tar.gz'
+				});
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				dom.content(out, '');
+			}).catch(function (e) {
+				report(false, describe(e));
+			}).finally(function () { b.disabled = false; });
+		}
+	}, _('Download settings'));
+
+	var btnImport = E('button', {
+		'class': 'cbi-button cbi-button-reset',
+		'style': 'margin-left:6px',
+		'click': function (ev) {
+			var b = ev.target;
+			ui.uploadFile('/tmp/clashwrt-settings-restore.tar.gz', ev.target).then(function () {
+				confirmThen(_('Restore these settings?'),
+					_('Replaces the ClashWrt settings, config.yaml and the rule files with the ones in the file. The current config.yaml is backed up first, and nothing is changed if mihomo does not accept the new one.'),
+					_('Restore'), function () {
+						b.disabled = true;
+						dom.content(out, E('em', {}, [ _('Restoring…') ]));
+						fs.exec(CONFCTL, ['import']).then(function (r) {
+							report(r.code === 0, ((r.stdout || '') + (r.stderr || '')).trim());
+						}).catch(function (e) {
+							report(false, describe(e));
+						}).finally(function () { b.disabled = false; });
+					});
+			}).catch(function () { /* the upload dialog was closed */ });
+		}
+	}, _('Restore from file…'));
+
+	return E('div', { 'class': 'cbi-section' }, [
+		E('h3', {}, _('Settings backup')),
+		E('p', { 'style': 'font-size:90%;opacity:.8' }, [
+			_('The ClashWrt settings, config.yaml and your rule files, in one file. Downloaded lists and providers are not included; they come back by themselves.')
+		]),
+		btnExport, btnImport,
+		out
+	]);
+}
+
 return baseclass.extend({
 	load: function () {
 		return Promise.all([ callStatus(), dashui.load() ]);
@@ -545,6 +611,7 @@ return baseclass.extend({
 			buildStatus(data[0]),
 			buildUpdates(),
 			buildSplit(),
+			buildBackup(),
 			dashui.render(data[1])
 		]);
 	},

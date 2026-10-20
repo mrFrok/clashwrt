@@ -59,6 +59,12 @@
 				],
 				"/usr/libexec/clashwrt/provctl.sh": [
 					"exec"
+				],
+				"/tmp/clashwrt-settings.tar.gz": [
+					"read"
+				],
+				"/tmp/clashwrt-settings-restore.tar.gz": [
+					"write"
 				]
 			},
 			"ubus": {
