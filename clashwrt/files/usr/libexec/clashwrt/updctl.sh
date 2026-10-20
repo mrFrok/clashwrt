@@ -89,6 +89,33 @@ parse_repo() {
 # The newest published release, by tag name. Anything that is not a plausible
 # tag -- a rate-limit body, an error page, a repository with no releases yet --
 # is discarded rather than shown as a version.
+# The status pages ask on every visit, and GitHub allows an address 60
+# unauthenticated API calls an hour: a few page loads used to be enough to
+# turn every check into "unknown". An answer is kept for an hour (only a
+# real one: a failure is asked again next time). Installing and updating
+# always ask afresh -- they act on the answer.
+CACHE_DIR="/var/run/clashwrt"
+CACHE_TTL=3600
+
+cached() {
+	local key="$1" f now age v
+	shift
+	f="$CACHE_DIR/upd-$key"
+	now="$(cut -d. -f1 /proc/uptime)"
+	if [ -s "$f" ]; then
+		age=$(( now - $(sed -n 1p "$f") ))
+		if [ "$age" -ge 0 ] && [ "$age" -lt "$CACHE_TTL" ]; then
+			sed -n 2p "$f"
+			return 0
+		fi
+	fi
+	v="$("$@")" || return 1
+	[ -n "$v" ] || return 1
+	mkdir -p "$CACHE_DIR"
+	printf '%s\n%s\n' "$now" "$v" > "$f.$$" && mv -f "$f.$$" "$f"
+	echo "$v"
+}
+
 remote_tag() {
 	local t
 	t="$(curl -sSL -m 25 "https://api.github.com/repos/$SLUG/releases/latest" 2>/dev/null \
@@ -226,7 +253,7 @@ do_core_status() {
 	local arch installed latest
 	arch="$(map_arch 2>/dev/null)" || arch=""
 	installed="$(core_installed 2>/dev/null)" || installed=""
-	latest="$(core_latest)"
+	latest="$(cached core core_latest)"
 
 	echo "arch:      ${arch:-unknown}"
 	echo "installed: ${installed:-none}"
@@ -719,11 +746,11 @@ do_self_status() {
 	if [ "$KIND" = "tags" ]; then
 		echo "channel:   release"
 		installed="${INST_VERSION:-$REF}"
-		latest="$(remote_tag)" || latest=""
+		latest="$(cached "tag-$(echo "$SLUG" | tr '/' '_')" remote_tag)" || latest=""
 	else
 		echo "channel:   $REF"
 		installed="$INST_COMMIT"
-		latest="$(remote_commit)" || latest=""
+		latest="$(cached "commit-$(echo "$SLUG-$REF" | tr '/' '_')" remote_commit)" || latest=""
 	fi
 
 	echo "repo:      https://github.com/$SLUG"

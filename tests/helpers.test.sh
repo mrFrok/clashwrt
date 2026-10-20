@@ -66,4 +66,18 @@ printf '\177ELF\002\001\001' > "$TMP/mihomo-elf"
 is_elf "$TMP/mihomo-script" && fail "a script is not run" || pass "a script is not run"
 is_elf "$TMP/mihomo-elf" && pass "an ELF file is recognised" || fail "an ELF file is recognised"
 
+# updctl.sh: a remote answer is reused for an hour, a failure is not
+sed -n '/^cached() {/,/^}/p' "$L/updctl.sh" > "$TMP/cache.sh"
+CACHE_DIR="$TMP/cache"; CACHE_TTL=3600
+. "$TMP/cache.sh"
+calls=0
+ask() { calls=$((calls + 1)); echo "v1.$calls"; }
+fail_ask() { calls=$((calls + 1)); return 1; }
+first="$(cached k ask)"; calls=1
+second="$(cached k ask)"
+eq "the second answer comes from the cache" "$first" "$second"
+cached f fail_ask >/dev/null; calls=0
+cached f fail_ask >/dev/null || true
+[ -e "$CACHE_DIR/upd-f" ] && fail "a failure is not cached" || pass "a failure is not cached"
+
 finish

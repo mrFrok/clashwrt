@@ -410,32 +410,35 @@ ensure_fw4_zone() {
 # nftables
 # ---------------------------------------------------------------------------
 
+# One line of the ruleset script apply_nft hands to nft -f in one go.
+nb() { echo "$*" >> "$NFT_BATCH"; }
+
 build_bypass() {
 	# Rules shared by every mode: never touch mihomo's own traffic, traffic
 	# that is not from the LAN, link-local infrastructure, or destinations
 	# that must stay local. Order matters -- these all "return" before any
 	# marking happens.
-	nft add rule $TABLE mangle meta mark "$self_mark" return
-	nft add rule $TABLE mangle iifname != "$lan_device" return
+	nb add rule $TABLE mangle meta mark "$self_mark" return
+	nb add rule $TABLE mangle iifname != \"$lan_device\" return
 
 	local ports
 	ports="$(mihomo_ports)"
 	[ -n "$ports" ] && {
-		nft add rule $TABLE mangle tcp dport "{ $ports }" return
-		nft add rule $TABLE mangle udp dport "{ $ports }" return
+		nb add rule $TABLE mangle tcp dport "{ $ports }" return
+		nb add rule $TABLE mangle udp dport "{ $ports }" return
 	}
 
 	# DHCP must never be proxied or the LAN cannot get addresses.
-	nft add rule $TABLE mangle udp sport 67 udp dport 68 return
-	nft add rule $TABLE mangle udp sport 68 udp dport 67 return
+	nb add rule $TABLE mangle udp sport 67 udp dport 68 return
+	nb add rule $TABLE mangle udp sport 68 udp dport 67 return
 
 	local nets
 	nets="$(nft_set $bypass_net)"
-	[ -n "$nets" ] && nft add rule $TABLE mangle ip daddr "{ $nets }" return
+	[ -n "$nets" ] && nb add rule $TABLE mangle ip daddr "{ $nets }" return
 
 	local srcs
 	srcs="$(nft_set $bypass_src)"
-	[ -n "$srcs" ] && nft add rule $TABLE mangle ip saddr "{ $srcs }" return
+	[ -n "$srcs" ] && nb add rule $TABLE mangle ip saddr "{ $srcs }" return
 
 	# The address set, if one is configured. This is the last thing before
 	# marking, so everything it matches is handled by the kernel alone and
@@ -445,19 +448,19 @@ build_bypass() {
 	# config.yaml sends to the proxy (setctl.sh); an address in either set
 	# reaches mihomo. Its entries expire, since a name's addresses change.
 	case "$set_mode" in
-		exclude) nft add rule $TABLE mangle ip daddr @bypass4 return ;;
-		include) nft add rule $TABLE mangle ip daddr != @bypass4 ip daddr != @bypass4_dns return ;;
+		exclude) nb add rule $TABLE mangle ip daddr @bypass4 return ;;
+		include) nb add rule $TABLE mangle ip daddr != @bypass4 ip daddr != @bypass4_dns return ;;
 	esac
 
 	# QUIC carries HTTP/3 over UDP/443. Rejecting it makes browsers fall back
 	# to TCP, which is worth doing only when UDP is not proxied well.
-	[ "$block_quic" = 1 ] && nft add rule $TABLE mangle meta l4proto udp udp dport 443 reject
+	[ "$block_quic" = 1 ] && nb add rule $TABLE mangle meta l4proto udp udp dport 443 reject
 
 	# Send LAN DNS at mihomo's resolver instead of whatever the client asked
 	# for. Off by default: most setups already point dnsmasq at mihomo.
 	[ "$dns_hijack" = 1 ] && {
-		nft add chain $TABLE dns_nat "{ type nat hook prerouting priority dstnat - 5 ; }"
-		nft add rule $TABLE dns_nat iifname "$lan_device" meta l4proto { tcp, udp } th dport 53 \
+		nb add chain $TABLE dns_nat "{ type nat hook prerouting priority dstnat - 5 ; }"
+		nb add rule $TABLE dns_nat iifname \"$lan_device\" meta l4proto { tcp, udp } th dport 53 \
 			dnat ip to "127.0.0.1:$dns_port"
 	}
 	return 0
@@ -469,43 +472,57 @@ apply_nft() {
 	# table would otherwise empty it, and with 'include' every site a client
 	# still has cached would go direct until its next lookup. So the
 	# addresses are carried over into the new table.
-	local dns_keep
+	#
+	# The same goes for bypass4: setctl.sh refills it right after, but in
+	# between an empty set with 'include' would send every connection direct.
+	# Its old contents are carried over and then replaced by the load.
+	local dns_keep set_keep
 	dns_keep="$(nft list set $TABLE bypass4_dns 2>/dev/null |
 		grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ',' | sed 's/,$//')"
+	set_keep="$(nft list set $TABLE bypass4 2>/dev/null |
+		sed -n '/elements = {/,/}/p' | sed 's/.*elements = {//; s/}.*//' | tr -d ' \t\n')"
 
-	nft delete table $TABLE 2>/dev/null
-	nft add table $TABLE
+	# Everything below is written to one script and applied by one nft -f,
+	# which is a single transaction: the table is replaced whole or not at
+	# all. Built a command at a time, a failure partway left a ruleset that
+	# intercepted some traffic and not the rest, with nothing to say so.
+	NFT_BATCH="$(mktemp /tmp/clashwrt-nft.XXXXXX)" || die "cannot create a temporary file"
+	# 'add' first, so that 'delete' has something to delete on a first apply
+	nb add table $TABLE
+	nb delete table $TABLE
+	nb add table $TABLE
 
 	# Declared even when unused: the rules referencing it are added
 	# conditionally, but a set that only sometimes exists makes every other
 	# command here need a guard. "interval" is what allows CIDRs as elements.
-	nft add set $TABLE bypass4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
-	nft add set $TABLE bypass4_dns "{ type ipv4_addr ; flags timeout ; timeout 1d ; }"
-	[ -n "$dns_keep" ] && nft add element $TABLE bypass4_dns "{ $dns_keep }" 2>/dev/null
+	nb add set $TABLE bypass4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
+	nb add set $TABLE bypass4_dns "{ type ipv4_addr ; flags timeout ; timeout 1d ; }"
+	[ -n "$dns_keep" ] && nb add element $TABLE bypass4_dns "{ $dns_keep }"
+	[ -n "$set_keep" ] && nb add element $TABLE bypass4 "{ $set_keep }"
 
 	# priority mangle(-150) so we see packets before conntrack/dstnat decide
-	nft add chain $TABLE mangle "{ type filter hook prerouting priority mangle ; }"
+	nb add chain $TABLE mangle "{ type filter hook prerouting priority mangle ; }"
 	build_bypass
 
 	case "$mode" in
 	tproxy)
-		nft add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tproxy" \
+		nb add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tproxy" \
 			tproxy ip to "127.0.0.1:$tproxy_port" accept
-		nft add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tproxy" \
+		nb add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tproxy" \
 			tproxy ip to "127.0.0.1:$tproxy_port" accept
 		;;
 	tproxy_tun)
-		nft add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tproxy" \
+		nb add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tproxy" \
 			tproxy ip to "127.0.0.1:$tproxy_port" accept
-		nft add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tun"
+		nb add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tun"
 		;;
 	tun)
-		nft add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tun"
-		nft add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tun"
+		nb add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tun"
+		nb add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tun"
 		;;
 	redirect_tun)
-		nft add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tproxy"
-		nft add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tun"
+		nb add rule $TABLE mangle meta l4proto tcp meta mark set "$mark_tproxy"
+		nb add rule $TABLE mangle meta l4proto udp meta mark set "$mark_tun"
 
 		# DNAT explicitly to 127.0.0.1 rather than "redirect to :port":
 		# redirect targets the *inbound interface's own address*, but with
@@ -514,11 +531,18 @@ apply_nft() {
 		# Ahead of fw4's own dstnat chain (priority dstnat, -100): whichever
 		# nat chain acts first owns the translation, so interception has to
 		# win the race against any port forwards fw4 may install.
-		nft add chain $TABLE nat_pre "{ type nat hook prerouting priority dstnat - 40 ; }"
-		nft add rule $TABLE nat_pre meta mark "$mark_tproxy" meta l4proto tcp \
+		nb add chain $TABLE nat_pre "{ type nat hook prerouting priority dstnat - 40 ; }"
+		nb add rule $TABLE nat_pre meta mark "$mark_tproxy" meta l4proto tcp \
 			dnat ip to "127.0.0.1:$redir_port"
 		;;
 	esac
+
+	local err
+	if ! err="$(nft -f "$NFT_BATCH" 2>&1)"; then
+		rm -f "$NFT_BATCH"
+		die "nft refused the ruleset, the previous one is still in place: $err"
+	fi
+	rm -f "$NFT_BATCH"
 	return 0
 }
 

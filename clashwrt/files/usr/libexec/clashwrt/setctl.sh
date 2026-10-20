@@ -432,11 +432,36 @@ pick_rules() {
 
 # Fills CONF_LIST, CONF_DOMAINS and CONF_NOTES from config.yaml for the
 # current direction. The notes say what could not be used and why.
+# What do_from_config's result depends on, as one line: the direction, the
+# config itself, and the size and age of every provider file it names. The
+# provider files are the slow part to read (tens of thousands of lines each),
+# and they change only when mihomo refreshes them, so a matching signature
+# means the last result still holds. Cheap: config.yaml is read once and the
+# providers are only stat'ed.
+config_sig() {
+	{
+		echo "$set_mode $mihomo_dir $(command -v mihomo)"
+		[ -f "$MIHOMO_CONF" ] || { echo none; return; }
+		cat "$MIHOMO_CONF"
+		config_records | awk -F '\t' '$1 == "P" { print $4 }' | while read -r path; do
+			case "$path" in /*) ;; *) path="$mihomo_dir/${path#./}" ;; esac
+			ls -ln --full-time "$path" 2>/dev/null || ls -ln "$path" 2>/dev/null || echo "missing $path"
+		done
+	} | md5sum | cut -d' ' -f1
+}
+
 do_from_config() {
 	local recs="$STATE_DIR/.recs.$$" ips="$STATE_DIR/.ips.$$" doms="$STATE_DIR/.doms.$$" notes="$STATE_DIR/.notes.$$"
-	local kind val extra line beh path fmt file tab
+	local kind val extra line beh path fmt file tab sig
 	tab="$(printf '\t')"
 	mkdir -p "$STATE_DIR"
+
+	sig="$(config_sig)"
+	if [ "${CLASHWRT_NO_CACHE:-}" != 1 ] && [ -f "$CONF_LIST" ] && [ -f "$CONF_DOMAINS" ] && [ -f "$CONF_NOTES" ] &&
+		[ "$(cat "$STATE_DIR/config.sig" 2>/dev/null)" = "$sig" ]; then
+		return 0
+	fi
+
 	: > "$ips"; : > "$doms"; : > "$notes"
 
 	if [ -f "$MIHOMO_CONF" ]; then
@@ -493,6 +518,7 @@ do_from_config() {
 	mv -f "$CONF_LIST.$$" "$CONF_LIST"
 	mv -f "$CONF_DOMAINS.$$" "$CONF_DOMAINS"
 	mv -f "$CONF_NOTES.$$" "$CONF_NOTES"
+	echo "$sig" > "$STATE_DIR/config.sig.$$" && mv -f "$STATE_DIR/config.sig.$$" "$STATE_DIR/config.sig"
 	rm -f "$recs" "$recs.pick" "$recs.mrs" "$ips" "$doms" "$notes"
 }
 
@@ -825,7 +851,7 @@ do_detect() {
 }
 
 do_clear() {
-	rm -f "$LIST" "$STAMP" "$CONF_LIST" "$CONF_DOMAINS" "$CONF_NOTES"
+	rm -f "$LIST" "$STAMP" "$CONF_LIST" "$CONF_DOMAINS" "$CONF_NOTES" "$STATE_DIR/config.sig"
 	nft flush set $TABLE $SET4 2>/dev/null
 	nft flush set $TABLE $SET4_DNS 2>/dev/null
 	# set_mode is unset here, so this takes the dnsmasq rules away
