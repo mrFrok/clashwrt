@@ -108,6 +108,7 @@ load_cfg() {
 	config_get tproxy_port   config tproxy_port   ""
 	config_get redir_port    config redir_port    ""
 	config_get dns_port      config dns_port      1053
+	config_get block_ipv6    config block_ipv6    1
 	config_get api_port      config api_port      9090
 	config_get block_quic    config block_quic    0
 	config_get dns_hijack    config dns_hijack    0
@@ -463,6 +464,18 @@ build_bypass() {
 		nb add rule $TABLE dns_nat iifname \"$lan_device\" meta l4proto { tcp, udp } th dport 53 \
 			dnat ip to "127.0.0.1:$dns_port"
 	}
+
+	# Interception marks IPv4 only, so a device with IPv6 would reach the
+	# internet past the proxy: same sites, the real address. While the
+	# ruleset is up, LAN IPv6 that would leave the LAN is refused -- with a
+	# reject, so apps fall back to IPv4 at once instead of timing out. The
+	# router's own IPv6, and IPv6 between LAN devices, are untouched; a
+	# bypass or a switched-off proxy removes the table and this with it.
+	[ "$block_ipv6" = 1 ] && {
+		nb add chain $TABLE leak6 "{ type filter hook forward priority filter - 5 ; }"
+		nb add rule $TABLE leak6 iifname \"$lan_device\" meta nfproto ipv6 oifname != \"$lan_device\" \
+			reject with icmpx type admin-prohibited
+	}
 	return 0
 }
 
@@ -757,6 +770,7 @@ do_status() {
 	fi
 	echo "mode:         $mode"
 	echo "lan_device:   $lan_device"
+	echo "ipv6_blocked: $([ "$block_ipv6" = 1 ] && nft list chain $TABLE leak6 >/dev/null 2>&1 && echo yes || echo no)"
 	echo "wan_device:   ${wan_device:-unknown}"
 	echo "tun_device:   $tun_device"
 	echo "tproxy_port:  ${tproxy_port:-none}"

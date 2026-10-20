@@ -204,6 +204,11 @@ return view.extend({
 			_('Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well.'));
 		o.default = '0';
 
+		o = basic(form.Flag, 'block_ipv6', _('Block IPv6 past the proxy'),
+			_('The proxy handles IPv4 only, so IPv6 from your devices would reach the internet directly, with your real address. Devices fall back to IPv4. Default: on. Turn off only if you need IPv6 and accept it goes direct.'));
+		o.default = '1';
+		o.rmempty = false;
+
 		o = basic(form.Flag, 'watchdog', _('VPN watchdog'),
 			_('Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off.') +
 			'<details><summary>' + _('How it works') + '</summary>' +
