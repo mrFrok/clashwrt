@@ -1301,3 +1301,111 @@ msgstr "Ядро, обновления ClashWrt, панели и списки о
 
 msgid "could not check for updates"
 msgstr "не удалось проверить обновления"
+
+msgid "Download settings"
+msgstr "Скачать настройки"
+
+msgid "Restore these settings?"
+msgstr "Восстановить эти настройки?"
+
+msgid "Replaces the ClashWrt settings, config.yaml and the rule files with the ones in the file. The current config.yaml is backed up first, and nothing is changed if mihomo does not accept the new one."
+msgstr "Заменяет настройки ClashWrt, config.yaml и файлы правил содержимым файла. Текущий config.yaml сначала сохраняется в резервную копию, и ничего не меняется, если mihomo не примет новый."
+
+msgid "Restore"
+msgstr "Восстановить"
+
+msgid "Restore from file…"
+msgstr "Восстановить из файла…"
+
+msgid "Settings backup"
+msgstr "Резервная копия настроек"
+
+msgid "The ClashWrt settings, config.yaml and your rule files, in one file. Downloaded lists and providers are not included; they come back by themselves."
+msgstr "Настройки ClashWrt, config.yaml и ваши файлы правил — одним файлом. Скачиваемые списки и провайдеры не входят: они вернутся сами."
+
+msgid "Blocked"
+msgstr "Заблокировано"
+
+msgid "The VPN is down and the kill switch is on: your network has no internet until the VPN is back."
+msgstr "VPN не работает, а kill switch включён: в сети нет интернета, пока VPN не вернётся."
+
+msgid "The VPN is not responding, so the kill switch keeps your network offline. It can come back in %s s at the earliest."
+msgstr "VPN не отвечает, поэтому kill switch держит сеть без интернета. Вернуть можно не раньше чем через %s с."
+
+msgid "LAN networks"
+msgstr "Сети LAN"
+
+msgid "Only traffic arriving on these networks is intercepted. Add a guest or IoT network to proxy it too. Default: lan."
+msgstr "Перехватывается только трафик из этих сетей. Добавьте гостевую или IoT-сеть, чтобы проксировать и её. По умолчанию: lan."
+
+msgid "Block IPv6 past the proxy"
+msgstr "Блокировать IPv6 в обход прокси"
+
+msgid "The proxy handles IPv4 only, so IPv6 from your devices would reach the internet directly, with your real address. Devices fall back to IPv4. Default: on. Turn off only if you need IPv6 and accept it goes direct."
+msgstr "Прокси работает только с IPv4, поэтому IPv6 с ваших устройств уходил бы в интернет напрямую, с вашим настоящим адресом. Устройства переходят на IPv4. По умолчанию: включено. Выключайте, только если нужен IPv6 и вас устраивает, что он идёт напрямую."
+
+msgid "Block DNS-over-TLS"
+msgstr "Блокировать DNS-over-TLS"
+
+msgid "Devices with their own encrypted DNS (Android Private DNS and the like) skip the router's DNS, so the bypass set never learns their sites. Blocking port 853 makes them fall back to it. Default: on."
+msgstr "Устройства со своим шифрованным DNS (частный DNS в Android и подобное) обходят DNS роутера, и набор обхода не узнаёт их сайты. Блокировка порта 853 заставляет их вернуться к DNS роутера. По умолчанию: включено."
+
+msgid "Block DNS-over-HTTPS"
+msgstr "Блокировать DNS-over-HTTPS"
+
+msgid "The same for browsers' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off."
+msgstr "То же для встроенного в браузеры DoH: HTTPS к известным публичным DoH-серверам запрещается, по списку, который обновляется ежедневно. По умолчанию: выключено."
+
+msgid "More DoH resolvers"
+msgstr "Дополнительные DoH-серверы"
+
+msgid "Extra IPv4 addresses to treat as DoH resolvers."
+msgstr "Дополнительные IPv4-адреса, которые считать DoH-серверами."
+
+msgid "When the VPN fails"
+msgstr "Когда VPN падает"
+
+msgid "What the watchdog does when the VPN stops working while the internet is fine. Default: let traffic go direct."
+msgstr "Что делает сторож, когда VPN перестаёт работать, а интернет есть. По умолчанию: пускать трафик напрямую."
+
+msgid "Let traffic go direct (the internet keeps working, without the VPN)"
+msgstr "Пускать трафик напрямую (интернет работает, но без VPN)"
+
+msgid "Cut the network off (kill switch: nothing leaves without the VPN)"
+msgstr "Отключать сеть (kill switch: без VPN ничего не уходит)"
+
+msgid "Keep rule and proxy providers in RAM"
+msgstr "Хранить провайдеры правил и подписок в ОЗУ"
+
+msgid "Their daily refreshes then cost the flash no writes. Only while RAM can spare it: on routers under 256 MB, or when free RAM or /tmp runs low, they stay on (or go back to) flash. Default: on."
+msgstr "Тогда их ежедневные обновления не изнашивают флеш. Только пока ОЗУ хватает: на роутерах меньше 256 МБ или когда свободной ОЗУ или места в /tmp мало, они остаются на флеше (или возвращаются туда). По умолчанию: включено."
+
+msgid "Providers now"
+msgstr "Провайдеры сейчас"
+
+msgid "in RAM, %d MB"
+msgstr "в ОЗУ, %d МБ"
+
+msgid "on flash: %s"
+msgstr "на флеше: %s"
+
+msgid "the config names no providers"
+msgstr "в конфиге нет провайдеров"
+
+msgid "system — the kernel's own, fastest (default)"
+msgstr "system — стек ядра, самый быстрый (по умолчанию)"
+
+msgid "gvisor — userspace, for kernels where system misbehaves"
+msgstr "gvisor — в пользовательском пространстве, для ядер, где system работает плохо"
+
+msgid "mixed — system for TCP, gvisor for UDP"
+msgstr "mixed — system для TCP, gvisor для UDP"
+
+msgid "mips — userspace, built for slow MIPS routers"
+msgstr "mips — в пользовательском пространстве, для слабых MIPS-роутеров"
+
+msgid "TUN stack"
+msgstr "Стек TUN"
+
+msgid "How the tun device hands packets to mihomo. Leave at system unless something does not work."
+msgstr "Как устройство tun передаёт пакеты в mihomo. Оставьте system, если всё работает."

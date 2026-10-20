@@ -1295,3 +1295,111 @@ msgstr ""
 
 msgid "could not check for updates"
 msgstr ""
+
+msgid "Download settings"
+msgstr ""
+
+msgid "Restore these settings?"
+msgstr ""
+
+msgid "Replaces the ClashWrt settings, config.yaml and the rule files with the ones in the file. The current config.yaml is backed up first, and nothing is changed if mihomo does not accept the new one."
+msgstr ""
+
+msgid "Restore"
+msgstr ""
+
+msgid "Restore from file…"
+msgstr ""
+
+msgid "Settings backup"
+msgstr ""
+
+msgid "The ClashWrt settings, config.yaml and your rule files, in one file. Downloaded lists and providers are not included; they come back by themselves."
+msgstr ""
+
+msgid "Blocked"
+msgstr ""
+
+msgid "The VPN is down and the kill switch is on: your network has no internet until the VPN is back."
+msgstr ""
+
+msgid "The VPN is not responding, so the kill switch keeps your network offline. It can come back in %s s at the earliest."
+msgstr ""
+
+msgid "LAN networks"
+msgstr ""
+
+msgid "Only traffic arriving on these networks is intercepted. Add a guest or IoT network to proxy it too. Default: lan."
+msgstr ""
+
+msgid "Block IPv6 past the proxy"
+msgstr ""
+
+msgid "The proxy handles IPv4 only, so IPv6 from your devices would reach the internet directly, with your real address. Devices fall back to IPv4. Default: on. Turn off only if you need IPv6 and accept it goes direct."
+msgstr ""
+
+msgid "Block DNS-over-TLS"
+msgstr ""
+
+msgid "Devices with their own encrypted DNS (Android Private DNS and the like) skip the router's DNS, so the bypass set never learns their sites. Blocking port 853 makes them fall back to it. Default: on."
+msgstr ""
+
+msgid "Block DNS-over-HTTPS"
+msgstr ""
+
+msgid "The same for browsers' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off."
+msgstr ""
+
+msgid "More DoH resolvers"
+msgstr ""
+
+msgid "Extra IPv4 addresses to treat as DoH resolvers."
+msgstr ""
+
+msgid "When the VPN fails"
+msgstr ""
+
+msgid "What the watchdog does when the VPN stops working while the internet is fine. Default: let traffic go direct."
+msgstr ""
+
+msgid "Let traffic go direct (the internet keeps working, without the VPN)"
+msgstr ""
+
+msgid "Cut the network off (kill switch: nothing leaves without the VPN)"
+msgstr ""
+
+msgid "Keep rule and proxy providers in RAM"
+msgstr ""
+
+msgid "Their daily refreshes then cost the flash no writes. Only while RAM can spare it: on routers under 256 MB, or when free RAM or /tmp runs low, they stay on (or go back to) flash. Default: on."
+msgstr ""
+
+msgid "Providers now"
+msgstr ""
+
+msgid "in RAM, %d MB"
+msgstr ""
+
+msgid "on flash: %s"
+msgstr ""
+
+msgid "the config names no providers"
+msgstr ""
+
+msgid "system — the kernel's own, fastest (default)"
+msgstr ""
+
+msgid "gvisor — userspace, for kernels where system misbehaves"
+msgstr ""
+
+msgid "mixed — system for TCP, gvisor for UDP"
+msgstr ""
+
+msgid "mips — userspace, built for slow MIPS routers"
+msgstr ""
+
+msgid "TUN stack"
+msgstr ""
+
+msgid "How the tun device hands packets to mihomo. Leave at system unless something does not work."
+msgstr ""

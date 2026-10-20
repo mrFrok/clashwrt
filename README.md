@@ -193,6 +193,22 @@ Your switch always wins: with the proxy switched off the watchdog is idle and cl
 
 The probe needs mihomo's API (`external-controller`) and a group name; leave `watchdog_group` empty to use the group named by the config's final `MATCH` rule (else `Proxy`). If the router's dnsmasq forwards to mihomo's DNS port, a bypass takes that forward out of dnsmasq (the original server list is kept in `/etc/clashwrt-dns.bak` and put back when the bypass ends), so the LAN keeps resolving through the router's normal upstream. If that cannot be done (dnsmasq has no other upstream), DNS stays on mihomo and the Overview and Settings warn about it. Changing the watchdog or any setting that does not reach the firewall no longer reloads the ruleset.
 
+**When the VPN fails** (`watchdog_action`, Settings → Basic) chooses what the watchdog does: `direct` (the default, above) lets traffic out past the proxy; `block` is a kill switch — the ruleset is replaced by a forward chain that refuses LAN traffic to anywhere but the LAN, IPv4 and IPv6, until the path is back. The Overview then says **Blocked**, in red.
+
+### Leak protection
+
+While the proxy is on, a few things that would otherwise go past it are refused (Settings → Basic):
+
+| Option | Default | What it refuses |
+|---|---|---|
+| `block_ipv6` | on | LAN IPv6 leaving the LAN. Interception is IPv4 only, so IPv6 would reach the internet with your real address; devices fall back to IPv4. Turn off if you need IPv6 and accept it goes direct. |
+| `block_dot` | on | DNS-over-TLS (port 853), e.g. Android Private DNS — it skips the router's DNS, so the bypass set never learns those sites. |
+| `block_doh` | off | HTTPS to public DoH resolvers, from [dibdot's DoH-IP-blocklists](https://github.com/dibdot/DoH-IP-blocklists) (refreshed daily, through the proxy) plus `doh_extra` — browsers' built-in DoH. |
+
+All are rejected rather than dropped, so devices fall back at once instead of timing out.
+
+**Several LAN networks.** `lan_device` is a list: add `guest`, `iot` or a device name in Settings → Basic → LAN networks and every one of them is intercepted (and protected as above).
+
 ### Setup wizard
 
 Builds a `config.yaml` from a subscription URL or pasted node links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic://`). Choose DNS, choose a routing strategy — *everything direct except the selected lists*, or *everything through the proxy except Russia* — tick the rule sets you want, and apply.
@@ -210,6 +226,10 @@ The form opens pre-filled: from the answers the wizard saved last time, or — i
 The wizard's default resolver is Quad9 over DoH: with `redir-host`, mihomo resolves every name itself, and over plain UDP the ISP would see — and could rewrite — each lookup, blocked sites included. `default-nameserver` gets plain addresses only, since it is what resolves the DoH server's own name.
 
 `redir-host` stays the default because two things depend on real addresses: the kernel bypass set, and going direct when the proxy is switched off or the watchdog bypasses it. **Fake-IP DNS** (step 2) answers every name from `198.18.0.0/16` instead: connections start sooner and proxied names are never resolved on the router, but the bypass set is held back automatically (status says so), and with the proxy off, devices cannot reach sites until their cached fake addresses expire. LAN names, NTP, captive-portal probes and STUN are filtered so they resolve for real.
+
+### TUN stack
+
+Step 4 chooses how the tun device hands packets to mihomo: `system` (the kernel's own and fastest, default), `gvisor` or `mixed` for kernels where `system` misbehaves, `mips` for slow MIPS routers.
 
 ### Fastest node
 
@@ -265,6 +285,10 @@ Choosing a preset by hand that contradicts your routing is warned about rather t
 
 Domains have no address until they are looked up, so they go to dnsmasq instead: it adds every address it resolves for them to a second set (`nftset=`). That needs the **`dnsmasq-full`** package (stock `dnsmasq` has no nftset support), which `install.sh` swaps in (set `SKIP_DNSMASQ_FULL=1` to keep the stock one) and the Bypass tab offers to install when the set is held back for want of it, and only helps devices that ask the router for DNS; with `dns_hijack` on, lookups go to mihomo and the domains are not used. The status block says which of these applies. Rule providers are read from the files mihomo has already downloaded, the binary `mrs` format through mihomo's own `convert-ruleset`; rules with no fixed address or domain (`DOMAIN-KEYWORD`, `GEOSITE`, `GEOIP`…) are listed as skipped. The number of domains handed to dnsmasq follows the router's RAM (about one per 4 KB, 20000–300000; `bypass_set_max_domains` overrides it). The addresses dnsmasq has resolved are kept when the firewall is rebuilt, so a reload does not send cached sites direct; after a reboot they come back as clients look the names up again. Pick **Whatever config.yaml does not send to the proxy** to use only the config's rules, with nothing downloaded. This is the default since 1.2.2, also on routers that had the set off before the upgrade (once; switching it off again sticks). It is held back by itself — everything then goes to mihomo, which only costs speed — whenever config.yaml proxies something the set cannot hold: domains without dnsmasq-full, domains with DNS hijack on, or rules such as `GEOSITE` or `DOMAIN-KEYWORD`. The status block says which.
 
+### Providers in RAM
+
+mihomo rewrites its rule and proxy providers on every refresh — tens of MB a day with lists like Re-filter — and on NAND each rewrite is wear. With `providers_in_ram` (on by default) the directories they live in move to `/tmp` behind symlinks, **but only while RAM can spare it**: with the providers counted twice (a refresh writes the new file beside the old), free RAM must stay above max(32 MB, 15 % of RAM) and `/tmp` must keep a quarter free, and routers under 256 MB never move. Every service start, config apply and daily run measures again and moves them back to flash as soon as that stops holding. A copy on flash is kept from the move, so a reboot refills RAM without downloading anything. Settings → Advanced shows where they are and why.
+
 ### Configuration and rule files
 
 **Configuration** is a direct editor for `config.yaml`, with syntax checking, backups and one-click restore (tabs *Editor* and *Backups*). The *Rule files* tab manages the hand-maintained lists that file-backed rule providers point at:
@@ -275,6 +299,10 @@ rule-providers:
 ```
 
 Neither installs anything until `mihomo -t` has accepted it.
+
+### Settings backup
+
+Overview → Maintenance → **Settings backup** downloads one archive with `/etc/config/clashwrt`, `config.yaml` and your rule files, and restores one: nothing is replaced unless the settings parse and mihomo accepts the `config.yaml`, which is backed up first. Downloaded lists and providers are not included.
 
 ### Logs
 

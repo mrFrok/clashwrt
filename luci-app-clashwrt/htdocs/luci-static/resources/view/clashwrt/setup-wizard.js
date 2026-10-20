@@ -7,7 +7,7 @@
 'require dom';
 'require clashwrt.generator as gen';
 
-var UI_VERSION = '0.3.0';
+var UI_VERSION = '0.4.0';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
