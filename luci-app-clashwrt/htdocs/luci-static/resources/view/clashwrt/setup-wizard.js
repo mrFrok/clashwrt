@@ -82,6 +82,7 @@ return view.extend({
 				links: gl('link').join('\n'),
 				dnsPreset: g('dns_preset', gen.DEFAULT_DNS),
 				fakeIp: g('fake_ip', '0') === '1',
+				tunStack: g('tun_stack', 'system'),
 				dnsCustom: gl('dns_server').join('\n'),
 				routing: g('routing', 'direct_except_list'),
 				ruleSets: gl('ruleset'),
@@ -100,7 +101,7 @@ return view.extend({
 
 		return {
 			source: 'none',
-			subs: '', links: '', dnsPreset: gen.DEFAULT_DNS, dnsCustom: '', fakeIp: false,
+			subs: '', links: '', dnsPreset: gen.DEFAULT_DNS, dnsCustom: '', fakeIp: false, tunStack: 'system',
 			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true,
 			yandexDns: false, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
 			extraDomains: [], extraGroup: 'Proxy'
@@ -120,6 +121,7 @@ return view.extend({
 			links: '',
 			dnsPreset: preset || (cfg.dnsServers.length ? 'custom' : gen.DEFAULT_DNS),
 			fakeIp: cfg.fakeIp,
+			tunStack: cfg.tunStack || 'system',
 			dnsCustom: preset ? '' : cfg.dnsServers.join('\n'),
 			routing: cfg.routing || 'direct_except_list',
 			ruleSets: cfg.ruleSets,
@@ -192,6 +194,14 @@ return view.extend({
 		var splitCb = E('input', { 'type': 'checkbox' });
 		var autoCb = E('input', { 'type': 'checkbox' });
 		var fakeCb = E('input', { 'type': 'checkbox' });
+		var stackSel = E('select', { 'class': 'cbi-input-select' }, gen.TUN_STACKS.map(function (k) {
+			return E('option', { 'value': k }, [ {
+				system: _('system — the kernel\'s own, fastest (default)'),
+				gvisor: _('gvisor — userspace, for kernels where system misbehaves'),
+				mixed: _('mixed — system for TCP, gvisor for UDP'),
+				mips: _('mips — userspace, built for slow MIPS routers')
+			}[k] ]);
+		}));
 		var yandexCb = E('input', { 'type': 'checkbox' });
 		var udpFilter = E('input', {
 			'type': 'text', 'class': 'cbi-input-text', 'style': 'width:24em'
@@ -304,6 +314,7 @@ return view.extend({
 			splitCb.checked = ans.udpSplit;
 			autoCb.checked = ans.autoBest;
 			fakeCb.checked = ans.fakeIp;
+			stackSel.value = ans.tunStack;
 			yandexCb.checked = ans.yandexDns;
 			udpFilter.value = ans.udpFilter;
 			tcpFilter.value = ans.tcpFilter;
@@ -367,6 +378,7 @@ return view.extend({
 				udpSplit: splitCb.checked,
 				autoBest: autoCb.checked,
 				fakeIp: fakeCb.checked,
+				tunStack: stackSel.value,
 				yandexDns: yandexCb.checked,
 				udpFilter: udpFilter.value,
 				tcpFilter: tcpFilter.value,
@@ -404,6 +416,7 @@ return view.extend({
 				udpSplit: ans.udpSplit,
 				autoBest: ans.autoBest,
 				fakeIp: ans.fakeIp,
+				tunStack: ans.tunStack,
 				yandexDns: ans.yandexDns,
 				udpFilter: ans.udpFilter,
 				tcpFilter: ans.tcpFilter,
@@ -435,6 +448,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'udp_split', ans.udpSplit ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'auto_best', ans.autoBest ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'fake_ip', ans.fakeIp ? '1' : '0');
+			uci.set('clashwrt', 'wizard', 'tun_stack', ans.tunStack);
 			uci.set('clashwrt', 'wizard', 'yandex_dns', ans.yandexDns ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'udp_filter', ans.udpFilter);
 			uci.set('clashwrt', 'wizard', 'tcp_filter', ans.tcpFilter);
@@ -672,6 +686,9 @@ return view.extend({
 				]),
 
 				step(4, _('Protocol split and apply'), _('Optional split, then generate and apply.'), false, [
+					label(_('TUN stack'), _('How the tun device hands packets to mihomo. Leave at system unless something does not work.')),
+					stackSel,
+
 					label(_('Fastest node'), _('On by default.')),
 					E('label', {}, [ autoCb, ' ', _('Pick the fastest node automatically') ]),
 					more(_('How it picks'), _('Adds an "Auto" group that times every node every five minutes and follows the fastest, and puts it first in Proxy, so a node can still be chosen by hand in the dashboard. With the protocol split, "Auto UDP" does the same for the QUIC nodes.')),

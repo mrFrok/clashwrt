@@ -195,4 +195,14 @@ t('the fetch listener sends the router downloads to Proxy, on loopback', functio
 	assert.ok(/\nlisteners:\n  - name: clashwrt-fetch\n    type: mixed\n    port: 7899\n    listen: 127\.0\.0\.1\n    proxy: Proxy\n/.test(y));
 });
 
+t('the TUN stack is written as chosen, read back, and anything else is system', function () {
+	gen.TUN_STACKS.forEach(function (k) {
+		var y = gen.generate({ proxies: [], mode: 'tun', routing: 'direct_except_list', tunStack: k });
+		assert.ok(new RegExp('\n  stack: ' + k + '\n').test(y), k);
+		assert.strictEqual(gen.parseConfig(y).tunStack, k);
+	});
+	var bad = gen.generate({ proxies: [], mode: 'tun', routing: 'direct_except_list', tunStack: 'x\ny: 1' });
+	assert.ok(/\n  stack: system\n/.test(bad));
+});
+
 console.log(n + ' generator tests passed');

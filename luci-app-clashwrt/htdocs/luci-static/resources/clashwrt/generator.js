@@ -332,6 +332,7 @@ function proxyToYaml(p) {
 var UDP_GROUP = 'ProxyUDP';
 var DEFAULT_DNS = 'quad9-doh';
 var FETCH_LISTENER = 'clashwrt-fetch';
+var TUN_STACKS = ['system', 'gvisor', 'mixed', 'mips'];
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -682,7 +683,7 @@ function parseConfig(text) {
 		subs: [], links: 0, dnsServers: [], routing: '', ruleSets: [],
 		udpSplit: false, udpFilter: '', tcpFilter: '', yandexDns: false,
 		extraDomains: [], extraGroup: 'Proxy', groups: [], generatedByUs: false, secret: '',
-		autoBest: false, fakeIp: false
+		autoBest: false, fakeIp: false, tunStack: ''
 	};
 	var i, r, m;
 
@@ -719,6 +720,11 @@ function parseConfig(text) {
 	if (r) for (i = r.start; i < r.end; i++) {
 		if (lines[i].indexOf('rule-set:ru_domains') >= 0) res.yandexDns = true;
 		if (/^\s+enhanced-mode:\s*fake-ip\b/.test(lines[i])) res.fakeIp = true;
+	}
+	r = sectionRange(lines, 'tun');
+	if (r) for (i = r.start; i < r.end; i++) {
+		m = lines[i].match(/^\s+stack:\s*([a-z]+)/);
+		if (m) res.tunStack = m[1];
 	}
 
 	/* rule-provider names -> which bundled lists are wholly present */
@@ -837,6 +843,7 @@ return baseclass.extend({
 	DNS_PRESETS: DNS_PRESETS,
 	UDP_GROUP: UDP_GROUP,
 	DEFAULT_DNS: DEFAULT_DNS,
+	TUN_STACKS: TUN_STACKS,
 	AUTO_GROUP: AUTO_GROUP,
 	AUTO_UDP_GROUP: AUTO_UDP_GROUP,
 	SITE_PRESETS: SITE_PRESETS,
@@ -1050,7 +1057,10 @@ return baseclass.extend({
 			L.push('tun:');
 			L.push('  enable: true');
 			L.push('  device: ' + wordOf(o.tunDevice, 'clash-tun'));
-			L.push('  stack: system');
+			/* system is the kernel's own stack and the fastest; gvisor and
+			 * mixed are userspace for kernels that misbehave; mips is
+			 * mihomo's userspace stack built for slow MIPS cores */
+			L.push('  stack: ' + (TUN_STACKS.indexOf(o.tunStack) >= 0 ? o.tunStack : 'system'));
 			L.push('  auto-route: false');
 			L.push('  auto-redirect: false');
 			L.push('  auto-detect-interface: false');
