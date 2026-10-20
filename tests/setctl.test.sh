@@ -227,4 +227,20 @@ sh "$TMP/setctl-a.sh" install-dnsmasq-full >/dev/null 2>&1 && fail "apk: a faile
 eq "apk: and the stock dnsmasq goes back" "apk add dnsmasq" "$(tail -n1 "$TMP/apk.log")"
 rm -f "$TMP/bin/apk" "$TMP/apk-fail" /tmp/dnsmasq-full-*.apk
 
+# DoH list: fetched, parsed, extras added, loaded into doh4
+uci set clashwrt.config.block_doh=1
+uci set clashwrt.config.doh_extra='9.9.9.9 bad'
+cat > "$TMP/bin/curl" <<'X'
+#!/bin/sh
+while [ $# -gt 0 ]; do [ "$1" = -o ] && { shift; out="$1"; }; shift; done
+awk 'BEGIN { for (i = 1; i <= 12; i++) printf "1.1.1.%d   # resolver %d\n", i, i }' > "$out"
+X
+chmod +x "$TMP/bin/curl"
+sh "$SETCTL" doh-update >/dev/null 2>&1
+eq "the DoH list is stored" "12" "$(grep -c . "$TMP/state/doh4.list")"
+grep -q 'add element inet clashwrt doh4' "$NFT_LOADED" && pass "loaded into doh4" || fail "loaded into doh4"
+grep -q '9.9.9.9' "$NFT_LOADED" && pass "doh_extra added" || fail "doh_extra added"
+grep -q 'bad' "$NFT_LOADED" && fail "a bad extra is dropped" || pass "a bad extra is dropped"
+rm -f "$TMP/bin/curl"
+
 finish

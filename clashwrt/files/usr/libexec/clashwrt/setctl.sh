@@ -41,6 +41,7 @@
 #
 # Usage: setctl.sh update [force] | load | status | clear | sources
 #        setctl.sh direction | detect | from-config | install-dnsmasq-full
+#        setctl.sh doh-update | doh-load
 
 # The CLASHWRT_* overrides exist so tests/ can run this file off the router.
 # shellcheck source=/dev/null
@@ -66,6 +67,9 @@ STAMP="$STATE_DIR/bypass4.stamp"
 CONF_LIST="$STATE_DIR/config4.list"
 CONF_DOMAINS="$STATE_DIR/config-domains.list"
 CONF_NOTES="$STATE_DIR/config.notes"
+DOH_LIST="$STATE_DIR/doh4.list"
+DOH_STAMP="$STATE_DIR/doh4.stamp"
+DOH_URL="https://raw.githubusercontent.com/dibdot/DoH-IP-blocklists/master/doh-ipv4.txt"
 
 # The largest of the preset lists is a few hundred KB and well under 100000
 # networks; ten times that is a list from somewhere that should not be
@@ -608,7 +612,64 @@ dns_sync_domains() {
 	log "dnsmasq adds the addresses of $(grep -c . "$file") config domains to $SET4_DNS"
 }
 
+# ---------------------------------------------------------------------------
+# DoH resolvers (block_doh)
+# ---------------------------------------------------------------------------
+#
+# Addresses of public DoH resolvers, from dibdot's DoH-IP-blocklists (GPL-3),
+# plus doh_extra from UCI, into the doh4 set that fw.sh rejects HTTPS to.
+# Refreshed once a day by the same cron run as the bypass list.
+
+do_doh_update() {
+	local tmp n now
+	[ "$(uci -q get clashwrt.config.block_doh)" = 1 ] || return 0
+	if [ "${1:-}" != force ] && [ -s "$DOH_LIST" ] && [ -f "$DOH_STAMP" ]; then
+		now="$(date +%s)"
+		[ $((now - $(cat "$DOH_STAMP" 2>/dev/null || echo 0))) -lt 86400 ] && { do_doh_load; return 0; }
+	fi
+	mkdir -p "$STATE_DIR"
+	tmp="$(mktemp /tmp/clashwrt-doh.XXXXXX)" || return 1
+	if cw_curl -sSL --fail --proto '=https' -m 120 --max-filesize 4194304 -o "$tmp" "$DOH_URL"; then
+		parse_list < "$tmp" > "$tmp.parsed"
+		n="$(grep -c . "$tmp.parsed" 2>/dev/null || echo 0)"
+		if [ "$n" -ge 10 ]; then
+			mv "$tmp.parsed" "$DOH_LIST"
+			date +%s > "$DOH_STAMP"
+			log "stored $n DoH resolver addresses"
+		else
+			log "only $n DoH addresses parsed, keeping the previous list"
+		fi
+	else
+		log "DoH list download failed, keeping the previous list"
+	fi
+	rm -f "$tmp" "$tmp.parsed"
+	do_doh_load
+}
+
+do_doh_load() {
+	local f extra
+	[ "$(uci -q get clashwrt.config.block_doh)" = 1 ] || return 0
+	nft list set $TABLE doh4 >/dev/null 2>&1 || return 0
+	f="$(mktemp /tmp/clashwrt-doh-load.XXXXXX)" || return 1
+	extra="$(uci -q get clashwrt.config.doh_extra | tr ' ' '\n' | parse_list)"
+	{ cat "$DOH_LIST" 2>/dev/null; [ -n "$extra" ] && echo "$extra"; } | awk '!seen[$0]++' > "$f.all"
+	{
+		echo "flush set $TABLE doh4"
+		if [ -s "$f.all" ]; then
+			echo "add element $TABLE doh4 {"
+			awk 'NR>1{printf ",\n"} {printf "  %s", $0}' "$f.all"
+			echo ""
+			echo "}"
+		fi
+	} > "$f"
+	nft -f "$f" 2>/dev/null && log "loaded $(grep -c . "$f.all") DoH addresses into doh4"
+	rm -f "$f" "$f.all"
+	return 0
+}
+
 do_update() {
+	# the DoH list is independent of the bypass set and refreshed regardless
+	do_doh_update "${1:-}"
 	load_cfg
 	[ "$set_mode_raw" = "off" ] && { log "bypass set disabled"; return 0; }
 	require_direction
@@ -942,5 +1003,7 @@ case "${1:-}" in
 	detect)  do_detect ;;
 	from-config) do_show_config ;;
 	install-dnsmasq-full) do_install_dnsmasq_full ;;
-	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full" >&2; exit 1 ;;
+	doh-update) do_doh_update force ;;
+	doh-load)   do_doh_load ;;
+	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full | doh-update | doh-load" >&2; exit 1 ;;
 esac

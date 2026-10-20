@@ -209,6 +209,21 @@ return view.extend({
 		o.default = '1';
 		o.rmempty = false;
 
+		o = basic(form.Flag, 'block_dot', _('Block DNS-over-TLS'),
+			_('Devices with their own encrypted DNS (Android Private DNS and the like) skip the router\'s DNS, so the bypass set never learns their sites. Blocking port 853 makes them fall back to it. Default: on.'));
+		o.default = '1';
+		o.rmempty = false;
+
+		o = basic(form.Flag, 'block_doh', _('Block DNS-over-HTTPS'),
+			_('The same for browsers\' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off.'));
+		o.default = '0';
+		o.rmempty = false;
+
+		o = basic(form.DynamicList, 'doh_extra', _('More DoH resolvers'),
+			_('Extra IPv4 addresses to treat as DoH resolvers.'));
+		o.datatype = 'ip4addr';
+		o.depends('block_doh', '1');
+
 		o = basic(form.Flag, 'watchdog', _('VPN watchdog'),
 			_('Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off.') +
 			'<details><summary>' + _('How it works') + '</summary>' +

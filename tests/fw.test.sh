@@ -36,4 +36,13 @@ block_ipv6=0
 apply_nft
 grep -q leak6 "$TMP/batch" && fail "block_ipv6 off: no chain" || pass "block_ipv6 off: no chain"
 
+block_ipv6=0; block_dot=1; block_doh=1
+apply_nft
+grep -q 'th dport 853 reject' "$TMP/batch" && pass "DoT rejected" || fail "DoT rejected"
+grep -q 'ip daddr @doh4 meta l4proto { tcp, udp } th dport 443 reject' "$TMP/batch" && pass "DoH resolvers rejected" || fail "DoH resolvers rejected"
+grep -q 'add set inet clashwrt doh4 ' "$TMP/batch" && pass "doh4 set declared" || fail "doh4 set declared"
+block_dot=0; block_doh=0
+apply_nft
+grep -q 'dport 853\|@doh4 ' "$TMP/batch" && fail "both off: no rules" || pass "both off: no rules"
+
 finish

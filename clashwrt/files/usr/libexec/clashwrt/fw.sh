@@ -109,6 +109,8 @@ load_cfg() {
 	config_get redir_port    config redir_port    ""
 	config_get dns_port      config dns_port      1053
 	config_get block_ipv6    config block_ipv6    1
+	config_get block_dot     config block_dot     1
+	config_get block_doh     config block_doh     0
 	config_get api_port      config api_port      9090
 	config_get block_quic    config block_quic    0
 	config_get dns_hijack    config dns_hijack    0
@@ -433,6 +435,15 @@ build_bypass() {
 	nb add rule $TABLE mangle udp sport 67 udp dport 68 return
 	nb add rule $TABLE mangle udp sport 68 udp dport 67 return
 
+	# Encrypted DNS of the device's own choosing goes past the router's
+	# resolver, so the config's domains never reach the bypass set and its
+	# rules see bare addresses. DoT has a port of its own; DoH is HTTPS to
+	# a known resolver address (setctl.sh keeps that list in doh4). Rejected
+	# before anything can let them through, so devices fall back to the
+	# router's DNS at once.
+	[ "$block_dot" = 1 ] && nb add rule $TABLE mangle meta l4proto { tcp, udp } th dport 853 reject
+	[ "$block_doh" = 1 ] && nb add rule $TABLE mangle ip daddr @doh4 meta l4proto { tcp, udp } th dport 443 reject
+
 	local nets
 	nets="$(nft_set $bypass_net)"
 	[ -n "$nets" ] && nb add rule $TABLE mangle ip daddr "{ $nets }" return
@@ -489,9 +500,11 @@ apply_nft() {
 	# The same goes for bypass4: setctl.sh refills it right after, but in
 	# between an empty set with 'include' would send every connection direct.
 	# Its old contents are carried over and then replaced by the load.
-	local dns_keep set_keep
+	local dns_keep set_keep doh_keep
 	dns_keep="$(nft list set $TABLE bypass4_dns 2>/dev/null |
 		grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' | sort -u | tr '\n' ',' | sed 's/,$//')"
+	doh_keep="$(nft list set $TABLE doh4 2>/dev/null |
+		sed -n '/elements = {/,/}/p' | sed 's/.*elements = {//; s/}.*//' | tr -d ' \t\n')"
 	set_keep="$(nft list set $TABLE bypass4 2>/dev/null |
 		sed -n '/elements = {/,/}/p' | sed 's/.*elements = {//; s/}.*//' | tr -d ' \t\n')"
 
@@ -510,8 +523,10 @@ apply_nft() {
 	# command here need a guard. "interval" is what allows CIDRs as elements.
 	nb add set $TABLE bypass4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
 	nb add set $TABLE bypass4_dns "{ type ipv4_addr ; flags timeout ; timeout 1d ; }"
+	nb add set $TABLE doh4 "{ type ipv4_addr ; flags interval ; auto-merge ; }"
 	[ -n "$dns_keep" ] && nb add element $TABLE bypass4_dns "{ $dns_keep }"
 	[ -n "$set_keep" ] && nb add element $TABLE bypass4 "{ $set_keep }"
+	[ -n "$doh_keep" ] && nb add element $TABLE doh4 "{ $doh_keep }"
 
 	# priority mangle(-150) so we see packets before conntrack/dstnat decide
 	nb add chain $TABLE mangle "{ type filter hook prerouting priority mangle ; }"
@@ -708,6 +723,15 @@ do_apply() {
 	# The ruleset was just rebuilt, so the set is empty again; refill it from
 	# the cached list without going to the network.
 	[ "$set_mode" != "off" ] && /usr/libexec/clashwrt/setctl.sh load >/dev/null 2>&1
+	# a list never fetched yet (block_doh just turned on) is fetched in the
+	# background: this runs under the firewall lock and a download is slow
+	if [ "$block_doh" = 1 ]; then
+		if [ -s /etc/clashwrt/doh4.list ]; then
+			/usr/libexec/clashwrt/setctl.sh doh-load >/dev/null 2>&1
+		else
+			/usr/libexec/clashwrt/setctl.sh doh-update >/dev/null 2>&1 &
+		fi
+	fi
 
 	fw_sig > "$SIGFILE"
 	mkdir -p "$RUNDIR" && echo "$set_mode" > "$RUNDIR/bypass.applied"

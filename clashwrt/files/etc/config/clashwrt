@@ -105,6 +105,13 @@ config clashwrt 'config'
 	# fall back to IPv4. Set '0' if you need IPv6 and accept that it is direct.
 	option block_ipv6 '1'
 
+	# Refuse encrypted DNS that skips the router: DoT (port 853), and DoH to
+	# public resolvers from dibdot's DoH-IP-blocklists (refreshed daily, plus
+	# doh_extra). Devices fall back to the router's DNS.
+	option block_dot '1'
+	option block_doh '0'
+	# list doh_extra '203.0.113.53'
+
 	option fetch_via_proxy '1'
 	option fetch_port '7899'
 
