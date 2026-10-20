@@ -29,7 +29,9 @@ RT_TABLE=155
 RT_PREF=12345
 
 config_load clashwrt
-config_get LAN_IF config lan_device br-lan
+# lan_device may be a list of networks; fw.sh resolves it, the first is used
+LAN_IF="$(/usr/libexec/clashwrt/fw.sh detect 2>/dev/null | sed -n 's/^lan_device:[[:space:]]*//p' | cut -d' ' -f1)"
+[ -n "$LAN_IF" ] || LAN_IF=br-lan
 
 GW=$(ip -o -4 addr show "$LAN_IF" 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
 [ -n "$GW" ] || { echo "no IPv4 address on $LAN_IF -- set lan_device correctly" >&2; exit 2; }

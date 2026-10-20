@@ -155,10 +155,23 @@ load_cfg() {
 resolve_devices() {
 	network_flush_cache
 
-	if [ -z "$lan_device" ] || [ "$lan_device" = auto ]; then
-		network_get_device lan_device lan || lan_device=""
-		[ -n "$lan_device" ] || lan_device="br-lan"
-	fi
+	# lan_device is a list: devices (br-lan, br-guest) or logical networks
+	# (lan, guest), 'auto' meaning the network 'lan'. Every one is
+	# intercepted; the first is what single-device callers get.
+	local d dev out=""
+	[ -n "$lan_device" ] || lan_device=auto
+	for d in $lan_device; do
+		dev=""
+		case "$d" in
+			auto) network_get_device dev lan || dev=""; [ -n "$dev" ] || dev=br-lan ;;
+			*) network_get_device dev "$d" 2>/dev/null || dev=""; [ -n "$dev" ] || dev="$d" ;;
+		esac
+		case " $out " in *" $dev "*) ;; *) out="${out:+$out }$dev" ;; esac
+	done
+	lan_devices="$out"
+	lan_device="${out%% *}"
+	# as nft writes a set of interface names: { "br-lan", "br-guest" }
+	lan_set="{ $(echo "$out" | sed 's/[^ ][^ ]*/"&"/g; s/ /, /g') }"
 
 	if [ -z "$wan_device" ] || [ "$wan_device" = auto ]; then
 		network_get_device wan_device wan || wan_device=""
@@ -422,7 +435,7 @@ build_bypass() {
 	# that must stay local. Order matters -- these all "return" before any
 	# marking happens.
 	nb add rule $TABLE mangle meta mark "$self_mark" return
-	nb add rule $TABLE mangle iifname != \"$lan_device\" return
+	nb add rule $TABLE mangle iifname != $lan_set return
 
 	local ports
 	ports="$(mihomo_ports)"
@@ -472,7 +485,7 @@ build_bypass() {
 	# for. Off by default: most setups already point dnsmasq at mihomo.
 	[ "$dns_hijack" = 1 ] && {
 		nb add chain $TABLE dns_nat "{ type nat hook prerouting priority dstnat - 5 ; }"
-		nb add rule $TABLE dns_nat iifname \"$lan_device\" meta l4proto { tcp, udp } th dport 53 \
+		nb add rule $TABLE dns_nat iifname $lan_set meta l4proto { tcp, udp } th dport 53 \
 			dnat ip to "127.0.0.1:$dns_port"
 	}
 
@@ -484,7 +497,7 @@ build_bypass() {
 	# bypass or a switched-off proxy removes the table and this with it.
 	[ "$block_ipv6" = 1 ] && {
 		nb add chain $TABLE leak6 "{ type filter hook forward priority filter - 5 ; }"
-		nb add rule $TABLE leak6 iifname \"$lan_device\" meta nfproto ipv6 oifname != \"$lan_device\" \
+		nb add rule $TABLE leak6 iifname $lan_set meta nfproto ipv6 oifname != $lan_set \
 			reject with icmpx type admin-prohibited
 	}
 	return 0
@@ -614,7 +627,10 @@ apply_routing() {
 	# DNAT to a loopback address is dropped by the martian filter unless this
 	# is on. Needed by redirect_tun; harmless elsewhere.
 	sysctl -q -w net.ipv4.conf.all.route_localnet=1
-	sysctl -q -w "net.ipv4.conf.${lan_device}.route_localnet=1" 2>/dev/null
+	local d
+	for d in $lan_devices; do
+		sysctl -q -w "net.ipv4.conf.${d}.route_localnet=1" 2>/dev/null
+	done
 	return 0
 }
 
@@ -735,7 +751,7 @@ do_apply() {
 
 	fw_sig > "$SIGFILE"
 	mkdir -p "$RUNDIR" && echo "$set_mode" > "$RUNDIR/bypass.applied"
-	log "applied mode=$mode lan=$lan_device tun=$tun_device tproxy_port=${tproxy_port:-none} redir_port=${redir_port:-none} bypass_set=$set_mode"
+	log "applied mode=$mode lan=$lan_devices tun=$tun_device tproxy_port=${tproxy_port:-none} redir_port=${redir_port:-none} bypass_set=$set_mode"
 }
 
 # The settings the ruleset is built from: everything in the config section
@@ -793,7 +809,7 @@ do_status() {
 		echo "${eg:-unknown}"
 	fi
 	echo "mode:         $mode"
-	echo "lan_device:   $lan_device"
+	echo "lan_device:   $lan_devices"
 	echo "ipv6_blocked: $([ "$block_ipv6" = 1 ] && nft list chain $TABLE leak6 >/dev/null 2>&1 && echo yes || echo no)"
 	echo "wan_device:   ${wan_device:-unknown}"
 	echo "tun_device:   $tun_device"
@@ -881,7 +897,7 @@ do_autobypass() {
 # What netifd currently reports, so the UI can show what "auto" resolved to.
 do_detect() {
 	load_cfg
-	echo "lan_device: $lan_device"
+	echo "lan_device: $lan_devices"
 	echo "wan_device: ${wan_device:-unknown}"
 }
 

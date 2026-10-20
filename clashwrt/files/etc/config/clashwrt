@@ -16,7 +16,8 @@ config clashwrt 'config'
 	option mode 'redirect_tun'
 
 	# 'auto' asks netifd which device currently backs lan/wan. Set a device
-	# name explicitly to override.
+	# name explicitly to override. lan_device may also be a list of networks
+	# (lan, guest, iot) or devices: every one of them is intercepted.
 	option lan_device 'auto'
 	option wan_device 'auto'
 	option tun_device 'clash-tun'

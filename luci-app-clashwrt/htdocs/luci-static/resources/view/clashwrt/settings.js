@@ -148,7 +148,7 @@ function customNode(s, tab, name, build) {
 
 return view.extend({
 	load: function () {
-		return Promise.all([ uci.load('clashwrt') ]);
+		return Promise.all([ uci.load('clashwrt'), uci.load('network').catch(function () {}) ]);
 	},
 
 	render: function (data) {
@@ -191,9 +191,16 @@ return view.extend({
 			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.') +
 			'</details>';
 
-		o = basic(form.Value, 'lan_device', _('LAN device'),
-			_('Only traffic arriving on this device is intercepted. Default: br-lan.'));
-		o.default = 'br-lan';
+		/* A list: guest and IoT networks can be intercepted too. Networks are
+		 * offered by their names (lan, guest), which fw.sh resolves to
+		 * devices; a device name typed in is taken as is. */
+		o = basic(form.DynamicList, 'lan_device', _('LAN networks'),
+			_('Only traffic arriving on these networks is intercepted. Add a guest or IoT network to proxy it too. Default: lan.'));
+		uci.sections('network', 'interface').forEach(function (n) {
+			var name = n['.name'];
+			if (name !== 'loopback' && !/^wan/.test(name)) o.value(name, name);
+		});
+		o.default = 'auto';
 		o.rmempty = false;
 
 		o = basic(form.Flag, 'dns_hijack', _('Hijack LAN DNS'),

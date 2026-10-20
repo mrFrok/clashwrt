@@ -15,7 +15,8 @@
 				]
 			},
 			"uci": [
-				"clashwrt"
+				"clashwrt",
+				"network"
 			]
 		},
 		"write": {
