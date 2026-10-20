@@ -17,6 +17,7 @@
 #   MIHOMO_ARCH=      name the core build instead of detecting it
 #   SKIP_UI=1         do not download a dashboard
 #   CLASHWRT_TMPDIR=  where to unpack downloads when /tmp is short of room
+#   SKIP_DNSMASQ_FULL=1  keep the stock dnsmasq
 
 set -e
 
@@ -306,6 +307,25 @@ commit=$SRC_COMMIT
 date=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 EOF
 chmod 0644 /usr/libexec/clashwrt/.install-info
+
+# --------------------------------------------------------------------------
+# dnsmasq-full
+# --------------------------------------------------------------------------
+
+# The bypass set takes config.yaml's domains through dnsmasq's nftset=, which
+# the stock dnsmasq is built without; without it the set is held back and
+# everything goes through mihomo. Swapped here once, so nobody has to find
+# the button. setctl.sh does the work (and the same from the Bypass tab):
+# it downloads first and only then replaces, keeping /etc/config/dhcp.
+if [ "${SKIP_DNSMASQ_FULL:-0}" != "1" ]; then
+	if dnsmasq --version 2>/dev/null | grep -qw nftset && ! dnsmasq --version 2>/dev/null | grep -qw no-nftset; then
+		: # already there
+	else
+		say "replacing dnsmasq with dnsmasq-full (DNS pauses for a few seconds)"
+		/usr/libexec/clashwrt/setctl.sh install-dnsmasq-full >/dev/null 2>&1 ||
+			warn "could not install dnsmasq-full; the bypass set will not use config.yaml's domains until it is (Settings -> Bypass has a button)"
+	fi
+fi
 
 # --------------------------------------------------------------------------
 # mihomo core

@@ -1232,3 +1232,63 @@ msgstr "Что это меняет"
 
 msgid "Connections start without waiting for a real lookup, and proxied names are never resolved on the router. In exchange the kernel bypass set stops working (it is held back automatically), and while the proxy is switched off or bypassed by the watchdog, devices keep using the fake addresses they cached and cannot reach sites until that cache expires."
 msgstr "Соединения начинаются без ожидания настоящего DNS-ответа, а домены, идущие через прокси, вообще не резолвятся на роутере. Взамен перестаёт работать обход на уровне ядра (он отключается автоматически), а пока прокси выключен или сторож пустил трафик напрямую, устройства продолжают использовать закэшированные фиктивные адреса и не могут открыть сайты, пока этот кэш не истечёт."
+
+msgid "More switches"
+msgstr "Остальные переключатели"
+
+msgid "The core is not installed. Install it under Maintenance below."
+msgstr "Ядро не установлено. Установите его в разделе «Обслуживание» ниже."
+
+msgid "Node:"
+msgstr "Узел:"
+
+msgid "no answer"
+msgstr "нет ответа"
+
+msgid "Kernel bypass:"
+msgstr "Обход в ядре:"
+
+msgid "held back"
+msgstr "приостановлен"
+
+msgid "%s, %d entries in the kernel"
+msgstr "%s, записей в ядре: %d"
+
+msgid "Status, switches and maintenance. Settings are in the tabs above."
+msgstr "Состояние, переключатели и обслуживание. Настройки — во вкладках выше."
+
+msgid "The bypass set is held back: everything goes to mihomo."
+msgstr "Обход приостановлен: весь трафик идёт в mihomo."
+
+msgid "Install dnsmasq-full?"
+msgstr "Установить dnsmasq-full?"
+
+msgid "Replaces the router's dnsmasq with dnsmasq-full. Your DHCP and DNS settings are kept, but name lookups on the network stop for a few seconds while it restarts."
+msgstr "Заменяет dnsmasq на роутере на dnsmasq-full. Настройки DHCP и DNS сохраняются, но на несколько секунд, пока он перезапускается, DNS в сети не отвечает."
+
+msgid "Installing, this takes a minute…"
+msgstr "Устанавливаю, это займёт около минуты…"
+
+msgid "Install"
+msgstr "Установить"
+
+msgid "Install dnsmasq-full"
+msgstr "Установить dnsmasq-full"
+
+msgid "Traffic that goes through mihomo is relayed by the router's CPU, one connection at a time. Traffic the kernel lets past mihomo stays an ordinary routed connection, so the router can treat it as such."
+msgstr "Трафик через mihomo процессор роутера пересылает сам, соединение за соединением. Трафик, который ядро пропускает мимо mihomo, остаётся обычным маршрутизируемым соединением, и роутер может обращаться с ним как с таковым."
+
+msgid "What that gives you"
+msgstr "Что это даёт"
+
+msgid "Hardware and software flow offloading work for it: once a connection is set up, its packets skip most of the kernel (and with hardware offloading, the CPU altogether). Connections relayed by mihomo can never be offloaded."
+msgstr "Для него работает программная и аппаратная разгрузка потоков (flow offloading): после установки соединения его пакеты обходят большую часть ядра, а при аппаратной разгрузке — и процессор целиком. Соединения через mihomo разгрузить нельзя."
+
+msgid "SQM (cake, fq_codel) sees every device separately and keeps latency low under load. Through mihomo, all traffic leaves from the router itself, as if from one device."
+msgstr "SQM (cake, fq_codel) видит каждое устройство отдельно и держит задержку низкой под нагрузкой. Через mihomo весь трафик уходит от самого роутера, как будто от одного устройства."
+
+msgid "Full line speed on a slow CPU, and less load and heat on a fast one."
+msgstr "Полная скорость канала на слабом процессоре и меньше нагрузки и нагрева на мощном."
+
+msgid "Only what would go direct anyway is let past: what the proxy has to carry still reaches mihomo."
+msgstr "Мимо пропускается только то, что всё равно пошло бы напрямую: то, что должно идти через прокси, по-прежнему попадает в mihomo."

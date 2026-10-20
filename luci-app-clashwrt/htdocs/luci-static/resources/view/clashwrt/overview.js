@@ -8,8 +8,10 @@
 'require dom';
 'require clashwrt.generator as gen';
 'require clashwrt.power as power';
+'require clashwrt.maint as maint';
 
-var UI_VERSION = '0.2.4';
+var UI_VERSION = '0.3.0';
+var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
 var UPDCTL = '/usr/libexec/clashwrt/updctl.sh';
@@ -43,13 +45,16 @@ return view.extend({
 		return Promise.all([
 			uci.load('clashwrt'),
 			power.status(),
-			fs.exec(CONFCTL, ['read']).catch(function () { return { code: 1, stdout: '' }; })
+			fs.exec(CONFCTL, ['read']).catch(function () { return { code: 1, stdout: '' }; }),
+			maint.load()
 		]);
 	},
 
 	render: function (data) {
 		var cur = data[1] || {};
 		var cfgText = (data[2] && data[2].code === 0) ? (data[2].stdout || '') : '';
+		var maintData = data[3];
+		var secret = power.apiSecret(cfgText);
 		var busy = false;
 
 		var pillBox = E('span', { 'id': 'cw-pill' });
@@ -81,15 +86,21 @@ return view.extend({
 			return row;
 		}
 
+		/* The proxy is the switch people mean; the other three are for when
+		 * something is wrong, and side by side they read as four ways to say
+		 * the same thing. So they wait one click away. */
 		var rows = [
 			makeSwitch('proxy', _('Proxy'),
 				_('Steers your network into the core. Off: it behaves as if ClashWrt were not installed. Starts off.')),
-			makeSwitch('core', _('mihomo core'),
-				_('The engine itself. Off: it also stays stopped after a reboot. Starts on.')),
-			makeSwitch('all', _('Everything'),
-				_('Both together, in the safe order. Use this when something is wrong.')),
-			makeSwitch('svc', _('ClashWrt'),
-				_('The whole service. Off: nothing is steered, the watchdog sleeps, and it stays off after a reboot. Starts on.'))
+			E('details', { 'class': 'cw-more' }, [
+				E('summary', { 'style': 'cursor:pointer;padding:8px 0' }, _('More switches')),
+				makeSwitch('core', _('mihomo core'),
+					_('The engine itself. Off: it also stays stopped after a reboot. Starts on.')),
+				makeSwitch('all', _('Everything'),
+					_('Both together, in the safe order. Use this when something is wrong.')),
+				makeSwitch('svc', _('ClashWrt'),
+					_('The whole service. Off: nothing is steered, the watchdog sleeps, and it stays off after a reboot. Starts on.'))
+			])
 		];
 
 		function setBusy(b) {
@@ -163,12 +174,22 @@ return view.extend({
 			}
 		}, _('Restart core'));
 
+		/* The dashboard keeps its own list of backends, so after the wizard set
+		 * a secret it would knock on the API without one and get turned away.
+		 * Its setup route takes the backend from the URL; the secret is added
+		 * only at the click, so it never sits in the page itself. */
 		var openLink = E('a', {
 			'href': uiUrl,
 			'target': '_blank',
 			'rel': 'noopener',
 			'class': 'cbi-button cbi-button-apply',
-			'style': 'margin-left:6px'
+			'style': 'margin-left:6px',
+			'click': function () {
+				this.href = secret
+					? uiUrl + '#/setup?hostname=' + encodeURIComponent(window.location.hostname) +
+						'&port=' + encodeURIComponent(apiPort) + '&secret=' + encodeURIComponent(secret)
+					: uiUrl;
+			}
 		}, _('Open dashboard'));
 
 		/* ---------------- add a site ---------------- */
@@ -378,7 +399,7 @@ return view.extend({
 			dom.content(switches.proxy.note,
 				!svcBoot ? _('Switch ClashWrt on first.') : (proxyBlocked && known ? _('Start the core first.') : ''));
 			dom.content(switches.all.note, !svcBoot ? _('Switch ClashWrt on first.') : '');
-			dom.content(switches.core.note, missing ? _('The core is not installed. Install it from Settings.') : '');
+			dom.content(switches.core.note, missing ? _('The core is not installed. Install it under Maintenance below.') : '');
 			dom.content(switches.svc.note, power.serviceHalf(cur) ? [
 				_('Will not start after a reboot.') + ' ',
 				E('a', {
@@ -416,20 +437,84 @@ return view.extend({
 				ask(['core-status'], _('mihomo core'))
 			]).then(function () {
 				if (!found.length) return;
-				dom.content(updBox, E('a', { 'href': settingsUrl(), 'class': 'cw-upd-link' }, [
+				dom.content(updBox, E('a', { 'href': '#cw-maint', 'class': 'cw-upd-link', 'click': openMaint }, [
 					power.pill('amber', _('Update available')),
 					' ', found.join(', ')
 				]));
 			});
 		}
 
+		function openMaint() {
+			var d = document.getElementById('cw-maint');
+			if (d) d.open = true;
+		}
+
+		/* ---------------- node and bypass ---------------- */
+
+		var nodeBox = E('div', { 'class': 'cw-info' });
+		var bypassBox = E('div', { 'class': 'cw-info' });
+
+		/* Straight to mihomo's API from the browser, as the Logs page does:
+		 * follow Proxy's 'now' down to a node, at most three groups deep. */
+		function apiGet(name) {
+			var h = secret ? { 'Authorization': 'Bearer ' + secret } : {};
+			return window.fetch('http://' + window.location.hostname + ':' + apiPort +
+				'/proxies/' + encodeURIComponent(name), { headers: h })
+				.then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); });
+		}
+
+		function refreshNode() {
+			if (cur['core'] !== 'running') { dom.content(nodeBox, ''); return Promise.resolve(); }
+			var chain = [];
+			function walk(name, depth) {
+				return apiGet(name).then(function (p) {
+					chain.push(p);
+					if (p.now && depth < 3) return walk(p.now, depth + 1);
+				});
+			}
+			return walk('Proxy', 0).then(function () {
+				var n = power.nodeLine(chain);
+				if (!n.path.length) { dom.content(nodeBox, ''); return; }
+				dom.content(nodeBox, [
+					E('span', { 'style': 'opacity:.7' }, [ _('Node:') + ' ' ]),
+					E('strong', {}, [ n.path.join(' → ') ]),
+					n.delay === null ? '' : ' · ' + (n.delay > 0 ? n.delay + ' ' + _('ms') : _('no answer'))
+				]);
+			}).catch(function () { dom.content(nodeBox, ''); });
+		}
+
+		function refreshBypass() {
+			return fs.exec(SETCTL, ['status']).then(function (r) {
+				var b = power.bypassLine((r && r.stdout) || '');
+				var label = _('Kernel bypass:') + ' ';
+				if (b.key === 'off')
+					dom.content(bypassBox, [ E('span', { 'style': 'opacity:.7' }, [ label ]), _('off') ]);
+				else if (b.key === 'held')
+					dom.content(bypassBox, [ E('span', { 'style': 'opacity:.7' }, [ label ]),
+						E('span', { 'style': 'color:#b06000' }, [ _('held back') + ' — ' + b.why ]) ]);
+				else
+					dom.content(bypassBox, [ E('span', { 'style': 'opacity:.7' }, [ label ]),
+						_('%s, %d entries in the kernel').format(b.mode, b.entries) ]);
+			}).catch(function () { dom.content(bypassBox, ''); });
+		}
+
 		/* ---------------- assembly ---------------- */
 
 		paint(cur);
+		var ticks = 0;
 		poll.add(function () {
 			if (busy) return Promise.resolve();
-			return power.status().then(function (s) { if (!busy) paint(s); });
+			/* the bypass state changes rarely and costs an exec: every 30 s */
+			var slow = (ticks++ % 6 === 0) ? refreshBypass() : Promise.resolve();
+			return Promise.all([
+				power.status().then(function (s) { if (!busy) paint(s); }),
+				refreshNode(),
+				slow,
+				maint.refresh()
+			]);
 		}, 5);
+		refreshNode();
+		refreshBypass();
 		checkUpdates();
 
 		return E('div', { 'class': 'cbi-map' }, [
@@ -438,9 +523,10 @@ return view.extend({
 				_('ClashWrt'),
 				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' }, 'ui ' + UI_VERSION)
 			]),
-			E('div', { 'class': 'cbi-map-descr' }, _('Status and kill switches. Everything else is in the tabs above.')),
+			E('div', { 'class': 'cbi-map-descr' }, _('Status, switches and maintenance. Settings are in the tabs above.')),
 			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'style': 'font-size:120%' }, [ pillBox, msgBox, updBox ])
+				E('div', { 'style': 'font-size:120%' }, [ pillBox, msgBox, updBox ]),
+				E('div', { 'style': 'margin-top:6px' }, [ nodeBox, bypassBox ])
 			]),
 			E('div', { 'class': 'cbi-section' }, rows),
 			E('div', { 'class': 'cbi-section' }, [
@@ -448,7 +534,8 @@ return view.extend({
 				siteRow,
 				out
 			]),
-			wdBox
+			wdBox,
+			maint.render(maintData, window.location.hash === '#cw-maint')
 		]);
 	},
 

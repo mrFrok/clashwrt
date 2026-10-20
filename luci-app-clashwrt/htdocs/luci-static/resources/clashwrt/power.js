@@ -138,12 +138,50 @@ function pill(tone, label) {
 	}, label);
 }
 
+/* The API secret from config.yaml text: the top-level 'secret:' line, quotes
+ * and a trailing comment taken off. Empty when there is none. */
+function apiSecret(cfg) {
+	var m = String(cfg || '').match(/^secret:[ \t]*(.*)$/m);
+	if (!m) return '';
+	var v = m[1].replace(/[ \t]+#.*$/, '').trim();
+	if (v.length > 1 && (v.charAt(0) === '"' || v.charAt(0) === "'") && v.charAt(v.length - 1) === v.charAt(0))
+		v = v.slice(1, -1);
+	return v;
+}
+
+/* What Proxy is using right now, from the mihomo API objects met while
+ * following 'now' from Proxy down to a node: Proxy -> Auto -> NL-1. The
+ * delay is the node's last measurement; 0 there means the last test failed. */
+function nodeLine(chain) {
+	var names = [], delay = null;
+	(chain || []).forEach(function (p) { if (p && p.name) names.push(p.name); });
+	var last = chain && chain.length ? chain[chain.length - 1] : null;
+	if (last && last.history && last.history.length) {
+		var d = last.history[last.history.length - 1].delay;
+		if (typeof d === 'number') delay = d;
+	}
+	return { path: names.slice(1), delay: delay };
+}
+
+/* The kernel bypass set in one line, from 'setctl.sh status'. */
+function bypassLine(text) {
+	var st = parseStatus(text);
+	var held = /^HELD BACK:\s*(.*)$/m.exec(text || '');
+	if (!st['mode'] || /^off/.test(st['mode'])) return { key: 'off' };
+	if (held) return { key: 'held', why: held[1].replace(/^the set is not used, everything goes to mihomo:\s*/, '') };
+	var n = /^(\d+)/.exec(st['in_kernel'] || '');
+	return { key: 'on', mode: st['mode'].replace(/^auto -> /, '').replace(/ \(.*$/, ''), entries: n ? +n[1] : 0 };
+}
+
 function out(res) {
 	return (res && res.stdout ? res.stdout : '') + (res && res.stderr ? res.stderr : '');
 }
 
 return baseclass.extend({
 	parseStatus: parseStatus,
+	apiSecret: apiSecret,
+	nodeLine: nodeLine,
+	bypassLine: bypassLine,
 	describe: describe,
 	classify: classify,
 	serviceOn: serviceOn,

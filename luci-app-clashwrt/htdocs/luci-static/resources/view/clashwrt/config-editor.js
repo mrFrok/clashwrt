@@ -7,7 +7,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.rulefiles as rulefiles';
 
-var UI_VERSION = '0.2.1';
+var UI_VERSION = '0.2.2';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -64,6 +64,27 @@ var HL_METRICS = {
 function applyMetrics(el) {
 	for (var k in HL_METRICS)
 		el.style.setProperty(k, HL_METRICS[k], 'important');
+}
+
+/* The layers are stretched by left/right/top/bottom, which only works while
+ * width and height are auto. Bootstrap gives every textarea a width and a
+ * height of its own, and the input layer then shrank to a small box over the
+ * full-size highlighting. So the size is pinned as important too. */
+var LAYER_BOX = {
+	'position': 'absolute',
+	'top': '0',
+	'right': '0',
+	'bottom': '0',
+	'width': 'auto',
+	'height': 'auto',
+	'min-width': '0',
+	'min-height': '0',
+	'max-height': 'none'
+};
+
+function applyBox(el) {
+	for (var k in LAYER_BOX)
+		el.style.setProperty(k, LAYER_BOX[k], 'important');
 }
 
 function esc(t) {
@@ -267,6 +288,8 @@ return view.extend({
 		applyMetrics(gutter);
 		applyMetrics(hlPre);
 		applyMetrics(area);
+		applyBox(hlPre);
+		applyBox(area);
 
 		repaint();   /* the file is already loaded, so paint it once up front */
 

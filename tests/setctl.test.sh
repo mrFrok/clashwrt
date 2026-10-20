@@ -186,4 +186,45 @@ printf 'dns:\n  enhanced-mode: fake-ip\nrules:\n  - IP-CIDR,1.2.3.0/24,Proxy\n  
 eq "fake-ip holds the set back" "off" "$(NFTSET=nftset sh "$SETCTL" direction)"
 case "$(NFTSET=nftset sh "$SETCTL" status)" in *"HELD BACK"*"fake-ip"*) pass "status names fake-ip" ;; *) fail "status names fake-ip" ;; esac
 
+# install-dnsmasq-full, with a fake opkg: download first, then swap
+cat > "$TMP/bin/opkg" <<X
+#!/bin/sh
+echo "opkg \$*" >> "$TMP/opkg.log"
+case "\$1" in download) : > /tmp/dnsmasq-full_2.90_x.ipk ;; install) case "\$2" in *dnsmasq-full*) echo nftset > "$TMP/has-nftset" ;; esac ;; esac
+X
+cat > "$TMP/bin/dnsmasq" <<X
+#!/bin/sh
+echo "Compile time options: \$(cat "$TMP/has-nftset" 2>/dev/null || echo no-nftset)"
+X
+chmod +x "$TMP/bin/opkg" "$TMP/bin/dnsmasq"
+sed 's|/etc/init.d/dnsmasq restart|true|; s|/usr/libexec/clashwrt/fw.sh apply|true|; s|command -v apk >/dev/null 2>&1|false|' "$SETCTL" > "$TMP/setctl-i.sh"
+out="$(sh "$TMP/setctl-i.sh" install-dnsmasq-full 2>&1)"
+case "$out" in *"dnsmasq-full installed"*) pass "dnsmasq-full is installed" ;; *) fail "dnsmasq-full is installed ($out)" ;; esac
+eq "downloaded before the stock dnsmasq is removed" "opkg update|opkg download dnsmasq-full|opkg remove dnsmasq" \
+	"$(sed -n 1,3p "$TMP/opkg.log" | tr '\n' '|' | sed 's/|$//')"
+out="$(sh "$TMP/setctl-i.sh" install-dnsmasq-full 2>&1)"
+case "$out" in *"already has nftset"*) pass "a second run changes nothing" ;; *) fail "a second run changes nothing" ;; esac
+rm -f "$TMP/bin/opkg" /tmp/dnsmasq-full_*.ipk
+
+# the same with apk (OpenWrt 25.12+), and a failed install puts dnsmasq back
+rm -f "$TMP/has-nftset" "$TMP/apk.log"
+cat > "$TMP/bin/apk" <<X
+#!/bin/sh
+echo "apk \$*" >> "$TMP/apk.log"
+case "\$1" in
+	fetch) : > /tmp/dnsmasq-full-2.90-r1.apk ;;
+	add) case "\$2" in *dnsmasq-full*) [ -e "$TMP/apk-fail" ] && exit 1; echo nftset > "$TMP/has-nftset" ;; esac ;;
+esac
+X
+chmod +x "$TMP/bin/apk"
+sed 's|/etc/init.d/dnsmasq restart|true|; s|/usr/libexec/clashwrt/fw.sh apply|true|' "$SETCTL" > "$TMP/setctl-a.sh"
+out="$(sh "$TMP/setctl-a.sh" install-dnsmasq-full 2>&1)"
+case "$out" in *"dnsmasq-full installed"*) pass "apk: dnsmasq-full is installed" ;; *) fail "apk: dnsmasq-full is installed ($out)" ;; esac
+eq "apk: fetched before the stock dnsmasq is removed" "apk update|apk fetch -o /tmp dnsmasq-full|apk del dnsmasq|apk add /tmp/dnsmasq-full-2.90-r1.apk" \
+	"$(tr '\n' '|' < "$TMP/apk.log" | sed 's/|$//')"
+rm -f "$TMP/has-nftset" "$TMP/apk.log"; : > "$TMP/apk-fail"
+sh "$TMP/setctl-a.sh" install-dnsmasq-full >/dev/null 2>&1 && fail "apk: a failed install fails" || pass "apk: a failed install fails"
+eq "apk: and the stock dnsmasq goes back" "apk add dnsmasq" "$(tail -n1 "$TMP/apk.log")"
+rm -f "$TMP/bin/apk" "$TMP/apk-fail" /tmp/dnsmasq-full-*.apk
+
 finish

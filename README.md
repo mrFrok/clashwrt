@@ -65,7 +65,7 @@ Then open **Services → ClashWrt**, run the setup wizard, and switch the proxy 
 
 ### Updating
 
-Two things update independently, and Settings → Maintenance has a button for each — it shows the installed mihomo version against the latest release, and the installed commit against the head of `main`.
+Two things update independently, and Overview → Maintenance has a button for each — it shows the installed mihomo version against the latest release, and the installed commit against the head of `main`.
 
 **Update core** downloads the mihomo build for this CPU and restarts the daemon if it was running. Your configuration is not touched.
 
@@ -143,17 +143,19 @@ Everything lives under **Services → ClashWrt**, in five pages:
 
 | Page | What it is for |
 |---|---|
-| Overview | State at a glance and the three kill switches |
+| Overview | State at a glance, current node, bypass state, kill switches, maintenance (status, updates, split, dashboard) |
 | Setup wizard | Builds a `config.yaml` |
 | Configuration | Tabs: Editor, Backups, Rule files |
-| Settings | Tabs: Basic, Bypass, Advanced, Maintenance |
+| Settings | Tabs: Basic, Bypass, Advanced |
 | Logs | Live mihomo log and the system log |
 
 The older addresses (`clashwrt/files`, `clashwrt/dashboard`) still work and redirect to the Configuration and Settings pages.
 
 ### Overview and the kill switches
 
-The Overview refreshes every 5 seconds and has three independent switches:
+The Overview refreshes every 5 seconds. Under the status pill it shows the node `Proxy` is using right now — following `Auto` down to the node, with its last measured delay — read from mihomo's API in the browser with the config's secret, and the state of the kernel bypass set (mode and entries in the kernel, or why it is held back). The **Open dashboard** button passes the API secret to the panel's setup page, so a dashboard that has never seen the secret still connects. **Maintenance**, at the bottom, holds what used to be the Settings tab of that name: the status table, restart and TPROXY self-test, updates, the TCP/UDP split and the dashboard installer.
+
+**Proxy** is the switch on display; the other three are under **More switches**:
 
 | Switch | What it does when off |
 |---|---|
@@ -215,7 +217,7 @@ By default the wizard adds a group `Auto` (`url-test`) that times every node eve
 
 Hysteria2 and TUIC are QUIC-based and carry datagrams natively; Reality, VLESS and Trojan tunnel them over a TCP stream. If your subscription has both, it is worth sending UDP to the former and everything else to the latter.
 
-One button on the Settings page (Maintenance) turns this on and off, and it works on **whatever config is installed now** — the wizard's or your own. It edits the existing file rather than regenerating from stored answers, because plenty of configs are written by hand and have no stored answers; the transformation is line-based so comments and formatting survive, and the result is validated before it replaces anything.
+One button on the Overview (Maintenance) turns this on and off, and it works on **whatever config is installed now** — the wizard's or your own. It edits the existing file rather than regenerating from stored answers, because plenty of configs are written by hand and have no stored answers; the transformation is line-based so comments and formatting survive, and the result is validated before it replaces anything.
 
 ```yaml
 proxy-groups:
@@ -232,7 +234,7 @@ rules:
 
 ### Kernel bypass set
 
-A set of destinations that skip the proxy, matched in the kernel before any marking happens. This is not the same as a `DIRECT` rule inside mihomo: a connection mihomo decides to pass through still terminates on the router and is relayed through userspace, which costs throughput and collapses every device behind one address, so a shaper like cake can no longer tell hosts apart. Traffic excluded here never reaches mihomo at all. It works in all four interception modes.
+A set of destinations that skip the proxy, matched in the kernel before any marking happens. The point is what the router can then do with that traffic: a connection mihomo never touches stays an ordinary routed connection, so **flow offloading** (software, or hardware on routers that have it) can take it over after the first packets, and **SQM** (cake, fq_codel) sees each device on its own instead of everything leaving from the router itself. Connections relayed by mihomo can never be offloaded, and on a slow CPU they cap the line speed. This is not the same as a `DIRECT` rule inside mihomo: a connection mihomo decides to pass through still terminates on the router and is relayed through userspace, which costs throughput and collapses every device behind one address, so a shaper like cake can no longer tell hosts apart. Traffic excluded here never reaches mihomo at all. It works in all four interception modes.
 
 Pick what should skip the proxy and the rest follows. The two cases are mirror images: if mihomo proxies everything by default, what skips is Russian networks; if mihomo is direct by default and only proxies a blocklist, what skips is *everything except* that blocklist. Same set, opposite sense, and which one applies is not a preference — for a list of your own it is read out of your configuration rather than asked for:
 
@@ -259,7 +261,7 @@ Choosing a preset by hand that contradicts your routing is warned about rather t
 | everything except the list | `IP-CIDR`, `DOMAIN`, `DOMAIN-SUFFIX` and `RULE-SET` rules that send traffic to any group other than `DIRECT`, plus the fake-ip range |
 | the list | `IP-CIDR` and IP `RULE-SET` rules sent to `DIRECT`, but only those above the first rule that sends anything elsewhere — mihomo matches top down, and an earlier rule might have proxied that address |
 
-Domains have no address until they are looked up, so they go to dnsmasq instead: it adds every address it resolves for them to a second set (`nftset=`). That needs the **`dnsmasq-full`** package (stock `dnsmasq` has no nftset support), and only helps devices that ask the router for DNS; with `dns_hijack` on, lookups go to mihomo and the domains are not used. The status block says which of these applies. Rule providers are read from the files mihomo has already downloaded, the binary `mrs` format through mihomo's own `convert-ruleset`; rules with no fixed address or domain (`DOMAIN-KEYWORD`, `GEOSITE`, `GEOIP`…) are listed as skipped. The number of domains handed to dnsmasq follows the router's RAM (about one per 4 KB, 20000–300000; `bypass_set_max_domains` overrides it). The addresses dnsmasq has resolved are kept when the firewall is rebuilt, so a reload does not send cached sites direct; after a reboot they come back as clients look the names up again. Pick **Whatever config.yaml does not send to the proxy** to use only the config's rules, with nothing downloaded. This is the default since 1.2.2, also on routers that had the set off before the upgrade (once; switching it off again sticks). It is held back by itself — everything then goes to mihomo, which only costs speed — whenever config.yaml proxies something the set cannot hold: domains without dnsmasq-full, domains with DNS hijack on, or rules such as `GEOSITE` or `DOMAIN-KEYWORD`. The status block says which.
+Domains have no address until they are looked up, so they go to dnsmasq instead: it adds every address it resolves for them to a second set (`nftset=`). That needs the **`dnsmasq-full`** package (stock `dnsmasq` has no nftset support), which `install.sh` swaps in (set `SKIP_DNSMASQ_FULL=1` to keep the stock one) and the Bypass tab offers to install when the set is held back for want of it, and only helps devices that ask the router for DNS; with `dns_hijack` on, lookups go to mihomo and the domains are not used. The status block says which of these applies. Rule providers are read from the files mihomo has already downloaded, the binary `mrs` format through mihomo's own `convert-ruleset`; rules with no fixed address or domain (`DOMAIN-KEYWORD`, `GEOSITE`, `GEOIP`…) are listed as skipped. The number of domains handed to dnsmasq follows the router's RAM (about one per 4 KB, 20000–300000; `bypass_set_max_domains` overrides it). The addresses dnsmasq has resolved are kept when the firewall is rebuilt, so a reload does not send cached sites direct; after a reboot they come back as clients look the names up again. Pick **Whatever config.yaml does not send to the proxy** to use only the config's rules, with nothing downloaded. This is the default since 1.2.2, also on routers that had the set off before the upgrade (once; switching it off again sticks). It is held back by itself — everything then goes to mihomo, which only costs speed — whenever config.yaml proxies something the set cannot hold: domains without dnsmasq-full, domains with DNS hijack on, or rules such as `GEOSITE` or `DOMAIN-KEYWORD`. The status block says which.
 
 ### Configuration and rule files
 
@@ -278,7 +280,7 @@ Two views. The live one is mihomo's own log, streamed straight from its API into
 
 ### Web dashboard
 
-Installs metacubexd, zashboard or Yacd, or any `.tar.gz` containing an `index.html` (not `.zip` — OpenWrt images routinely ship without `unzip`). The installer is under Settings → Maintenance; the Overview links straight to the panel and has a button to restart mihomo, which is needed when `external-ui` has just changed.
+Installs metacubexd, zashboard or Yacd, or any `.tar.gz` containing an `index.html` (not `.zip` — OpenWrt images routinely ship without `unzip`). The installer is under Overview → Maintenance; the Overview links straight to the panel and has a button to restart mihomo, which is needed when `external-ui` has just changed.
 
 The panel talks to mihomo's API, which listens on every interface so it can be reached from the LAN. The installer's placeholder config and every config the wizard writes therefore set a random `secret:`; the wizard keeps the one already installed, so a logged-in panel stays logged in. Enter that value as the panel's secret (it is the `secret:` line of `config.yaml`, shown in Configuration → Editor). A config written by hand is left as it is: if it has no `secret:`, add one.
 

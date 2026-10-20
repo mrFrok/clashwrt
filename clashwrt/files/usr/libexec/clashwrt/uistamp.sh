@@ -63,14 +63,16 @@ do_apply() {
 	# would accumulate a copy of the whole UI on every update.
 	rm -f "$WWW/view/clashwrt"/*.js "$WWW/clashwrt"/*.js
 
+	# The require line names a module without its extension, so it has to be
+	# rewritten to the stamped name or the page loads nothing -- in views, and
+	# in modules too, since one module may require another.
 	for f in "$SRC"/mod/*.js; do
 		[ -f "$f" ] || continue
 		b="$(basename "$f" .js)"
-		cp "$f" "$WWW/clashwrt/$b-$t.js"
+		sed "s#'require clashwrt\.\([A-Za-z0-9_-]*\) as #'require clashwrt.\1-$t as #g" \
+			"$f" > "$WWW/clashwrt/$b-$t.js"
 	done
 
-	# The require line names a module without its extension, so it has to be
-	# rewritten to the stamped name or the page loads nothing.
 	for f in "$SRC"/view/*.js; do
 		[ -f "$f" ] || continue
 		b="$(basename "$f" .js)"

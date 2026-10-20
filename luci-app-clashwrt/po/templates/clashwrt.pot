@@ -1226,3 +1226,63 @@ msgstr ""
 
 msgid "Connections start without waiting for a real lookup, and proxied names are never resolved on the router. In exchange the kernel bypass set stops working (it is held back automatically), and while the proxy is switched off or bypassed by the watchdog, devices keep using the fake addresses they cached and cannot reach sites until that cache expires."
 msgstr ""
+
+msgid "More switches"
+msgstr ""
+
+msgid "The core is not installed. Install it under Maintenance below."
+msgstr ""
+
+msgid "Node:"
+msgstr ""
+
+msgid "no answer"
+msgstr ""
+
+msgid "Kernel bypass:"
+msgstr ""
+
+msgid "held back"
+msgstr ""
+
+msgid "%s, %d entries in the kernel"
+msgstr ""
+
+msgid "Status, switches and maintenance. Settings are in the tabs above."
+msgstr ""
+
+msgid "The bypass set is held back: everything goes to mihomo."
+msgstr ""
+
+msgid "Install dnsmasq-full?"
+msgstr ""
+
+msgid "Replaces the router's dnsmasq with dnsmasq-full. Your DHCP and DNS settings are kept, but name lookups on the network stop for a few seconds while it restarts."
+msgstr ""
+
+msgid "Installing, this takes a minute…"
+msgstr ""
+
+msgid "Install"
+msgstr ""
+
+msgid "Install dnsmasq-full"
+msgstr ""
+
+msgid "Traffic that goes through mihomo is relayed by the router's CPU, one connection at a time. Traffic the kernel lets past mihomo stays an ordinary routed connection, so the router can treat it as such."
+msgstr ""
+
+msgid "What that gives you"
+msgstr ""
+
+msgid "Hardware and software flow offloading work for it: once a connection is set up, its packets skip most of the kernel (and with hardware offloading, the CPU altogether). Connections relayed by mihomo can never be offloaded."
+msgstr ""
+
+msgid "SQM (cake, fq_codel) sees every device separately and keeps latency low under load. Through mihomo, all traffic leaves from the router itself, as if from one device."
+msgstr ""
+
+msgid "Full line speed on a slow CPU, and less load and heat on a fast one."
+msgstr ""
+
+msgid "Only what would go direct anyway is let past: what the proxy has to carry still reaches mihomo."
+msgstr ""

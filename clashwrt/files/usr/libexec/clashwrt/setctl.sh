@@ -40,7 +40,7 @@
 # adds what the config's own rules name (see the "from config.yaml" section).
 #
 # Usage: setctl.sh update [force] | load | status | clear | sources
-#        setctl.sh direction | detect | from-config
+#        setctl.sh direction | detect | from-config | install-dnsmasq-full
 
 # The CLASHWRT_* overrides exist so tests/ can run this file off the router.
 # shellcheck source=/dev/null
@@ -872,6 +872,54 @@ do_show_config() {
 	return 0
 }
 
+# Swap the stock dnsmasq for dnsmasq-full, which has the nftset support the
+# config's domains need. Both packages provide the same service and config,
+# so /etc/config/dhcp carries over; DNS for the LAN pauses while dnsmasq is
+# replaced and restarted. The Bypass tab offers this when the set is held
+# back for want of it.
+do_install_dnsmasq_full() {
+	if dnsmasq_has_nftset; then
+		echo "dnsmasq already has nftset support"
+		return 0
+	fi
+	# OpenWrt 25.12 and later use apk, 24.10 and older opkg. Either way the
+	# package is fetched before the stock one goes, so a failed download
+	# leaves DNS alone, and a failed install puts the stock one back.
+	if command -v apk >/dev/null 2>&1; then
+		apk update >/dev/null 2>&1 || die "apk update failed, so dnsmasq-full cannot be found"
+		rm -f /tmp/dnsmasq-full-*.apk
+		apk fetch -o /tmp dnsmasq-full >/dev/null 2>&1 ||
+			die "could not download dnsmasq-full; dnsmasq is unchanged"
+		apk del dnsmasq >/dev/null 2>&1
+		apk add /tmp/dnsmasq-full-*.apk || {
+			rm -f /tmp/dnsmasq-full-*.apk
+			apk add dnsmasq >/dev/null 2>&1
+			die "could not install dnsmasq-full; put the stock dnsmasq back"
+		}
+		rm -f /tmp/dnsmasq-full-*.apk
+	elif command -v opkg >/dev/null 2>&1; then
+		opkg update >/dev/null 2>&1 || die "opkg update failed, so dnsmasq-full cannot be found"
+		# fetched before the stock one goes, so a failed download leaves DNS alone
+		( cd /tmp && opkg download dnsmasq-full >/dev/null 2>&1 ) ||
+			die "could not download dnsmasq-full; dnsmasq is unchanged"
+		opkg remove dnsmasq >/dev/null 2>&1
+		opkg install /tmp/dnsmasq-full_*.ipk || {
+			rm -f /tmp/dnsmasq-full_*.ipk
+			opkg install dnsmasq >/dev/null 2>&1
+			die "could not install dnsmasq-full; put the stock dnsmasq back"
+		}
+		rm -f /tmp/dnsmasq-full_*.ipk
+	else
+		die "neither apk nor opkg found"
+	fi
+	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+	dnsmasq_has_nftset || die "dnsmasq-full is installed but reports no nftset support"
+	echo "dnsmasq-full installed"
+	# the set can stop being held back now; the firewall follows
+	/usr/libexec/clashwrt/fw.sh apply >/dev/null 2>&1
+	return 0
+}
+
 [ -n "${CLASHWRT_TEST:-}" ] && return 0 2>/dev/null
 
 case "${1:-}" in
@@ -883,5 +931,6 @@ case "${1:-}" in
 	direction) do_direction ;;
 	detect)  do_detect ;;
 	from-config) do_show_config ;;
-	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config" >&2; exit 1 ;;
+	install-dnsmasq-full) do_install_dnsmasq_full ;;
+	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full" >&2; exit 1 ;;
 esac

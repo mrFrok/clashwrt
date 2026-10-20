@@ -66,4 +66,29 @@ t('watchdog not running is noted on a protected pill', function () {
 	assert.ok(/watchdog is not running/.test(c.message));
 });
 
+t('apiSecret reads the top-level secret, quoted or not', function () {
+	assert.strictEqual(power.apiSecret('mode: rule\nsecret: abc123\n'), 'abc123');
+	assert.strictEqual(power.apiSecret("secret: 'a b' # note\n"), 'a b');
+	assert.strictEqual(power.apiSecret('dns:\n  secret: nope\n'), '');
+	assert.strictEqual(power.apiSecret(''), '');
+});
+
+t('nodeLine follows Proxy -> Auto -> node and takes the node delay', function () {
+	var n = power.nodeLine([
+		{ name: 'Proxy', type: 'Selector', now: 'Auto' },
+		{ name: 'Auto', type: 'URLTest', now: 'NL-1' },
+		{ name: 'NL-1', type: 'Vless', history: [ { delay: 90 }, { delay: 48 } ] }
+	]);
+	assert.deepStrictEqual(n, { path: ['Auto', 'NL-1'], delay: 48 });
+	assert.deepStrictEqual(power.nodeLine([{ name: 'Proxy', now: 'X' }, { name: 'X' }]), { path: ['X'], delay: null });
+});
+
+t('bypassLine: on, held back, off', function () {
+	assert.deepStrictEqual(power.bypassLine('mode:     auto -> include (MATCH,DIRECT in /etc/mihomo/config.yaml)\nin_kernel: 34596 entries\n'),
+		{ key: 'on', mode: 'include', entries: 34596 });
+	var h = power.bypassLine('mode:     include\nHELD BACK: the set is not used, everything goes to mihomo: install dnsmasq-full\n');
+	assert.deepStrictEqual(h, { key: 'held', why: 'install dnsmasq-full' });
+	assert.strictEqual(power.bypassLine('mode:     off\n').key, 'off');
+});
+
 console.log(n + ' power tests passed');
