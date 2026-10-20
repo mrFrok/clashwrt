@@ -1214,3 +1214,15 @@ msgstr ""
 
 msgid "Skips mihomo in the kernel, which is faster. Default: whatever config.yaml does not send to the proxy."
 msgstr ""
+
+msgid "Fake-IP DNS"
+msgstr ""
+
+msgid "Answer lookups with addresses from mihomo's own range"
+msgstr ""
+
+msgid "What it changes"
+msgstr ""
+
+msgid "Connections start without waiting for a real lookup, and proxied names are never resolved on the router. In exchange the kernel bypass set stops working (it is held back automatically), and while the proxy is switched off or bypassed by the watchdog, devices keep using the fake addresses they cached and cannot reach sites until that cache expires."
+msgstr ""

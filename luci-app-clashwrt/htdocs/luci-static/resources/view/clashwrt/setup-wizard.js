@@ -80,7 +80,8 @@ return view.extend({
 				source: 'uci',
 				subs: gl('subscription').join('\n'),
 				links: gl('link').join('\n'),
-				dnsPreset: g('dns_preset', 'quad9'),
+				dnsPreset: g('dns_preset', gen.DEFAULT_DNS),
+				fakeIp: g('fake_ip', '0') === '1',
 				dnsCustom: gl('dns_server').join('\n'),
 				routing: g('routing', 'direct_except_list'),
 				ruleSets: gl('ruleset'),
@@ -99,7 +100,7 @@ return view.extend({
 
 		return {
 			source: 'none',
-			subs: '', links: '', dnsPreset: 'quad9', dnsCustom: '',
+			subs: '', links: '', dnsPreset: gen.DEFAULT_DNS, dnsCustom: '', fakeIp: false,
 			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true,
 			yandexDns: false, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
 			extraDomains: [], extraGroup: 'Proxy'
@@ -117,7 +118,8 @@ return view.extend({
 			source: 'config',
 			subs: cfg.subs.join('\n'),
 			links: '',
-			dnsPreset: preset || (cfg.dnsServers.length ? 'custom' : 'quad9'),
+			dnsPreset: preset || (cfg.dnsServers.length ? 'custom' : gen.DEFAULT_DNS),
+			fakeIp: cfg.fakeIp,
 			dnsCustom: preset ? '' : cfg.dnsServers.join('\n'),
 			routing: cfg.routing || 'direct_except_list',
 			ruleSets: cfg.ruleSets,
@@ -189,6 +191,7 @@ return view.extend({
 
 		var splitCb = E('input', { 'type': 'checkbox' });
 		var autoCb = E('input', { 'type': 'checkbox' });
+		var fakeCb = E('input', { 'type': 'checkbox' });
 		var yandexCb = E('input', { 'type': 'checkbox' });
 		var udpFilter = E('input', {
 			'type': 'text', 'class': 'cbi-input-text', 'style': 'width:24em'
@@ -300,6 +303,7 @@ return view.extend({
 			});
 			splitCb.checked = ans.udpSplit;
 			autoCb.checked = ans.autoBest;
+			fakeCb.checked = ans.fakeIp;
 			yandexCb.checked = ans.yandexDns;
 			udpFilter.value = ans.udpFilter;
 			tcpFilter.value = ans.tcpFilter;
@@ -362,6 +366,7 @@ return view.extend({
 				ruleSets: sets,
 				udpSplit: splitCb.checked,
 				autoBest: autoCb.checked,
+				fakeIp: fakeCb.checked,
 				yandexDns: yandexCb.checked,
 				udpFilter: udpFilter.value,
 				tcpFilter: tcpFilter.value,
@@ -397,6 +402,7 @@ return view.extend({
 				ruleSets: ans.ruleSets,
 				udpSplit: ans.udpSplit,
 				autoBest: ans.autoBest,
+				fakeIp: ans.fakeIp,
 				yandexDns: ans.yandexDns,
 				udpFilter: ans.udpFilter,
 				tcpFilter: ans.tcpFilter,
@@ -427,6 +433,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'routing', ans.routing);
 			uci.set('clashwrt', 'wizard', 'udp_split', ans.udpSplit ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'auto_best', ans.autoBest ? '1' : '0');
+			uci.set('clashwrt', 'wizard', 'fake_ip', ans.fakeIp ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'yandex_dns', ans.yandexDns ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'udp_filter', ans.udpFilter);
 			uci.set('clashwrt', 'wizard', 'tcp_filter', ans.tcpFilter);
@@ -635,6 +642,10 @@ return view.extend({
 							_('Custom servers, one per line. If filled, these win over the preset.')),
 						dnsCustom
 					]),
+
+					label(_('Fake-IP DNS'), _('Off by default.')),
+					E('label', {}, [ fakeCb, ' ', _('Answer lookups with addresses from mihomo\'s own range') ]),
+					more(_('What it changes'), _('Connections start without waiting for a real lookup, and proxied names are never resolved on the router. In exchange the kernel bypass set stops working (it is held back automatically), and while the proxy is switched off or bypassed by the watchdog, devices keep using the fake addresses they cached and cannot reach sites until that cache expires.')),
 
 					label(_('Russian sites through Yandex DNS'), _('Off by default.')),
 					E('label', {}, [ yandexCb, ' ', _('Use Yandex DNS for the Russian domain set') ]),

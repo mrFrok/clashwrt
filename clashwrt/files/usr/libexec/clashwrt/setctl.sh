@@ -732,11 +732,13 @@ do_status() {
 			echo "updated:  never"
 		fi
 	fi
+	if [ -n "$set_mode" ]; then
+		local gap
+		gap="$(hold_reason)"
+		[ -n "$gap" ] && echo "HELD BACK: the set is not used, everything goes to mihomo: $gap"
+	fi
 	if [ "$from_config" = 1 ] && [ -n "$set_mode" ]; then
 		# read afresh: the files are only as new as the last load
-		local gap
-		gap="$(coverage_gap)"
-		[ -n "$gap" ] && echo "HELD BACK: the set is not used, everything goes to mihomo: $gap"
 		echo "config:   $([ -s "$CONF_LIST" ] && grep -c . "$CONF_LIST" || echo 0) networks from config.yaml rules"
 		if [ "$set_mode" = "include" ]; then
 			local nd
@@ -764,11 +766,24 @@ do_direction() {
 	load_cfg
 	[ "$set_mode_raw" = "off" ] && { echo "off"; return 0; }
 	require_direction
-	if [ "$(coverage_gap)" ]; then
+	if [ "$(hold_reason)" ]; then
 		echo "off"
 		return 0
 	fi
 	echo "$set_mode"
+}
+
+# Why the set must not be used right now, or nothing.
+#
+# With fake-ip, mihomo answers every name with an address from its own range,
+# direct names included, so the kernel only ever sees that range: matching it
+# against real networks would decide nothing, and the set is left out.
+hold_reason() {
+	if [ -f "$MIHOMO_CONF" ] && config_records | grep -q '^F'; then
+		echo "config.yaml uses fake-ip DNS, so the kernel never sees the real addresses"
+		return 0
+	fi
+	coverage_gap
 }
 
 # Why a set built from config.yaml alone cannot stand in for it, or nothing.

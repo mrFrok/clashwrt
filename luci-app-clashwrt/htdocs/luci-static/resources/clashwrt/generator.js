@@ -59,12 +59,14 @@ function geoip(name) {
 
 var DNS_PRESETS = {
 	'local-agh':   { title: 'Local resolver (AdGuard Home etc.)', servers: ['127.0.0.1:5335'] },
+	/* bootstrap: plain addresses that resolve a DoH server's own name;
+	 * that one lookup is all that goes out unencrypted */
 	'quad9':       { title: 'Quad9', servers: ['9.9.9.9', '149.112.112.112'] },
-	'quad9-doh':   { title: 'Quad9 (DoH)', servers: ['https://dns.quad9.net/dns-query'] },
+	'quad9-doh':   { title: 'Quad9 (DoH)', servers: ['https://dns.quad9.net/dns-query'], bootstrap: ['9.9.9.9', '149.112.112.112'] },
 	'cloudflare':  { title: 'Cloudflare', servers: ['1.1.1.1', '1.0.0.1'] },
-	'cloudflare-doh': { title: 'Cloudflare (DoH)', servers: ['https://cloudflare-dns.com/dns-query'] },
+	'cloudflare-doh': { title: 'Cloudflare (DoH)', servers: ['https://cloudflare-dns.com/dns-query'], bootstrap: ['1.1.1.1', '1.0.0.1'] },
 	'google':      { title: 'Google', servers: ['8.8.8.8', '8.8.4.4'] },
-	'google-doh':  { title: 'Google (DoH)', servers: ['https://8.8.8.8/dns-query'] },
+	'google-doh':  { title: 'Google (DoH)', servers: ['https://8.8.8.8/dns-query'], bootstrap: ['8.8.8.8', '8.8.4.4'] },
 	'custom':      { title: 'Custom', servers: [] }
 };
 
@@ -328,6 +330,15 @@ function proxyToYaml(p) {
  */
 
 var UDP_GROUP = 'ProxyUDP';
+var DEFAULT_DNS = 'quad9-doh';
+var FAKE_IP_RANGE = '198.18.0.1/16';
+var FAKE_IP_FILTER = [
+	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
+	'+.pool.ntp.org', 'time.*.com', 'time.*.gov', 'ntp.*.com', '+.time.edu.cn',
+	'+.msftconnecttest.com', '+.msftncsi.com', 'connectivitycheck.gstatic.com',
+	'+.connectivitycheck.android.com', 'captive.apple.com', 'detectportal.firefox.com',
+	'+.stun.*.*', '+.stun.*.*.*'
+];
 /* url-test groups the wizard adds when it picks the fastest node itself */
 var AUTO_GROUP = 'Auto';
 var AUTO_UDP_GROUP = 'Auto UDP';
@@ -670,7 +681,7 @@ function parseConfig(text) {
 		subs: [], links: 0, dnsServers: [], routing: '', ruleSets: [],
 		udpSplit: false, udpFilter: '', tcpFilter: '', yandexDns: false,
 		extraDomains: [], extraGroup: 'Proxy', groups: [], generatedByUs: false, secret: '',
-		autoBest: false
+		autoBest: false, fakeIp: false
 	};
 	var i, r, m;
 
@@ -704,8 +715,10 @@ function parseConfig(text) {
 	r = sectionRange(lines, 'dns');
 	res.dnsServers = listUnder(lines, r, 'nameserver');
 	if (!res.dnsServers.length) res.dnsServers = listUnder(lines, r, 'default-nameserver');
-	if (r) for (i = r.start; i < r.end; i++)
+	if (r) for (i = r.start; i < r.end; i++) {
 		if (lines[i].indexOf('rule-set:ru_domains') >= 0) res.yandexDns = true;
+		if (/^\s+enhanced-mode:\s*fake-ip\b/.test(lines[i])) res.fakeIp = true;
+	}
 
 	/* rule-provider names -> which bundled lists are wholly present */
 	var provNames = {};
@@ -822,6 +835,7 @@ return baseclass.extend({
 	RULESETS: RULESETS,
 	DNS_PRESETS: DNS_PRESETS,
 	UDP_GROUP: UDP_GROUP,
+	DEFAULT_DNS: DEFAULT_DNS,
 	AUTO_GROUP: AUTO_GROUP,
 	AUTO_UDP_GROUP: AUTO_UDP_GROUP,
 	SITE_PRESETS: SITE_PRESETS,
@@ -1041,16 +1055,30 @@ return baseclass.extend({
 		L.push('');
 
 		/* DNS */
-		var dnsServers = (o.dnsServers && o.dnsServers.length)
-			? o.dnsServers
-			: (DNS_PRESETS[o.dnsPreset] || DNS_PRESETS['quad9']).servers;
+		var preset = DNS_PRESETS[o.dnsPreset] || DNS_PRESETS[DEFAULT_DNS];
+		var dnsServers = (o.dnsServers && o.dnsServers.length) ? o.dnsServers : preset.servers;
+		/* default-nameserver must be plain addresses: it is what resolves
+		 * the names of the DoH servers above, and cannot itself need one */
+		var boot = dnsServers.filter(function (s) { return /^[0-9.]+(:\d+)?$/.test(s); });
+		if (!boot.length) boot = preset.bootstrap || DNS_PRESETS[DEFAULT_DNS].bootstrap;
 		L.push('dns:');
 		L.push('  enable: true');
 		L.push('  ipv6: false');
 		L.push('  listen: 0.0.0.0:' + portOf(o.dnsPort, 1053));
-		L.push('  enhanced-mode: redir-host');
+		if (o.fakeIp) {
+			/* Every name gets an address from this range and mihomo maps it
+			 * back. Names that must resolve for real are filtered out: the
+			 * LAN itself, time servers (a router whose clock is off cannot
+			 * check TLS), and the probes OSes use to detect a captive portal. */
+			L.push('  enhanced-mode: fake-ip');
+			L.push('  fake-ip-range: ' + FAKE_IP_RANGE);
+			L.push('  fake-ip-filter:');
+			FAKE_IP_FILTER.forEach(function (f) { L.push('    - ' + yamlScalar(f)); });
+		} else {
+			L.push('  enhanced-mode: redir-host');
+		}
 		L.push('  default-nameserver:');
-		dnsServers.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
+		boot.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
 		L.push('  nameserver:');
 		dnsServers.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
 		if (o.directDns && o.directDns.length) {

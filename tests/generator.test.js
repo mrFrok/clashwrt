@@ -158,4 +158,21 @@ t('autoBest adds url-test groups first in Proxy and ProxyUDP', function () {
 	assert.deepStrictEqual(gen.groupNames(off.split('\n')), ['Proxy']);
 });
 
+t('DNS defaults to DoH, with plain-address bootstrap', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' });
+	assert.ok(/  enhanced-mode: redir-host\n/.test(y));
+	assert.ok(/  default-nameserver:\n    - 9\.9\.9\.9\n    - 149\.112\.112\.112\n  nameserver:\n    - 'https:\/\/dns\.quad9\.net\/dns-query'\n/.test(y));
+	var custom = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list',
+		dnsServers: ['https://dns.example/dns-query', '1.1.1.1'] });
+	assert.ok(/  default-nameserver:\n    - 1\.1\.1\.1\n  nameserver:/.test(custom));
+});
+
+t('fakeIp writes fake-ip with a filter, and parseConfig reads it back', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', fakeIp: true });
+	assert.ok(/  enhanced-mode: fake-ip\n  fake-ip-range: 198\.18\.0\.1\/16\n  fake-ip-filter:\n/.test(y));
+	assert.ok(/    - '\*\.lan'\n/.test(y));
+	assert.strictEqual(gen.parseConfig(y).fakeIp, true);
+	assert.strictEqual(gen.parseConfig(gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' })).fakeIp, false);
+});
+
 console.log(n + ' generator tests passed');

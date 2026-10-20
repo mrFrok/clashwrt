@@ -180,4 +180,10 @@ eq "a GEOSITE rule to the proxy holds it back" "off" "$(NFTSET=nftset sh "$SETCT
 uci set clashwrt.config.bypass_set_source=refilter
 eq "a downloaded list is not judged" "include" "$(NFTSET=nftset sh "$SETCTL" direction)"
 
+# fake-ip: the kernel never sees real addresses, so the set is held back
+uci set clashwrt.config.bypass_set_source=config
+printf 'dns:\n  enhanced-mode: fake-ip\nrules:\n  - IP-CIDR,1.2.3.0/24,Proxy\n  - MATCH,DIRECT\n' > "$TMP/mihomo/config.yaml"
+eq "fake-ip holds the set back" "off" "$(NFTSET=nftset sh "$SETCTL" direction)"
+case "$(NFTSET=nftset sh "$SETCTL" status)" in *"HELD BACK"*"fake-ip"*) pass "status names fake-ip" ;; *) fail "status names fake-ip" ;; esac
+
 finish
