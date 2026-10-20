@@ -1298,3 +1298,6 @@ msgstr "Скачивать через прокси"
 
 msgid "The core, ClashWrt updates, dashboards and bypass lists are fetched through the proxy first, and directly only if that fails. Default: on."
 msgstr "Ядро, обновления ClashWrt, панели и списки обхода сначала скачиваются через прокси и только при неудаче — напрямую. По умолчанию: включено."
+
+msgid "could not check for updates"
+msgstr "не удалось проверить обновления"

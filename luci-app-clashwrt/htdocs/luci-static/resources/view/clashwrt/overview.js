@@ -10,11 +10,10 @@
 'require clashwrt.power as power';
 'require clashwrt.maint as maint';
 
-var UI_VERSION = '0.3.0';
+var UI_VERSION = '0.3.1';
 var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
-var UPDCTL = '/usr/libexec/clashwrt/updctl.sh';
 var STAGING = '/tmp/clashwrt-staging';
 
 var CSS =
@@ -424,24 +423,18 @@ return view.extend({
 
 		/* ---------------- updates ---------------- */
 
-		function checkUpdates() {
-			var found = [];
-			function ask(args, label) {
-				return fs.exec(UPDCTL, args).then(function (res) {
-					var st = power.parseStatus(res.stdout || '');
-					if (st['update'] === 'available') found.push(label);
-				}).catch(function () { /* offline is not news */ });
-			}
-			return Promise.all([
-				ask(['self-status'], _('ClashWrt')),
-				ask(['core-status'], _('mihomo core'))
-			]).then(function () {
-				if (!found.length) return;
-				dom.content(updBox, E('a', { 'href': '#cw-maint', 'class': 'cw-upd-link', 'click': openMaint }, [
-					power.pill('amber', _('Update available')),
-					' ', found.join(', ')
-				]));
-			});
+		/* Fed by the Maintenance section's own checks (see maint.render), so
+		 * opening the page asks GitHub once per thing, not twice. */
+		var found = {};
+		function updateFound(what, state) {
+			found[what] = state === 'available';
+			var names = [];
+			if (found.self) names.push(_('ClashWrt'));
+			if (found.core) names.push(_('mihomo core'));
+			dom.content(updBox, names.length ? E('a', { 'href': '#cw-maint', 'class': 'cw-upd-link', 'click': openMaint }, [
+				power.pill('amber', _('Update available')),
+				' ', names.join(', ')
+			]) : '');
 		}
 
 		function openMaint() {
@@ -515,7 +508,6 @@ return view.extend({
 		}, 5);
 		refreshNode();
 		refreshBypass();
-		checkUpdates();
 
 		return E('div', { 'class': 'cbi-map' }, [
 			E('style', {}, CSS),
@@ -535,7 +527,7 @@ return view.extend({
 				out
 			]),
 			wdBox,
-			maint.render(maintData, window.location.hash === '#cw-maint')
+			maint.render(maintData, window.location.hash === '#cw-maint', updateFound)
 		]);
 	},
 

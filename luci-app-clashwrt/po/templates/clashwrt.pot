@@ -1292,3 +1292,6 @@ msgstr ""
 
 msgid "The core, ClashWrt updates, dashboards and bypass lists are fetched through the proxy first, and directly only if that fails. Default: on."
 msgstr ""
+
+msgid "could not check for updates"
+msgstr ""

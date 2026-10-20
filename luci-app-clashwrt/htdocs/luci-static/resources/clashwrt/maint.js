@@ -13,7 +13,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.dashui as dashui';
 
-var UI_VERSION = '0.3.0';
+var UI_VERSION = '0.3.1';
 
 var callStatus = function () {
 	return fs.exec('/usr/libexec/clashwrt/fw.sh', ['status'])
@@ -23,6 +23,10 @@ var callStatus = function () {
 
 /* status refreshers registered by the blocks below, run by refresh() */
 var refreshers = [];
+
+/* told what each update check found, so the page's "update available" pill
+ * reuses these answers instead of asking GitHub a second time */
+var onUpdate = function () {};
 
 function parseStatus(text) {
 	var out = {};
@@ -62,7 +66,7 @@ function badge(ok, label) {
 function updatePill(state) {
 	if (state === 'available') return pill('#fef7e0', '#b06000', _('update available'));
 	if (state === 'current')   return pill('#e6f4ea', '#137333', _('up to date'));
-	return pill('#f1f3f4', '#5f6368', _('cannot tell'));
+	return pill('#fef7e0', '#b06000', _('could not check for updates'));
 }
 
 /* Commit ids are compared in full and shown short: the whole thing tells the
@@ -309,6 +313,7 @@ function buildUpdates() {
 				E('span', { 'style': 'opacity:0.6' }, [ ' (' + (st['arch'] || '?') + ')' ])
 			]);
 			dom.content(coreState, updatePill(st['update']));
+			onUpdate('core', st['update']);
 			btnCore.disabled = false;
 		}).catch(function (e) {
 			dom.content(coreVer, _('unavailable'));
@@ -330,6 +335,7 @@ function buildUpdates() {
 					: ''
 			]);
 			dom.content(selfState, updatePill(st['update']));
+			onUpdate('self', st['update']);
 			btnSelf.disabled = false;
 		}).catch(function (e) {
 			dom.content(selfVer, _('unavailable'));
@@ -531,8 +537,9 @@ return baseclass.extend({
 	},
 
 	/* One section, closed unless open is set. data is what load() returned. */
-	render: function (data, open) {
+	render: function (data, open, updated) {
 		refreshers = [];
+		onUpdate = updated || function () {};
 		return E('details', { 'class': 'cbi-section', 'id': 'cw-maint', 'open': open ? '' : null }, [
 			E('summary', { 'style': 'cursor:pointer;font-weight:bold;font-size:110%' }, _('Maintenance')),
 			buildStatus(data[0]),
