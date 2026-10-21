@@ -373,21 +373,24 @@ esac
 # A release from 1.4.0 on carries its own tarball, with a SHA-256 GitHub
 # keeps for it; that one is fetched instead of the on-the-fly archive and has
 # to match. Older releases and the main branch have nothing to check against.
+# REPO_URL itself stays the tag's archive: it is what .install-info records and
+# what the update check reads the channel and version from.
 SRC_SHA=""
+FETCH_URL="$REPO_URL"
 case "$REPO_URL" in
 	https://github.com/"$SLUG"/archive/refs/tags/*.tar.gz)
 		SRC_SHA="$(asset_digest "$SLUG" "$SRC_TAG" "clashwrt-$SRC_TAG.tar.gz")" || SRC_SHA=""
-		[ -n "$SRC_SHA" ] && REPO_URL="https://github.com/$SLUG/releases/download/$SRC_TAG/clashwrt-$SRC_TAG.tar.gz"
+		[ -n "$SRC_SHA" ] && FETCH_URL="https://github.com/$SLUG/releases/download/$SRC_TAG/clashwrt-$SRC_TAG.tar.gz"
 		;;
 esac
 
 say "fetching clashwrt"
 # --proto: whatever this fetches is run as root, so a redirect to plain http
 # (or file://) is not followed
-cw_curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
+cw_curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$FETCH_URL" || die "could not download $FETCH_URL"
 if [ -n "$SRC_SHA" ]; then
 	_got="$(sha256sum "$TMP/src.tar.gz" | awk '{ print $1 }')"
-	[ "$_got" = "$SRC_SHA" ] || die "SHA-256 mismatch for $REPO_URL: GitHub says $SRC_SHA, the download is $_got"
+	[ "$_got" = "$SRC_SHA" ] || die "SHA-256 mismatch for $FETCH_URL: GitHub says $SRC_SHA, the download is $_got"
 	say "SHA-256 checked"
 else
 	warn "no SHA-256 to check this download against (main branch or a release before 1.4.0)"

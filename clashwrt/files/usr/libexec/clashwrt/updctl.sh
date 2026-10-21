@@ -91,6 +91,14 @@ parse_repo() {
 			KIND="tags"
 			REF="${REPO##*/tags/}"; REF="${REF%.tar.gz}"
 			;;
+		https://github.com/*/releases/download/*/clashwrt-*.tar.gz)
+			# what 1.4.0 and 1.4.1 recorded: the release's own tarball
+			KIND="tags"
+			REF="${REPO##*/download/}"; REF="${REF%%/*}"
+			SLUG="${REPO#https://github.com/}"; SLUG="${SLUG%%/releases/*}"
+			[ -n "$SLUG" ] && [ -n "$REF" ]
+			return
+			;;
 		"")
 			# nothing recorded: this copy predates channels, or came from the
 			# package feed. Treat it as following releases.
