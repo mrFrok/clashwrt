@@ -31,7 +31,7 @@ SLUG_DEFAULT="mrFrok/clashwrt"
 # on the branch an hour ago. An install that came from a branch keeps tracking
 # that branch, because switching channels under someone is not an update.
 REPO_DEFAULT=""
-INFO="/usr/libexec/clashwrt/.install-info"
+INFO="${CLASHWRT_INFO:-/usr/libexec/clashwrt/.install-info}"
 LOG="/tmp/clashwrt-update.log"
 # Where the core lives; overridden only by the tests.
 BIN_DIR="${CLASHWRT_BIN_DIR:-/usr/bin}"
@@ -807,7 +807,15 @@ do_self_update() {
 		src="https://github.com/$SLUG/archive/refs/tags/$want.tar.gz"
 	fi
 
-	local url="https://raw.githubusercontent.com/$SLUG/$want/install.sh"
+	# A release carries install.sh as an attached file with a SHA-256 GitHub
+	# keeps for it, and the installer checks the tarball the same way. The
+	# main branch has nothing to check against.
+	local url="https://raw.githubusercontent.com/$SLUG/$want/install.sh" sha=""
+	if [ "$KIND" = "tags" ]; then
+		url="https://github.com/$SLUG/releases/download/$want/install.sh"
+		sha="$(asset_digest "$SLUG" "$want" install.sh)"
+		[ -n "$sha" ] || die "release $want lists no SHA-256 for install.sh, so the update cannot be checked"
+	fi
 	# The installer is run as root, so it is fetched into a directory only
 	# this process created: nothing can be planted there or swapped in
 	# between the check below and the run.
@@ -823,6 +831,13 @@ do_self_update() {
 	# as it goes, part-way through replacing the installation.
 	head -n 20 "$script" | grep -q 'One-shot installer for clashwrt' \
 		|| die "what came back from $url is not the clashwrt installer"
+	if [ -n "$sha" ]; then
+		[ "$(sha256_of "$script")" = "$sha" ] ||
+			{ rm -rf "$dir"; die "SHA-256 mismatch for $url; nothing was run"; }
+		echo "installer SHA-256 checked"
+	else
+		echo "WARNING: the main branch has no SHA-256 to check the installer against" >&2
+	fi
 
 	# The core is updated by its own button. Bundling it here would make one
 	# button do two unrelated things, and hide a failed core download behind

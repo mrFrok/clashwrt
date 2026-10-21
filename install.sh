@@ -38,6 +38,16 @@ if [ -f /usr/libexec/clashwrt/net.sh ]; then
 else
 	cw_curl() { curl "$@"; }
 fi
+# The same as net.sh's, for a first install that does not have it yet.
+command -v asset_digest >/dev/null 2>&1 || asset_digest() {
+	cw_curl -sSL --fail --proto '=https' -m 30 \
+		"https://api.github.com/repos/$1/releases/tags/$2" 2>/dev/null |
+		awk -v want="$3" '
+			/^[ \t]*"name":/ { n = $0; sub(/^[^:]*:[ \t]*"/, "", n); sub(/".*/, "", n) }
+			/^[ \t]*"digest":[ \t]*"sha256:[0-9a-f]{64}"/ && n == want {
+				d = $0; sub(/.*"sha256:/, "", d); sub(/".*/, "", d); print d; exit
+			}'
+}
 
 if [ -z "$REPO_URL" ]; then
 	if [ "$CHANNEL" = "main" ]; then
@@ -211,10 +221,28 @@ case "$REPO_URL" in
 		;;
 esac
 
+# A release from 1.4.0 on carries its own tarball, with a SHA-256 GitHub
+# keeps for it; that one is fetched instead of the on-the-fly archive and has
+# to match. Older releases and the main branch have nothing to check against.
+SRC_SHA=""
+case "$REPO_URL" in
+	https://github.com/"$SLUG"/archive/refs/tags/*.tar.gz)
+		SRC_SHA="$(asset_digest "$SLUG" "$SRC_TAG" "clashwrt-$SRC_TAG.tar.gz")" || SRC_SHA=""
+		[ -n "$SRC_SHA" ] && REPO_URL="https://github.com/$SLUG/releases/download/$SRC_TAG/clashwrt-$SRC_TAG.tar.gz"
+		;;
+esac
+
 say "fetching clashwrt"
 # --proto: whatever this fetches is run as root, so a redirect to plain http
 # (or file://) is not followed
 cw_curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$REPO_URL" || die "could not download $REPO_URL"
+if [ -n "$SRC_SHA" ]; then
+	_got="$(sha256sum "$TMP/src.tar.gz" | awk '{ print $1 }')"
+	[ "$_got" = "$SRC_SHA" ] || die "SHA-256 mismatch for $REPO_URL: GitHub says $SRC_SHA, the download is $_got"
+	say "SHA-256 checked"
+else
+	warn "no SHA-256 to check this download against (main branch or a release before 1.4.0)"
+fi
 mkdir -p "$TMP/src"
 # no --strip-components: busybox tar does not have it, and busybox is what
 # OpenWrt ships. Extract as-is and step into the wrapper directory instead.

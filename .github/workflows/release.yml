@@ -1,9 +1,12 @@
 name: Release
 
 # Pushing a tag v<version> publishes the release that install.sh and the
-# updater follow. Both download the tag's source tarball, so there is nothing
-# to build or attach: the job only refuses a tag that does not match the
-# packages, then creates the release.
+# updater follow. The job refuses a tag that does not match the packages,
+# then creates the release with three files attached: install.sh, the tag's
+# tree as clashwrt-<tag>.tar.gz (git archive, so the bytes do not change the
+# way GitHub's on-the-fly archives may) and SHA256SUMS. GitHub records a
+# SHA-256 for every attached file, and the installer and the updater refuse a
+# download that does not match it.
 #
 # The notes come from the annotated tag's message (a lightweight tag gets
 # GitHub's generated list of changes instead):
@@ -30,13 +33,26 @@ jobs:
       - name: Check
         run: tools/check.sh "$GITHUB_REF_NAME"
 
+      - name: Assets
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz --prefix="clashwrt-$TAG/" -o "dist/clashwrt-$TAG.tar.gz" HEAD
+          cp install.sh dist/install.sh
+          (cd dist && sha256sum "clashwrt-$TAG.tar.gz" install.sh > SHA256SUMS && cat SHA256SUMS)
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists, leaving it as it is"
+            echo "release $TAG already exists; attaching the files it lacks"
+            have="$(gh release view "$TAG" --json assets --jq '.assets[].name')"
+            for f in dist/*; do
+              echo "$have" | grep -qxF "${f#dist/}" || gh release upload "$TAG" "$f"
+            done
             exit 0
           fi
           # actions/checkout fetches the tag as a lightweight ref; the
@@ -49,4 +65,4 @@ jobs:
             notes=--generate-notes
           fi
           gh release create "$TAG" --verify-tag \
-            --title "ClashWrt ${TAG#v}" "$notes"
+            --title "ClashWrt ${TAG#v}" "$notes" dist/*

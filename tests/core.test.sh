@@ -54,4 +54,36 @@ case "$out" in *"without a SHA-256 check"*) pass "core_verify 0 installs uncheck
 
 ls "$TMP/work" | grep -q . && fail "no leftovers in the work dir" || pass "no leftovers in the work dir"
 
+# self-update: the release's install.sh must hash to its listed SHA-256
+printf '#!/bin/sh\n# One-shot installer for clashwrt (fake)\necho "ran $REPO_URL" > "%s/ran"\n' "$TMP" > "$TMP/srv/install.sh"
+ISHA="$(sha256sum "$TMP/srv/install.sh" | awk '{ print $1 }')"
+printf 'repo=https://github.com/o/r/archive/refs/tags/v1.0.0.tar.gz\nversion=v1.0.0\n' > "$TMP/info"
+cat > "$TMP/bin/curl" <<'X'
+#!/bin/sh
+for a; do u="$a"; done
+o=""; prev=""
+for a; do [ "$prev" = -o ] && o="$a"; prev="$a"; done
+case "$u" in
+*/releases/latest) printf '{\n  "tag_name": "v2.0.0"\n}\n' ;;
+*/releases/tags/v2.0.0) printf '{\n  "assets": [\n    {\n      "name": "install.sh",\n      "digest": "sha256:%s"\n    }\n  ]\n}\n' "$ISHA" ;;
+*/releases/download/v2.0.0/install.sh) cat "$SRV/install.sh" > "$o" ;;
+*) exit 22 ;;
+esac
+X
+chmod +x "$TMP/bin/curl"
+upd() { CLASHWRT_INFO="$TMP/info" sh "$L/updctl.sh" self-update 2>&1; }
+waitran() { i=0; while [ ! -e "$TMP/ran" ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i + 1)); done; }
+
+out="$(ISHA=0000000000000000000000000000000000000000000000000000000000000000 upd)"
+case "$out" in *"SHA-256 mismatch"*) pass "self-update refuses an installer with the wrong hash" ;; *) fail "self-update refuses an installer with the wrong hash ($out)" ;; esac
+sleep 0.5; [ -e "$TMP/ran" ] && fail "and runs nothing" || pass "and runs nothing"
+
+out="$(ISHA='' upd)"
+case "$out" in *"lists no SHA-256"*) pass "no listed hash: refused" ;; *) fail "no listed hash: refused ($out)" ;; esac
+
+out="$(ISHA="$ISHA" upd)"
+waitran
+case "$out" in *"installer SHA-256 checked"*) pass "the right hash runs the installer" ;; *) fail "the right hash runs the installer ($out)" ;; esac
+eq "with the release's tarball" "ran https://github.com/o/r/archive/refs/tags/v2.0.0.tar.gz" "$(cat "$TMP/ran" 2>/dev/null)"
+
 finish
