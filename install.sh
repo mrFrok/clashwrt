@@ -189,7 +189,7 @@ CORE_FLASH_KB=65536
 CORE_GZ_KB=26624
 RAM_OK=0; [ "$MEM_KB" -ge 262144 ] && RAM_OK=1
 
-CUR_STORE="$(uci -q get clashwrt.config.core_store 2>/dev/null)"
+CUR_STORE="$(uci -q get clashwrt.config.core_store 2>/dev/null)" || CUR_STORE=""
 CUR_CHANNEL=release
 grep -q '^repo=.*/archive/refs/heads/' /usr/libexec/clashwrt/.install-info 2>/dev/null && CUR_CHANNEL=main
 HAVE_CORE=0; command -v mihomo >/dev/null 2>&1 && HAVE_CORE=1
@@ -250,7 +250,7 @@ UI_STORE=""
 if [ "$UI_NAME" != none ] && [ "$RAM_OK" = 1 ]; then
 	case "$UI_NAME" in zashboard) _ui=12288 ;; yacd) _ui=5120 ;; *) _ui=8192 ;; esac
 	_rec=flash; [ "$LEFT_KB" -ge $((_ui + 4096)) ] || _rec=gz
-	_cur="$(uci -q get clashwrt.config.ui_store 2>/dev/null)"; [ -n "$_cur" ] && _rec="$_cur"
+	_cur="$(uci -q get clashwrt.config.ui_store 2>/dev/null)" || _cur=""; [ -n "$_cur" ] && _rec="$_cur"
 	UI_STORE="$(ask "Where should the dashboard be kept?" "$_rec" \
 		"flash|on flash, about $(mb "$_ui")" \
 		"gz|packed on flash, unpacked into RAM at boot: about a third of that on flash" \

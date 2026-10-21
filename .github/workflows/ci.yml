@@ -26,3 +26,11 @@ jobs:
 
       - name: Check
         run: tools/check.sh
+
+      # backup and install write to / and need root: a throwaway busybox
+      # container, which is also what OpenWrt's shell is
+      - name: Sandbox tests
+        run: |
+          for t in backup install; do
+            docker run --rm --network none -e CLASHWRT_SANDBOX=1 -v "$PWD:/src:ro" alpine:3.21 sh "/src/tests/$t.test.sh" || exit 1
+          done
