@@ -10,7 +10,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.power as power';
 
-var UI_VERSION = '0.4.0';
+var UI_VERSION = '0.5.0';
 
 
 /* fs.exec rejects with an Error when the command fails or is not permitted,
@@ -146,6 +146,83 @@ function customNode(s, tab, name, build) {
 	return o;
 }
 
+/* Where the core and the dashboard are kept. Moving them is a job for the
+ * scripts (room checks, copy first, delete last), so each has its own Apply
+ * rather than going through Save & Apply. */
+function buildStorage() {
+	var UPDCTL = '/usr/libexec/clashwrt/updctl.sh';
+	var UICTL = '/usr/libexec/clashwrt/uictl.sh';
+	var out = E('div');
+	var busy = false;
+
+	function kv(text) {
+		var r = {};
+		String(text || '').split('\n').forEach(function (l) {
+			var m = l.match(/^([a-z]+):\s*(.*)$/);
+			if (m) r[m[1]] = m[2];
+		});
+		return r;
+	}
+
+	function where(st) {
+		var loc = String(st.location || 'none');
+		var kb = function (x) { return (parseInt(x, 10) / 1024).toFixed(1) + ' MB'; };
+		var m = loc.match(/^ram (\d+)K(?:, packed on flash (\d+)K)?/);
+		if (m) return m[2] ? _('in RAM (%s), packed on flash (%s)').format(kb(m[1]), kb(m[2]))
+			: _('in RAM only (%s)').format(kb(m[1]));
+		m = loc.match(/^flash (\d+)K/);
+		if (m) return _('on flash (%s)').format(kb(m[1]));
+		return _('not installed');
+	}
+
+	function row(title, cmd, args, opts, status) {
+		var sel = E('select', { 'class': 'cbi-input-select' }, opts.map(function (o) {
+			return E('option', { 'value': o[0] }, o[1]);
+		}));
+		var now = E('span', {}, E('em', {}, _('checking…')));
+		var btn = E('button', { 'class': 'cbi-button cbi-button-apply', 'click': function (ev) {
+			ev.preventDefault();
+			if (busy) return;
+			busy = true; btn.disabled = true;
+			dom.content(out, E('em', {}, _('Moving, this can take a minute…')));
+			fs.exec(cmd, args.concat([ sel.value ])).then(function (r) {
+				dom.content(out, E('div', {
+					'class': r.code === 0 ? 'alert-message success' : 'alert-message warning',
+					'style': 'white-space:pre-wrap' }, [ (r.stdout || '') + (r.stderr || '') ]));
+			}).catch(function (e) {
+				dom.content(out, E('div', { 'class': 'alert-message warning', 'style': 'white-space:pre-wrap' }, [ describe(e) ]));
+			}).finally(function () { busy = false; btn.disabled = false; refresh(); });
+		} }, _('Apply'));
+		function refresh() {
+			return fs.exec(cmd, status).then(function (r) {
+				var st = kv(r.stdout);
+				sel.value = st.store || 'flash';
+				dom.content(now, where(st));
+			}).catch(function () { dom.content(now, _('unknown')); });
+		}
+		refresh();
+		return E('div', { 'class': 'cbi-value' }, [
+			E('label', { 'class': 'cbi-value-title' }, title),
+			E('div', { 'class': 'cbi-value-field' }, [ sel, ' ', btn,
+				E('div', { 'class': 'cbi-value-description' }, [ _('Now: '), now ]) ])
+		]);
+	}
+
+	var modes = [
+		[ 'flash', _('On flash') ],
+		[ 'gz', _('Packed on flash, unpacked into RAM at boot') ],
+		[ 'ram', _('Only in RAM, downloaded at every boot') ]
+	];
+
+	return E('div', {}, [
+		E('p', {}, [ _('The mihomo core is about 55 MB, more than many routers have free on flash. Packed it takes about 22 MB of flash; kept only in RAM, none. Either way it then takes about 55 MB of RAM, so this needs a router with 256 MB of RAM or more.') ]),
+		E('p', { 'style': 'opacity:0.85' }, [ _('Only in RAM means downloading it at every boot: while GitHub cannot be reached there is no core, and LAN traffic gets what "When the VPN fails" says. Packed on flash has no such gap.') ]),
+		row(_('mihomo core'), UPDCTL, [ 'core-store' ], modes, [ 'core-where' ]),
+		row(_('Web dashboard'), UICTL, [ 'store' ], modes, [ 'status' ]),
+		out
+	]);
+}
+
 function buildOffload() {
 	var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 	var state = E('span', {}, E('em', {}, _('checking…')));
@@ -218,11 +295,32 @@ return view.extend({
 		s.anonymous = true;
 		s.tab('basic', _('Basic'));
 		s.tab('bypass', _('Bypass'));
+		s.tab('storage', _('Storage and memory'));
 		s.tab('advanced', _('Advanced'));
 		
 		function basic()  { return s.taboption.apply(s, ['basic'].concat([].slice.call(arguments))); }
 		function bypass() { return s.taboption.apply(s, ['bypass'].concat([].slice.call(arguments))); }
 		function adv()    { return s.taboption.apply(s, ['advanced'].concat([].slice.call(arguments))); }
+
+		/* ---------------- storage and memory ---------------- */
+
+		customNode(s, 'storage', '_n_storage', function () { return buildStorage(); });
+
+		o = s.taboption('storage', form.Value, 'core_mem_limit', _('Memory ceiling for mihomo'),
+			_('A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts.'));
+		o.value('auto', _('Auto'));
+		o.value('off', _('Off'));
+		o.placeholder = 'auto';
+		o.rmempty = true;
+		o.validate = function (sid, v) {
+			return (!v || v === 'auto' || v === 'off' || /^[1-9][0-9]{1,4}$/.test(v)) ? true
+				: _('auto, off, or a number of megabytes');
+		};
+
+		o = s.taboption('storage', form.Flag, 'core_verify', _('Check the core download'),
+			_('A downloaded core must match the SHA-256 GitHub lists for it, or it is not installed.'));
+		o.default = '1';
+		o.rmempty = false;
 
 		/* ---------------- basic ---------------- */
 

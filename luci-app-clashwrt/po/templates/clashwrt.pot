@@ -1403,3 +1403,96 @@ msgstr ""
 
 msgid "How the tun device hands packets to mihomo. Leave at system unless something does not work."
 msgstr ""
+
+msgid "in RAM, packed on flash"
+msgstr ""
+
+msgid "in RAM only"
+msgstr ""
+
+msgid "on flash"
+msgstr ""
+
+msgid "in RAM (%s), packed on flash (%s)"
+msgstr ""
+
+msgid "in RAM only (%s)"
+msgstr ""
+
+msgid "on flash (%s)"
+msgstr ""
+
+msgid "not installed"
+msgstr ""
+
+msgid "Moving, this can take a minute…"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid "Now: "
+msgstr ""
+
+msgid "On flash"
+msgstr ""
+
+msgid "Packed on flash, unpacked into RAM at boot"
+msgstr ""
+
+msgid "Only in RAM, downloaded at every boot"
+msgstr ""
+
+msgid "The mihomo core is about 55 MB, more than many routers have free on flash. Packed it takes about 22 MB of flash; kept only in RAM, none. Either way it then takes about 55 MB of RAM, so this needs a router with 256 MB of RAM or more."
+msgstr ""
+
+msgid "Only in RAM means downloading it at every boot: while GitHub cannot be reached there is no core, and LAN traffic gets what \"When the VPN fails\" says. Packed on flash has no such gap."
+msgstr ""
+
+msgid "Software"
+msgstr ""
+
+msgid "Software and hardware"
+msgstr ""
+
+msgid "active, in hardware"
+msgstr ""
+
+msgid "active, in software"
+msgstr ""
+
+msgid "not active"
+msgstr ""
+
+msgid "Reloading the firewall…"
+msgstr ""
+
+msgid "Could not change flow offloading: %s"
+msgstr ""
+
+msgid "Flow offloading"
+msgstr ""
+
+msgid "Speeds up what the bypass lets past mihomo; what goes through mihomo is not affected. Hardware offloading works only on chips that support it, and SQM does not work together with it."
+msgstr ""
+
+msgid "Storage and memory"
+msgstr ""
+
+msgid "Memory ceiling for mihomo"
+msgstr ""
+
+msgid "A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts."
+msgstr ""
+
+msgid "Auto"
+msgstr ""
+
+msgid "auto, off, or a number of megabytes"
+msgstr ""
+
+msgid "Check the core download"
+msgstr ""
+
+msgid "A downloaded core must match the SHA-256 GitHub lists for it, or it is not installed."
+msgstr ""

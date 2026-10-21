@@ -13,7 +13,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.dashui as dashui';
 
-var UI_VERSION = '0.4.0';
+var UI_VERSION = '0.5.0';
 
 var callStatus = function () {
 	return fs.exec('/usr/libexec/clashwrt/fw.sh', ['status'])
@@ -303,6 +303,15 @@ function buildUpdates() {
 		}, [ text ]));
 	}
 
+	/* where Settings -> Storage keeps it */
+	function coreWhere(st) {
+		var loc = String(st['location'] || '').split(' ')[0];
+		if (loc === 'ram')
+			return ', ' + (st['store'] === 'gz' ? _('in RAM, packed on flash') : _('in RAM only'));
+		if (loc === 'flash') return ', ' + _('on flash');
+		return '';
+	}
+
 	function loadCore() {
 		return fs.exec(UPDCTL, ['core-status']).then(function (res) {
 			var st = parseStatus(res.stdout || '');
@@ -310,7 +319,8 @@ function buildUpdates() {
 				E('strong', {}, [ st['installed'] || '?' ]),
 				' → ',
 				st['latest'] || '?',
-				E('span', { 'style': 'opacity:0.6' }, [ ' (' + (st['arch'] || '?') + ')' ])
+				E('span', { 'style': 'opacity:0.6' }, [ ' (' + (st['arch'] || '?') + ')' ]),
+				E('span', { 'style': 'opacity:0.6' }, [ coreWhere(st) ])
 			]);
 			dom.content(coreState, updatePill(st['update']));
 			onUpdate('core', st['update']);

@@ -239,6 +239,20 @@ valid_tag() {
 	[ "${#1}" -le 64 ]
 }
 
+# Where the core is, without asking GitHub anything: for the Storage tab.
+do_core_where() {
+	echo "store:     $(core_store)"
+	if [ -L "$CORE_BIN" ]; then
+		echo "location:  ram $(size_kb "$RAM_CORE")K$( [ -f "$STORE_GZ" ] && echo ", packed on flash $(size_kb "$STORE_GZ")K")"
+	elif [ -f "$CORE_BIN" ]; then
+		echo "location:  flash $(size_kb "$CORE_BIN")K"
+	else
+		echo "location:  none"
+	fi
+	echo "flash:     $(avail_kb "$BIN_DIR")K free"
+	echo "ram:       $(meminfo_kb MemAvailable)K available of $(meminfo_kb MemTotal)K"
+}
+
 do_core_status() {
 	local arch installed latest
 	arch="$(map_arch 2>/dev/null)" || arch=""
@@ -248,14 +262,7 @@ do_core_status() {
 	echo "arch:      ${arch:-unknown}"
 	echo "installed: ${installed:-none}"
 	echo "latest:    ${latest:-unknown}"
-	echo "store:     $(core_store)"
-	if [ -L "$CORE_BIN" ]; then
-		echo "location:  ram $(size_kb "$RAM_CORE")K$( [ -f "$STORE_GZ" ] && echo ", packed on flash $(size_kb "$STORE_GZ")K")"
-	elif [ -f "$CORE_BIN" ]; then
-		echo "location:  flash $(size_kb "$CORE_BIN")K"
-	else
-		echo "location:  none"
-	fi
+	do_core_where
 
 	if [ -z "$latest" ] || [ -z "$installed" ]; then
 		echo "update:    unknown"
@@ -1199,6 +1206,7 @@ case "${1:-}" in
 	core-prepare) do_core_prepare ;;
 	core-boot)    do_core_boot ;;
 	core-env)     do_core_env ;;
+	core-where)   do_core_where ;;
 	arch)         map_arch ;;
 	core-retry)   do_core_retry ;;
 	core-store)   do_core_store "${2:-}" ;;

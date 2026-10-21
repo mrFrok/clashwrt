@@ -288,8 +288,25 @@ do_import() {
 		validate_file "$s/config.yaml" || die "the config.yaml in the archive is not accepted by mihomo; nothing was changed"
 	fi
 
+	# Where the core and the dashboard are kept is not just a setting: the
+	# files have to move. So the old values go back into UCI and the scripts
+	# that move them are asked to, with their room checks.
+	local old_core old_ui new_core new_ui
+	old_core="$(uci -q get clashwrt.config.core_store)"
+	old_ui="$(uci -q get clashwrt.config.ui_store)"
 	cp "$s/clashwrt.uci" /etc/config/clashwrt || die "could not write /etc/config/clashwrt"
 	echo "settings restored"
+	new_core="$(uci -q get clashwrt.config.core_store)"
+	new_ui="$(uci -q get clashwrt.config.ui_store)"
+	if [ "${new_core:-flash}" != "${old_core:-flash}" ] || [ "${new_ui:-flash}" != "${old_ui:-flash}" ]; then
+		uci -q set "clashwrt.config.core_store=${old_core:-flash}"
+		uci -q set "clashwrt.config.ui_store=${old_ui:-flash}"
+		uci -q commit clashwrt
+		[ "${new_core:-flash}" != "${old_core:-flash}" ] &&
+			{ /usr/libexec/clashwrt/updctl.sh core-store "${new_core:-flash}" || echo "the core stays where it was"; }
+		[ "${new_ui:-flash}" != "${old_ui:-flash}" ] &&
+			{ /usr/libexec/clashwrt/uictl.sh store "${new_ui:-flash}" || echo "the dashboard stays where it was"; }
+	fi
 	config_load clashwrt
 	config_get lists config list_subdir lst
 	if [ -d "$s/lists" ]; then

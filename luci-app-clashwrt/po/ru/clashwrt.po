@@ -1409,3 +1409,96 @@ msgstr "Стек TUN"
 
 msgid "How the tun device hands packets to mihomo. Leave at system unless something does not work."
 msgstr "Как устройство tun передаёт пакеты в mihomo. Оставьте system, если всё работает."
+
+msgid "in RAM, packed on flash"
+msgstr "в RAM, сжатое на флеше"
+
+msgid "in RAM only"
+msgstr "только в RAM"
+
+msgid "on flash"
+msgstr "на флеше"
+
+msgid "in RAM (%s), packed on flash (%s)"
+msgstr "в RAM (%s), сжатое на флеше (%s)"
+
+msgid "in RAM only (%s)"
+msgstr "только в RAM (%s)"
+
+msgid "on flash (%s)"
+msgstr "на флеше (%s)"
+
+msgid "not installed"
+msgstr "не установлено"
+
+msgid "Moving, this can take a minute…"
+msgstr "Перемещаю, это может занять минуту…"
+
+msgid "Apply"
+msgstr "Применить"
+
+msgid "Now: "
+msgstr "Сейчас: "
+
+msgid "On flash"
+msgstr "На флеше"
+
+msgid "Packed on flash, unpacked into RAM at boot"
+msgstr "Сжато на флеше, распаковка в RAM при загрузке"
+
+msgid "Only in RAM, downloaded at every boot"
+msgstr "Только в RAM, скачивается при каждой загрузке"
+
+msgid "The mihomo core is about 55 MB, more than many routers have free on flash. Packed it takes about 22 MB of flash; kept only in RAM, none. Either way it then takes about 55 MB of RAM, so this needs a router with 256 MB of RAM or more."
+msgstr "Ядро mihomo весит около 55 МБ — больше, чем свободно на флеше у многих роутеров. Сжатое оно занимает около 22 МБ флеша, только в RAM — нисколько. В обоих случаях оно занимает около 55 МБ RAM, поэтому нужен роутер с 256 МБ RAM или больше."
+
+msgid "Only in RAM means downloading it at every boot: while GitHub cannot be reached there is no core, and LAN traffic gets what \"When the VPN fails\" says. Packed on flash has no such gap."
+msgstr "«Только в RAM» значит скачивать ядро при каждой загрузке: пока GitHub недоступен, ядра нет, и трафик LAN идёт так, как задано в «Когда VPN падает». У сжатого на флеше такого промежутка нет."
+
+msgid "Software"
+msgstr "Программно"
+
+msgid "Software and hardware"
+msgstr "Программно и аппаратно"
+
+msgid "active, in hardware"
+msgstr "работает, аппаратно"
+
+msgid "active, in software"
+msgstr "работает, программно"
+
+msgid "not active"
+msgstr "не работает"
+
+msgid "Reloading the firewall…"
+msgstr "Перезагружаю файрвол…"
+
+msgid "Could not change flow offloading: %s"
+msgstr "Не удалось изменить flow offloading: %s"
+
+msgid "Flow offloading"
+msgstr "Flow offloading"
+
+msgid "Speeds up what the bypass lets past mihomo; what goes through mihomo is not affected. Hardware offloading works only on chips that support it, and SQM does not work together with it."
+msgstr "Ускоряет то, что bypass пропускает мимо mihomo; трафик через mihomo это не затрагивает. Аппаратный offloading работает только на чипах, которые его поддерживают, и несовместим с SQM."
+
+msgid "Storage and memory"
+msgstr "Хранение и память"
+
+msgid "Memory ceiling for mihomo"
+msgstr "Предел памяти для mihomo"
+
+msgid "A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts."
+msgstr "Мягкий предел для среды Go: у этой границы mihomo чаще освобождает память, а не растёт; за ней ничего не убивается. Авто: 48 МБ при RAM меньше 256 МБ, 96 МБ — меньше 512 МБ, выше — без предела. Применяется при перезапуске mihomo."
+
+msgid "Auto"
+msgstr "Авто"
+
+msgid "auto, off, or a number of megabytes"
+msgstr "auto, off или число мегабайт"
+
+msgid "Check the core download"
+msgstr "Проверять загрузку ядра"
+
+msgid "A downloaded core must match the SHA-256 GitHub lists for it, or it is not installed."
+msgstr "Скачанное ядро должно совпадать с SHA-256, который GitHub указывает для него, иначе оно не ставится."
