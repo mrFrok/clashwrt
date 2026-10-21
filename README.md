@@ -446,6 +446,28 @@ With **Only in RAM**, the core is downloaded at boot and retried every minute in
 </details>
 
 <details>
+<summary><b>"Could not check for updates" / the Update button does nothing (1.4.0, 1.4.1)</b></summary>
+
+Two bugs in those releases, both fixed in 1.4.2:
+
+- **Updating from 1.3.x to 1.4.0 stopped right at the start** and left the router on 1.3.x: the installer ended silently on a setting older routers did not have yet. Press **Update ClashWrt** again — it now gets 1.4.1 or later.
+- **After 1.4.0/1.4.1, "could not check for updates"**, and the Update button refuses: the installer recorded the release tarball's address instead of the tag's, and the update check did not recognise it. The button cannot get past this by itself, so once, from the shell, either re-run the installer (Enter answers every question; answer *no* to updating the core if you do not want it):
+
+  ```sh
+  sh -c 'wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | sh'
+  ```
+
+  or only fix the record, and then press **Update ClashWrt**:
+
+  ```sh
+  sh -c "sed -i 's#releases/download/\(v[^/]*\)/clashwrt-v[^/]*\.tar\.gz#archive/refs/tags/\1.tar.gz#' /usr/libexec/clashwrt/.install-info"
+  ```
+
+What the last update did is in `/usr/libexec/clashwrt/updctl.sh log`.
+
+</details>
+
+<details>
 <summary><b>The system log looks empty / a LuCI button does nothing</b></summary>
 
 `logread` only reads logd's buffer; with rsyslog or syslog-ng the log is in `/var/log/messages` — the Logs page detects this. For a silent button, reproduce what the page does and look for an ACL denial:
