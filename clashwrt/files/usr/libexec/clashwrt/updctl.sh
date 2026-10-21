@@ -21,7 +21,8 @@
 # into its own session, points it at a log, and returns immediately; the page
 # follows the log.
 #
-# Usage: updctl.sh core-status|core-install [version]|cores|prune-cores
+# Usage: updctl.sh core-status|core-install [version]|core-store flash|gz|ram
+#        updctl.sh core-prepare|cores|prune-cores
 #        updctl.sh self-status|self-update|log
 #
 # CLASHWRT_TMPDIR names a directory to unpack the core in ahead of /tmp.
@@ -247,6 +248,14 @@ do_core_status() {
 	echo "arch:      ${arch:-unknown}"
 	echo "installed: ${installed:-none}"
 	echo "latest:    ${latest:-unknown}"
+	echo "store:     $(core_store)"
+	if [ -L "$CORE_BIN" ]; then
+		echo "location:  ram $(size_kb "$RAM_CORE")K$( [ -f "$STORE_GZ" ] && echo ", packed on flash $(size_kb "$STORE_GZ")K")"
+	elif [ -f "$CORE_BIN" ]; then
+		echo "location:  flash $(size_kb "$CORE_BIN")K"
+	else
+		echo "location:  none"
+	fi
 
 	if [ -z "$latest" ] || [ -z "$installed" ]; then
 		echo "update:    unknown"
@@ -407,7 +416,7 @@ estimate_core_kb() {
 install_plan() {
 	local need=$(( $1 + 1024 )) avail old=0
 	avail="$(usable_kb "$BIN_DIR")"
-	[ -f "$CORE_BIN" ] && old="$(size_kb "$CORE_BIN")"
+	old="$(flash_core_kb)"
 
 	if [ "$avail" -ge "$need" ]; then
 		echo stage
@@ -420,7 +429,7 @@ install_plan() {
 
 install_room_error() {
 	echo "ERROR: not enough room in $BIN_DIR for the new core: it needs about ${1}K," \
-		"there is $(usable_kb "$BIN_DIR")K free and the current core frees $(size_kb "$CORE_BIN")K." \
+		"there is $(usable_kb "$BIN_DIR")K free and the current core frees $(flash_core_kb)K." \
 		"Free some space on the overlay (opkg remove, or delete files you added) and try again." >&2
 }
 
@@ -429,7 +438,7 @@ install_room_error() {
 # download that then fails must not have cost anyone the cores they kept.
 install_possible() {
 	local need=$(( $1 + 1024 )) have
-	have=$(( $(usable_kb "$BIN_DIR") + $(size_kb "$CORE_BIN") + $(spare_cores_kb) ))
+	have=$(( $(usable_kb "$BIN_DIR") + $(flash_core_kb) + $(spare_cores_kb) ))
 	[ "$have" -ge "$need" ] && return 0
 	install_room_error "$1"
 	return 1
@@ -520,6 +529,8 @@ install_core_binary() {
 		;;
 	esac
 
+	# a link into RAM is replaced, not written through
+	[ -L "$CORE_BIN" ] && rm -f "$CORE_BIN"
 	cp -f "$src" "$CORE_BIN" || { echo "ERROR: could not install $CORE_BIN" >&2; return 1; }
 	chmod 0755 "$CORE_BIN"
 }
@@ -529,7 +540,10 @@ install_core_binary() {
 # it makes `restart` reach for a file that is no longer there, so it is not
 # something to do casually.
 core_in_use() {
-	local target="$1" p
+	local target p
+	# /usr/bin/mihomo may be a link to the core in RAM, which is what runs
+	target="$(readlink -f "$1" 2>/dev/null)" || target="$1"
+	[ -n "$target" ] || target="$1"
 	for p in /proc/[0-9]*; do
 		[ "$(readlink "$p/exe" 2>/dev/null)" = "$target" ] && return 0
 	done
@@ -548,16 +562,21 @@ is_elf() {
 # or will not identify itself is listed as "not a mihomo binary" and, more to
 # the point, is never a candidate for removal.
 list_cores() {
-	local f sz ver what
+	local f r sz ver what name
 	for f in "$BIN_DIR"/mihomo*; do
 		[ -f "$f" ] || continue
 		case "$f" in "$BIN_DIR"/.*) continue ;; esac
 
-		sz=$(( $(wc -c < "$f") / 1024 ))
+		# the live core may be a link to the copy in RAM (core_store)
+		r="$f"; name="$f"
+		if [ "$f" = "$CORE_BIN" ] && [ -L "$f" ]; then
+			r="$(readlink -f "$f")"; name="$f -> $r"
+		fi
+		sz=$(( $(wc -c < "$r") / 1024 ))
 		ver=""
-		is_elf "$f" && ver="$("$f" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
+		is_elf "$r" && ver="$("$r" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
 
-		if is_elf "$f" && "$f" -v 2>&1 | head -n1 | grep -qi mihomo; then
+		if is_elf "$r" && "$r" -v 2>&1 | head -n1 | grep -qi mihomo; then
 			if [ "$f" = "$CORE_BIN" ]; then
 				what="live"
 				core_in_use "$f" && what="live, running"
@@ -571,7 +590,7 @@ list_cores() {
 			ver=""
 		fi
 
-		printf '%-34s %8sK  %-12s %s\n' "$f" "$sz" "${ver:-?}" "$what"
+		printf '%-34s %8sK  %-12s %s\n' "$name" "$sz" "${ver:-?}" "$what"
 	done
 }
 
@@ -615,11 +634,154 @@ prune_old_cores() {
 	return 0
 }
 
+# --------------------------------------------------------------------------
+# where the core is kept
+# --------------------------------------------------------------------------
+#
+# A core is ~55 MB, more than many routers have left on flash. core_store
+# says where it is kept between boots:
+#
+#   flash  /usr/bin/mihomo, as it always was
+#   gz     the release's .gz (~22 MB) in $STORE_DIR, unpacked into RAM at boot
+#   ram    only a note of the version on flash; downloaded into RAM at every
+#          boot, so a boot without GitHub is a boot without a core until a
+#          retry gets through
+#
+# With gz and ram, /usr/bin/mihomo is a symlink into $RAM_DIR, so everything
+# that runs "mihomo" by name finds it either way. RAM is taken only while there
+# is clearly room for it, by the measure provctl.sh uses for providers.
+
+STORE_DIR="${CLASHWRT_STORE_DIR:-/etc/clashwrt/store}"
+RAM_DIR="${CLASHWRT_RAM_DIR:-/tmp/clashwrt-core}"
+RAM_CORE="$RAM_DIR/mihomo"
+STORE_GZ="$STORE_DIR/mihomo.gz"
+# One line, "<version> <asset> <GitHub's SHA-256 of it> <SHA-256 of mihomo.gz>",
+# '-' for what is not known: what ram downloads at boot and checks it against,
+# and what gz's file must still hash to before it is unpacked.
+STORE_NOTE="$STORE_DIR/mihomo.note"
+RETRY_PID="$RAM_DIR.retry.pid"
+MEMINFO="${CLASHWRT_MEMINFO:-/proc/meminfo}"
+MIN_RAM_KB=262144
+
+core_store() {
+	case "$(uci -q get clashwrt.config.core_store)" in
+		gz) echo gz ;; ram) echo ram ;; *) echo flash ;;
+	esac
+}
+
+meminfo_kb() { awk -v k="$1:" '$1 == k { print $2; f = 1 } END { if (!f) print 0 }' "$MEMINFO" 2>/dev/null; }
+
+# Why RAM cannot take $1 KB more, or nothing (and failure) when it can: the
+# router has 256 MB or more, MemAvailable stays at max(32 MB, 15 % of RAM)
+# after it, and /tmp keeps a quarter of itself free.
+ram_no_room() {
+	local need=$(( $1 + 1024 )) total avail floor tfree tsize
+	total="$(meminfo_kb MemTotal)"
+	avail="$(meminfo_kb MemAvailable)"
+	[ "$total" -ge "$MIN_RAM_KB" ] || { echo "the router has under 256 MB of RAM"; return 0; }
+	floor=$((total * 15 / 100)); [ "$floor" -ge 32768 ] || floor=32768
+	[ $((avail - need)) -ge "$floor" ] || { echo "too little free RAM (${avail}K free, ${need}K needed, ${floor}K kept spare)"; return 0; }
+	mkdir -p "$RAM_DIR" 2>/dev/null
+	tfree="$(avail_kb "$RAM_DIR")"
+	tsize="$(df -k "$RAM_DIR" 2>/dev/null | awk 'END { for (i = 1; i <= NF; i++) if ($i ~ /%$/) { print $(i-3); exit } }')"
+	case "$tfree$tsize" in ''|*[!0-9]*) echo "cannot measure $RAM_DIR"; return 0 ;; esac
+	[ $((tfree - need)) -ge $((tsize / 4)) ] || { echo "$(mount_of "$RAM_DIR") is nearly full"; return 0; }
+	return 1
+}
+
+# A core sitting in RAM that runs and says it is mihomo.
+core_ready() {
+	[ -x "$RAM_CORE" ] && "$RAM_CORE" -v 2>&1 | head -n1 | grep -qi mihomo
+}
+
+link_core() {
+	[ "$(readlink "$CORE_BIN" 2>/dev/null)" = "$RAM_CORE" ] || ln -sf "$RAM_CORE" "$CORE_BIN"
+}
+
+# The core on flash, as a regular file, or nothing.
+flash_core_kb() {
+	if [ -f "$CORE_BIN" ] && [ ! -L "$CORE_BIN" ]; then size_kb "$CORE_BIN"; else echo 0; fi
+}
+
+version_of() {
+	"$1" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1
+}
+
+# Downloads release asset $1 into $2/mihomo, unpacked, checking the .gz
+# against SHA-256 $3 (unless empty) and keeping a copy of it as $4 (unless
+# empty). Through the proxy first and directly second (see net.sh). Leaves
+# the .gz's hash in $2/gz.sha. Run in a subshell: it dies on failure.
+fetch_core() {
+	local url="$1" tmp="$2" want="$3" keep="$4" route proxy gz_rc shapid got why
+	for route in proxy direct; do
+		proxy=""
+		if [ "$route" = proxy ]; then
+			proxy="$(cw_proxy_url)" || continue
+			echo "downloading ${url##*/} through the proxy"
+		else
+			echo "downloading ${url##*/}"
+		fi
+		rm -f "$tmp/curl.failed" "$tmp/mihomo" "$tmp/gz.fifo" "$tmp/gz.sha"
+		# Downloaded, hashed and unpacked in one stream, so neither the .gz
+		# nor the check needs room of its own; the hash is taken through a
+		# fifo as the bytes go past. gzip checks the CRC at the end of the
+		# stream, so a cut-off download fails here instead of leaving a
+		# truncated core. Each route starts the pipeline afresh rather than
+		# appending to what a failed one left behind.
+		mkfifo "$tmp/gz.fifo" || die "cannot create a fifo in $tmp"
+		sha256_of < "$tmp/gz.fifo" > "$tmp/gz.sha" &
+		shapid=$!
+		{ curl ${proxy:+--proxy "$proxy"} -sSL --fail --proto '=https' -m 300 "$url" 2>"$tmp/curl.err" ||
+			: > "$tmp/curl.failed"; } |
+			tee "$tmp/gz.fifo" ${keep:+"$keep"} |
+			gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
+		gz_rc=$?
+		wait "$shapid"
+		[ ! -e "$tmp/curl.failed" ] && [ "$gz_rc" = 0 ] && break
+		[ "$route" = proxy ] && echo "that failed; trying directly"
+	done
+	if [ -e "$tmp/curl.failed" ]; then
+		why="$(awk 'NF { print; exit }' "$tmp/curl.err" 2>/dev/null)"
+		die "download failed: $url${why:+ ($why)}"
+	fi
+	# Report what gzip actually said rather than guessing at a cause. It
+	# opens with a blank line, so take the first line that has something on
+	# it. A full disk shows up here too.
+	if [ "$gz_rc" != 0 ]; then
+		why="$(awk 'NF { print; exit }' "$tmp/gzip.err" 2>/dev/null)"
+		die "could not decompress the core${why:+: $why}"
+	fi
+	got="$(cat "$tmp/gz.sha" 2>/dev/null)"
+	if [ -n "$want" ] && [ "$got" != "$want" ]; then
+		die "SHA-256 mismatch for ${url##*/}: GitHub says $want, the download is ${got:-unreadable}; nothing was installed"
+	fi
+	[ -n "$want" ] && echo "SHA-256 checked: $got"
+	chmod 0755 "$tmp/mihomo"
+	# A core that cannot run is worse than none, and this is the one check
+	# that catches a wrongly guessed architecture before it takes the proxy
+	# down rather than after.
+	"$tmp/mihomo" -v >/dev/null 2>&1 ||
+		die "the downloaded core does not run on this system (wrong architecture? set MIHOMO_ARCH)"
+}
+
+core_url() { echo "https://github.com/MetaCubeX/mihomo/releases/download/$1/$2"; }
+
+restart_if_running() {
+	if [ "$1" = 1 ]; then
+		echo "restarting mihomo"
+		"$CORE_INIT" restart >/dev/null 2>&1 \
+			|| echo "WARNING: mihomo did not come back up -- check the logs" >&2
+	else
+		echo "mihomo is not running; start it to use the new core"
+	fi
+}
+
 do_core_install() {
 	local want="$1"
-	local arch ver url tmp running need work gz_rc plan asset want_sha got_sha shapid
+	local arch ver url tmp running need work plan asset want_sha mode keep="" gzkb why
 
 	arch="$(map_arch)" || die "unsupported CPU architecture: $(uname -m) -- set MIHOMO_ARCH to name a build"
+	mode="$(core_store)"
 
 	ver="${want:-${MIHOMO_VERSION:-}}"
 	if [ -z "$ver" ]; then
@@ -630,7 +792,7 @@ do_core_install() {
 	valid_tag "$ver" || die "not a release tag: $ver"
 
 	asset="mihomo-linux-${arch}-${ver}.gz"
-	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/${asset}"
+	url="$(core_url "$ver" "$asset")"
 
 	# What the .gz must hash to, asked before anything is downloaded. A core
 	# that cannot be checked is not installed unless core_verify is '0'.
@@ -644,94 +806,69 @@ do_core_install() {
 	# Everything about room is settled before the download, so a router that
 	# cannot take the core finds out in a second, not after a minute of
 	# downloading -- and nothing has been touched when it does.
-	need="$(estimate_core_kb "$(remote_kb "$url")")"
-	install_possible "$need" || exit 1
-	work="$(pick_workdir "$need")" || exit 1
-	echo "unpacking in $work (about ${need}K needed, $(usable_kb "$work")K usable)"
+	gzkb="$(remote_kb "$url")"
+	need="$(estimate_core_kb "$gzkb")"
+	if [ "$mode" = flash ]; then
+		install_possible "$need" || exit 1
+		work="$(pick_workdir "$need")" || exit 1
+		echo "unpacking in $work (about ${need}K needed, $(usable_kb "$work")K usable)"
+	else
+		# a core already in RAM stays there until mihomo restarts on the new one
+		why="$(ram_no_room "$need")" &&
+			die "no room in RAM for the core: $why. Keep it on flash instead (Settings -> Storage)"
+		if [ "$mode" = gz ]; then
+			mkdir -p "$STORE_DIR" || die "cannot create $STORE_DIR"
+			[ -n "$gzkb" ] || gzkb=$(( need * 2 / 5 ))
+			[ $(( $(avail_kb "$STORE_DIR") + $(size_kb "$STORE_GZ") )) -ge $(( gzkb + 1024 )) ] ||
+				die "not enough room on flash for the packed core: it needs about $((gzkb + 1024))K, $(avail_kb "$STORE_DIR")K is free"
+			keep="$STORE_GZ.new"
+		fi
+		work="$RAM_DIR"
+		mkdir -p "$work" || die "cannot create $work"
+		echo "unpacking in $work, $mode mode (about ${need}K)"
+	fi
 
 	tmp="$work/.clashwrt-core.$$"
 	rm -rf "$tmp"; mkdir -p "$tmp" || die "cannot create $tmp"
 
-	# Downloaded and unpacked in one stream, so the .gz never needs room of
-	# its own. gzip checks the CRC at the end of the stream, so a cut-off
-	# download fails here instead of leaving a truncated core.
-	# Through the proxy first and directly second (see net.sh). The stream is
-	# unpacked as it arrives, so each route starts the whole pipeline afresh
-	# rather than appending to what a failed one left behind.
-	local route proxy
-	for route in proxy direct; do
-		proxy=""
-		if [ "$route" = proxy ]; then
-			proxy="$(cw_proxy_url)" || continue
-			echo "downloading mihomo ${ver} for ${arch} through the proxy"
-		else
-			echo "downloading mihomo ${ver} for ${arch}"
-		fi
-		rm -f "$tmp/curl.failed" "$tmp/mihomo" "$tmp/gz.fifo" "$tmp/gz.sha"
-		# The .gz is hashed as it streams past, through a fifo, so checking
-		# it costs no room of its own either.
-		mkfifo "$tmp/gz.fifo" || die "cannot create a fifo in $tmp"
-		sha256_of < "$tmp/gz.fifo" > "$tmp/gz.sha" &
-		shapid=$!
-		{ curl ${proxy:+--proxy "$proxy"} -sSL --fail --proto '=https' -m 300 "$url" 2>"$tmp/curl.err" ||
-			: > "$tmp/curl.failed"; } |
-			tee "$tmp/gz.fifo" |
-			gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
-		gz_rc=$?
-		wait "$shapid"
-		[ ! -e "$tmp/curl.failed" ] && [ "$gz_rc" = 0 ] && break
-		[ "$route" = proxy ] && echo "that failed; trying directly"
-	done
-	if [ -e "$tmp/curl.failed" ]; then
-		local why
-		why="$(awk 'NF { print; exit }' "$tmp/curl.err" 2>/dev/null)"
-		rm -rf "$tmp"
-		die "download failed: $url${why:+ ($why)}"
+	echo "mihomo ${ver} for ${arch}"
+	if ! ( fetch_core "$url" "$tmp" "$want_sha" "$keep" ); then
+		rm -rf "$tmp"; [ -n "$keep" ] && rm -f "$keep"
+		exit 1
 	fi
-
-	# Report what gzip actually said rather than guessing at a cause. It
-	# opens with a blank line, so take the first line that has something on
-	# it rather than the first line. A full disk shows up here too.
-	if [ "$gz_rc" != 0 ]; then
-		local why
-		why="$(awk 'NF { print; exit }' "$tmp/gzip.err" 2>/dev/null)"
-		rm -rf "$tmp"
-		die "could not decompress the core${why:+: $why}"
-	fi
-	got_sha="$(cat "$tmp/gz.sha" 2>/dev/null)"
-	if [ -n "$want_sha" ] && [ "$got_sha" != "$want_sha" ]; then
-		rm -rf "$tmp"
-		die "SHA-256 mismatch for $asset: GitHub says $want_sha, the download is ${got_sha:-unreadable}; nothing was installed"
-	fi
-	[ -n "$want_sha" ] && echo "SHA-256 checked: $got_sha"
-	chmod 0755 "$tmp/mihomo"
-
-	# A core that cannot run is worse than none, and this is the one check
-	# that catches a wrongly guessed architecture before it takes the proxy
-	# down rather than after.
-	"$tmp/mihomo" -v >/dev/null 2>&1 || {
-		rm -rf "$tmp"
-		die "the downloaded core does not run on this system (wrong architecture? set MIHOMO_ARCH)"
-	}
 
 	# Only decide about restarting once the replacement is known good.
 	running=0
 	pidof mihomo >/dev/null 2>&1 && running=1
 
-	# The estimate got the download this far; the real size decides how it
-	# goes into /usr/bin. A core unpacked on the overlay already holds its
-	# room and is only renamed, so there is nothing more to find.
-	if [ "$(mount_of "$tmp")" = "$(mount_of "$BIN_DIR")" ]; then
-		plan=move
+	if [ "$mode" = flash ]; then
+		# The estimate got the download this far; the real size decides how it
+		# goes into /usr/bin. A core unpacked on the overlay already holds its
+		# room and is only renamed, so there is nothing more to find.
+		if [ "$(mount_of "$tmp")" = "$(mount_of "$BIN_DIR")" ]; then
+			plan=move
+		else
+			plan="$(ensure_install_room "$(size_kb "$tmp/mihomo")")" || { rm -rf "$tmp"; exit 1; }
+		fi
+		if ! install_core_binary "$tmp/mihomo" "$plan"; then
+			rm -rf "$tmp"
+			# a core stopped to make room comes back, still the old one
+			[ "$plan" = stop ] && [ "$running" = 1 ] && "$CORE_INIT" start >/dev/null 2>&1
+			exit 1
+		fi
+		# a running core in RAM keeps its pages until the restart below
+		rm -f "$RAM_CORE" "$STORE_GZ" "$STORE_NOTE"
 	else
-		plan="$(ensure_install_room "$(size_kb "$tmp/mihomo")")" || { rm -rf "$tmp"; exit 1; }
-	fi
-
-	if ! install_core_binary "$tmp/mihomo" "$plan"; then
-		rm -rf "$tmp"
-		# a core stopped to make room comes back, still the old one
-		[ "$plan" = stop ] && [ "$running" = 1 ] && "$CORE_INIT" start >/dev/null 2>&1
-		exit 1
+		mv -f "$tmp/mihomo" "$RAM_CORE" || { rm -rf "$tmp"; [ -n "$keep" ] && rm -f "$keep"; die "could not move the core into $RAM_DIR"; }
+		if [ "$mode" = gz ]; then
+			mv -f "$keep" "$STORE_GZ"
+		else
+			rm -f "$STORE_GZ"
+		fi
+		mkdir -p "$STORE_DIR"
+		echo "$ver $asset ${want_sha:--} $( [ "$mode" = gz ] && cat "$tmp/gz.sha" || echo -)" > "$STORE_NOTE"
+		# a core on flash before keeps its blocks until mihomo restarts
+		link_core
 	fi
 	rm -rf "$tmp"
 
@@ -744,13 +881,167 @@ do_core_install() {
 	# The old binary keeps serving until the daemon is restarted, so leaving
 	# it running would report a version nothing is actually using. A core
 	# that was not running is left alone: this is an update, not a start.
-	if [ "$running" = 1 ]; then
-		echo "restarting mihomo"
-		"$CORE_INIT" restart >/dev/null 2>&1 \
-			|| echo "WARNING: mihomo did not come back up -- check the logs" >&2
+	restart_if_running "$running"
+}
+
+# Puts the core into RAM for gz and ram, before mihomo starts: from the .gz on
+# flash, or downloaded. Does nothing when the core is already there. In ram
+# mode a download that fails is retried in the background until it works, and
+# mihomo is started then (with no VPN yet, the watchdog's "when the VPN
+# fails" choice is what LAN traffic gets meanwhile).
+do_core_prepare() {
+	local mode retry="$1" ver asset sha gzsha tmp
+	mode="$(core_store)"
+	[ "$mode" = flash ] && return 0
+	if core_ready; then link_core; return 0; fi
+
+	[ -f "$STORE_NOTE" ] || die "core_store is '$mode' but $STORE_NOTE is missing; install the core again"
+	read -r ver asset sha gzsha < "$STORE_NOTE"
+	valid_tag "$ver" || die "bad version in $STORE_NOTE"
+	case "$asset" in mihomo-linux-*-"$ver".gz) ;; *) die "bad file name in $STORE_NOTE" ;; esac
+
+	mkdir -p "$RAM_DIR" || die "cannot create $RAM_DIR"
+	tmp="$RAM_DIR/.clashwrt-core.$$"
+	rm -rf "$tmp"; mkdir -p "$tmp" || die "cannot create $tmp"
+
+	if [ "$mode" = gz ]; then
+		[ -f "$STORE_GZ" ] || { rm -rf "$tmp"; die "core_store is 'gz' but $STORE_GZ is missing; install the core again"; }
+		if [ "$gzsha" != - ] && [ "$(sha256_of "$STORE_GZ")" != "$gzsha" ]; then
+			rm -rf "$tmp"
+			die "$STORE_GZ does not match its recorded SHA-256 (damaged flash?); install the core again"
+		fi
+		if ! { gzip -dc "$STORE_GZ" > "$tmp/mihomo" 2>/dev/null && chmod 0755 "$tmp/mihomo" &&
+			"$tmp/mihomo" -v >/dev/null 2>&1; }; then
+			rm -rf "$tmp"; die "could not unpack $STORE_GZ into $RAM_DIR"
+		fi
 	else
-		echo "mihomo is not running; start it to use the new core"
+		[ "$sha" != - ] || sha="$(asset_digest MetaCubeX/mihomo "$ver" "$asset")"
+		if [ -z "$sha" ] && [ "$(uci -q get clashwrt.config.core_verify)" != 0 ]; then
+			echo "no SHA-256 to check the core against yet"
+			rm -rf "$tmp"
+			[ -n "$retry" ] || schedule_retry
+			return 1
+		fi
+		if ! ( fetch_core "$(core_url "$ver" "$asset")" "$tmp" "$sha" "" ); then
+			rm -rf "$tmp"
+			[ -n "$retry" ] || schedule_retry
+			return 1
+		fi
 	fi
+
+	mv -f "$tmp/mihomo" "$RAM_CORE" || { rm -rf "$tmp"; die "could not move the core into $RAM_DIR"; }
+	rm -rf "$tmp"
+	link_core
+	echo "core $ver ready in RAM"
+	logger -t clashwrt "core $ver ready in RAM ($mode)" 2>/dev/null
+	return 0
+}
+
+# One background retry loop at a time: once a minute for a day.
+schedule_retry() {
+	local p
+	p="$(cat "$RETRY_PID" 2>/dev/null)"
+	[ -n "$p" ] && kill -0 "$p" 2>/dev/null && return 0
+	echo "will keep trying in the background"
+	logger -t clashwrt "core download failed; retrying every minute" 2>/dev/null
+	if command -v setsid >/dev/null 2>&1; then
+		setsid sh "$0" core-retry >/dev/null 2>&1 </dev/null &
+	else
+		sh "$0" core-retry >/dev/null 2>&1 </dev/null &
+	fi
+}
+
+do_core_retry() {
+	local i=0
+	echo $$ > "$RETRY_PID"
+	while [ "$i" -lt "${CORE_RETRIES:-1440}" ]; do
+		sleep "${CORE_RETRY_DELAY:-60}"
+		i=$((i + 1))
+		if ( do_core_prepare retry ) >/dev/null 2>&1; then
+			rm -f "$RETRY_PID"
+			"$CORE_INIT" enabled >/dev/null 2>&1 && "$CORE_INIT" start >/dev/null 2>&1
+			return 0
+		fi
+	done
+	rm -f "$RETRY_PID"
+	logger -t clashwrt "core download still failing after $i tries; giving up until the next boot" 2>/dev/null
+	return 1
+}
+
+# Moves the core already installed between flash, gz and ram, without
+# downloading it again where that can be helped. New first, old last: at no
+# point is there no core to start.
+do_core_store() {
+	local new="$1" old running src ver arch asset sha="-" gzsha="-" kb est tmp plan why _v="" _a _g=""
+	case "$new" in flash|gz|ram) ;; *) die "usage: core-store flash|gz|ram" ;; esac
+	old="$(core_store)"
+	running=0
+	pidof mihomo >/dev/null 2>&1 && running=1
+
+	if core_ready; then src="$RAM_CORE"
+	elif [ -f "$CORE_BIN" ] && [ ! -L "$CORE_BIN" ] && "$CORE_BIN" -v 2>&1 | head -n1 | grep -qi mihomo; then src="$CORE_BIN"
+	else
+		uci set "clashwrt.config.core_store=$new"; uci commit clashwrt
+		echo "no core installed yet; it will be kept as '$new' when it is installed"
+		return 0
+	fi
+	ver="$(version_of "$src")"
+	valid_tag "$ver" || die "cannot tell the version of $src"
+
+	if [ "$new" = flash ]; then
+		[ "$src" = "$CORE_BIN" ] && [ "$old" = flash ] && { echo "the core is already on flash"; return 0; }
+		plan="$(ensure_install_room "$(size_kb "$src")")" || exit 1
+		install_core_binary "$src" "$plan" || exit 1
+		uci set clashwrt.config.core_store=flash; uci commit clashwrt
+		rm -f "$RAM_CORE" "$STORE_GZ" "$STORE_NOTE"
+		echo "the core is on flash now"
+		restart_if_running "$running"
+		return 0
+	fi
+
+	if [ "$src" != "$RAM_CORE" ]; then
+		kb="$(size_kb "$src")"
+		why="$(ram_no_room "$kb")" && die "no room in RAM for the core: $why"
+	fi
+	arch="$(map_arch)" || die "unsupported CPU architecture"
+	asset="mihomo-linux-${arch}-${ver}.gz"
+	[ -f "$STORE_NOTE" ] && read -r _v _a sha _g < "$STORE_NOTE" && [ "$_v" = "$ver" ] || sha="-"
+	[ "$sha" != - ] || sha="$(asset_digest MetaCubeX/mihomo "$ver" "$asset")"
+	[ -n "$sha" ] || sha="-"
+	mkdir -p "$STORE_DIR" "$RAM_DIR" || die "cannot create $STORE_DIR"
+
+	if [ "$new" = gz ]; then
+		if [ -f "$STORE_GZ" ] && [ -f "$STORE_NOTE" ] && [ "$_v" = "$ver" ] && [ "$_g" != - ] &&
+			[ "$(sha256_of "$STORE_GZ")" = "$_g" ]; then
+			gzsha="$_g"
+		else
+			# a Go binary packs to about two fifths
+			est=$(( $(size_kb "$src") * 2 / 5 ))
+			[ $(( $(avail_kb "$STORE_DIR") + $(size_kb "$STORE_GZ") )) -ge $(( est + 1024 )) ] ||
+				die "not enough room on flash for the packed core: it needs about $((est + 1024))K, $(avail_kb "$STORE_DIR")K is free"
+			echo "packing the core (this takes a while)"
+			if ! { gzip -c "$src" > "$STORE_GZ.new" && mv -f "$STORE_GZ.new" "$STORE_GZ"; }; then
+				rm -f "$STORE_GZ.new"; die "could not write $STORE_GZ"
+			fi
+			gzsha="$(sha256_of "$STORE_GZ")"
+		fi
+	fi
+
+	if [ "$src" != "$RAM_CORE" ]; then
+		tmp="$RAM_DIR/.mihomo.new.$$"
+		if ! { cp -f "$src" "$tmp" && chmod 0755 "$tmp" && mv -f "$tmp" "$RAM_CORE"; }; then
+			rm -f "$tmp"; die "could not copy the core into $RAM_DIR"
+		fi
+	fi
+	echo "$ver $asset $sha $gzsha" > "$STORE_NOTE"
+	[ "$new" = ram ] && rm -f "$STORE_GZ"
+	uci set "clashwrt.config.core_store=$new"; uci commit clashwrt
+	# replaces a core on flash, whose blocks come back when mihomo restarts
+	link_core
+	[ "$new" = ram ] && [ "$sha" = - ] &&
+		echo "WARNING: GitHub gave no SHA-256 for $asset; the download at boot needs one unless core_verify is '0'" >&2
+	echo "the core is kept as '$new' now"
+	restart_if_running "$running"
 }
 
 # --------------------------------------------------------------------------
@@ -873,13 +1164,16 @@ do_log() {
 case "${1:-}" in
 	core-status)  do_core_status ;;
 	core-install) do_core_install "${2:-}" ;;
+	core-prepare) do_core_prepare ;;
+	core-retry)   do_core_retry ;;
+	core-store)   do_core_store "${2:-}" ;;
 	cores)        list_cores ;;
 	prune-cores)  prune_old_cores ;;
 	self-status)  do_self_status ;;
 	self-update)  do_self_update ;;
 	log)          do_log ;;
 	*)
-		echo "usage: $0 core-status|core-install [version]|cores|prune-cores|self-status|self-update|log" >&2
+		echo "usage: $0 core-status|core-install [version]|core-store flash|gz|ram|core-prepare|cores|prune-cores|self-status|self-update|log" >&2
 		exit 1
 		;;
 esac
