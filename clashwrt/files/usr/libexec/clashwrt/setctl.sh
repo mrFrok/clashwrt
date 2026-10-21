@@ -1015,6 +1015,51 @@ do_install_dnsmasq_full() {
 
 [ -n "${CLASHWRT_TEST:-}" ] && return 0 2>/dev/null
 
+# ---------------------------------------------------------------------------
+# flow offloading (fw4)
+# ---------------------------------------------------------------------------
+#
+# What the bypass set is for: a connection the kernel lets past mihomo stays
+# an ordinary routed one, and fw4's flowtable can then offload it -- in
+# software, or on chips that can, in hardware. A connection mihomo relays
+# never can. The setting is fw4's own (firewall defaults); this only reads and
+# sets it from the Bypass tab.
+#
+#   offload            prints "offload: off|sw|hw" and whether fw4's
+#                      flowtable is actually in place
+#   offload off|sw|hw  sets it and reloads the firewall
+do_offload() {
+	local want="$1" sw hw ft
+	if [ -z "$want" ]; then
+		sw="$(uci -q get firewall.@defaults[0].flow_offloading)"
+		hw="$(uci -q get firewall.@defaults[0].flow_offloading_hw)"
+		if [ "$sw" != 1 ]; then echo "offload: off"
+		elif [ "$hw" = 1 ]; then echo "offload: hw"
+		else echo "offload: sw"
+		fi
+		ft="$(nft list flowtables 2>/dev/null)"
+		case "$ft" in
+			*"flags offload"*) echo "flowtable: hardware" ;;
+			*flowtable*) echo "flowtable: software" ;;
+			*) echo "flowtable: none" ;;
+		esac
+		return 0
+	fi
+	case "$want" in
+		off) sw=0; hw=0 ;;
+		sw)  sw=1; hw=0 ;;
+		hw)  sw=1; hw=1 ;;
+		*) die "usage: offload [off|sw|hw]" ;;
+	esac
+	uci -q get firewall.@defaults[0] >/dev/null || die "no firewall defaults section to set"
+	uci set "firewall.@defaults[0].flow_offloading=$sw"
+	uci set "firewall.@defaults[0].flow_offloading_hw=$hw"
+	uci commit firewall
+	"${CLASHWRT_FW_INIT:-/etc/init.d/firewall}" reload >/dev/null 2>&1 || die "the firewall did not reload"
+	log "flow offloading: $want"
+	do_offload
+}
+
 case "${1:-}" in
 	update)  do_update "${2:-}" ;;
 	load)    do_load ;;
@@ -1027,5 +1072,6 @@ case "${1:-}" in
 	install-dnsmasq-full) do_install_dnsmasq_full ;;
 	doh-update) do_doh_update force ;;
 	doh-load)   do_doh_load ;;
-	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full | doh-update | doh-load" >&2; exit 1 ;;
+	offload)    do_offload "${2:-}" ;;
+	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full | doh-update | doh-load | offload [off|sw|hw]" >&2; exit 1 ;;
 esac

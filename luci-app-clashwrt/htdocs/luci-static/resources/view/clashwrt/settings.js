@@ -146,6 +146,60 @@ function customNode(s, tab, name, build) {
 	return o;
 }
 
+function buildOffload() {
+	var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
+	var state = E('span', {}, E('em', {}, _('checking…')));
+	var out = E('div');
+	var sel = E('select', { 'class': 'cbi-input-select' }, [
+		E('option', { 'value': 'off' }, _('Off')),
+		E('option', { 'value': 'sw' }, _('Software')),
+		E('option', { 'value': 'hw' }, _('Software and hardware'))
+	]);
+
+	function show(text) {
+		var cfg = (text.match(/^offload:\s*(\S+)/m) || [])[1] || 'off';
+		var ft = (text.match(/^flowtable:\s*(\S+)/m) || [])[1] || 'none';
+		sel.value = cfg;
+		dom.content(state, ft === 'hardware' ? _('active, in hardware')
+			: ft === 'software' ? _('active, in software') : _('not active'));
+	}
+
+	function refresh() {
+		return fs.exec(SETCTL, ['offload']).then(function (r) { show(r.stdout || ''); })
+			.catch(function () { dom.content(state, _('unknown')); });
+	}
+
+	var btn = E('button', {
+		'class': 'cbi-button cbi-button-apply',
+		'click': function (ev) {
+			ev.preventDefault();
+			btn.disabled = true;
+			dom.content(out, E('em', {}, _('Reloading the firewall…')));
+			fs.exec(SETCTL, ['offload', sel.value]).then(function (r) {
+				if (r.code !== 0) throw r;
+				show(r.stdout || '');
+				dom.content(out, '');
+			}).catch(function (e) {
+				dom.content(out, E('div', { 'class': 'alert-message warning', 'style': 'white-space:pre-wrap' },
+					[ _('Could not change flow offloading: %s').format(describe(e)) ]));
+			}).finally(function () { btn.disabled = false; });
+		}
+	}, _('Apply'));
+
+	refresh();
+	return E('div', { 'class': 'cbi-value' }, [
+		E('label', { 'class': 'cbi-value-title' }, _('Flow offloading')),
+		E('div', { 'class': 'cbi-value-field' }, [
+			sel, ' ', btn,
+			E('div', { 'class': 'cbi-value-description' }, [
+				_('Now: '), state, '. ',
+				_('Speeds up what the bypass lets past mihomo; what goes through mihomo is not affected. Hardware offloading works only on chips that support it, and SQM does not work together with it.')
+			]),
+			out
+		])
+	]);
+}
+
 return view.extend({
 	load: function () {
 		return Promise.all([ uci.load('clashwrt'), uci.load('network').catch(function () {}) ]);
@@ -288,6 +342,12 @@ return view.extend({
 				])
 			]);
 		});
+
+		/* fw4's flowtable is what turns "let past mihomo" into speed. Its
+		 * switch lives in Network -> Firewall; it is shown here because this
+		 * is where the reason for it is. Applied on its own, like the
+		 * watchdog toggle: it reloads the firewall, not ClashWrt. */
+		customNode(s, 'bypass', '_n_offload', function () { return buildOffload(); });
 
 		o = bypass(form.ListValue, 'bypass_set_profile', _('Skip the proxy for'),
 			_('Skips mihomo in the kernel, which is faster. Default: whatever config.yaml does not send to the proxy.'));

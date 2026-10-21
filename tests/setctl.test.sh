@@ -243,4 +243,16 @@ grep -q '9.9.9.9' "$NFT_LOADED" && pass "doh_extra added" || fail "doh_extra add
 grep -q 'bad' "$NFT_LOADED" && fail "a bad extra is dropped" || pass "a bad extra is dropped"
 rm -f "$TMP/bin/curl"
 
+# flow offloading is fw4's setting, read and set from here
+printf '#!/bin/sh\necho "$1" >> "%s/fwinit.log"\n' "$TMP" > "$TMP/fwinit"; chmod +x "$TMP/fwinit"
+export CLASHWRT_FW_INIT="$TMP/fwinit"
+uci set 'firewall.@defaults[0]=defaults'
+case "$(sh "$SETCTL" offload)" in *"offload: off"*) pass "offload: off by default" ;; *) fail "offload: off by default" ;; esac
+sh "$SETCTL" offload hw >/dev/null 2>&1
+eq "hw sets both" "1 1" "$(uci get 'firewall.@defaults[0].flow_offloading') $(uci get 'firewall.@defaults[0].flow_offloading_hw')"
+eq "and reloads the firewall" "reload" "$(cat "$TMP/fwinit.log")"
+sh "$SETCTL" offload sw >/dev/null 2>&1
+case "$(sh "$SETCTL" offload)" in *"offload: sw"*) pass "sw" ;; *) fail "sw" ;; esac
+sh "$SETCTL" offload bogus >/dev/null 2>&1 && fail "a bad value is refused" || pass "a bad value is refused"
+
 finish
