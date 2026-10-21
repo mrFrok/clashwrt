@@ -34,6 +34,9 @@ boot() {
 start_service() {
 	# a core kept in RAM goes there before mihomo (START=99) looks for it
 	/usr/libexec/clashwrt/updctl.sh core-boot >/dev/null 2>&1
+	# and the dashboard; in the background, since kept only in RAM it is
+	# fetched again, through mihomo once that is up
+	( /usr/libexec/clashwrt/uictl.sh prepare >/dev/null 2>&1 & )
 
 	# before mihomo (START=99) reads its providers: refill them into RAM
 	# after a reboot, or keep them on flash if RAM cannot take them now

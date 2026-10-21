@@ -246,6 +246,17 @@ if [ "$SKIP_CORE" != 1 ] && [ ! -f "$MIHOMO_DIR/ui/index.html" ]; then
 		"metacubexd|metacubexd, about 8 MB" "zashboard|zashboard, about 12 MB" \
 		"yacd|Yacd-meta, about 5 MB" "none|none")"
 fi
+UI_STORE=""
+if [ "$UI_NAME" != none ] && [ "$RAM_OK" = 1 ]; then
+	case "$UI_NAME" in zashboard) _ui=12288 ;; yacd) _ui=5120 ;; *) _ui=8192 ;; esac
+	_rec=flash; [ "$LEFT_KB" -ge $((_ui + 4096)) ] || _rec=gz
+	_cur="$(uci -q get clashwrt.config.ui_store 2>/dev/null)"; [ -n "$_cur" ] && _rec="$_cur"
+	UI_STORE="$(ask "Where should the dashboard be kept?" "$_rec" \
+		"flash|on flash, about $(mb "$_ui")" \
+		"gz|packed on flash, unpacked into RAM at boot: about a third of that on flash" \
+		"ram|only in RAM, fetched again after every boot: no flash")"
+	case "$UI_STORE" in flash) LEFT_KB=$((LEFT_KB - _ui)) ;; gz) LEFT_KB=$((LEFT_KB - _ui / 3)) ;; esac
+fi
 
 DNSMASQ_FULL=no
 if ! { dnsmasq --version 2>/dev/null | grep -qw nftset && ! dnsmasq --version 2>/dev/null | grep -qw no-nftset; }; then
@@ -261,7 +272,7 @@ if [ "$INTERACTIVE" = 1 ]; then
 		echo "About to install:"
 		echo "  version:   $CHANNEL"
 		[ -n "$CORE_STORE" ] && echo "  core:      $( [ "$CORE_UPDATE" = yes ] && echo "latest release" || echo "keep the installed one"), kept: $CORE_STORE"
-		echo "  dashboard: $UI_NAME"
+		echo "  dashboard: $UI_NAME${UI_STORE:+, kept: $UI_STORE}"
 		echo "  dnsmasq-full: $DNSMASQ_FULL"
 		printf 'Proceed? [Y/n]: '
 	} > /dev/tty
@@ -630,6 +641,7 @@ fi
 
 if [ "$UI_NAME" != none ] && [ ! -f "$MIHOMO_DIR/ui/index.html" ]; then
 	say "installing the web dashboard ($UI_NAME)"
+	[ -n "$UI_STORE" ] && uci -q set "clashwrt.config.ui_store=$UI_STORE" && uci -q commit clashwrt
 	/usr/libexec/clashwrt/uictl.sh install "$UI_NAME" || warn "dashboard install failed; do it later from the Web dashboard page"
 fi
 
