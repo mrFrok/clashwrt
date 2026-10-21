@@ -395,6 +395,26 @@ parse_domains() {
 	| grep -E '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
 }
 
+# Duplicates and every name whose parent is also listed go: dnsmasq matches
+# a domain with all its subdomains, so each would only cost it memory (about
+# 7 % of Re-filter's list). Order is kept, as max_domains keeps the first.
+drop_covered() {
+	awk '
+		{ d[NR] = $0; have[$0] = 1 }
+		END {
+			for (i = 1; i <= NR; i++) {
+				x = d[i]
+				if (seen[x]++) continue
+				p = x; up = 0
+				while ((j = index(p, ".")) > 0) {
+					p = substr(p, j + 1)
+					if (p in have) { up = 1; break }
+				}
+				if (!up) print x
+			}
+		}'
+}
+
 # An .mrs provider as text, through mihomo's own converter, into $3. mrs
 # holds only domain and ipcidr sets, so classical is not asked for.
 mrs_to_text() {
@@ -524,7 +544,7 @@ do_from_config() {
 	# the files at the same moment must see a whole list, old or new
 	parse_list < "$ips" > "$CONF_LIST.$$"
 	if [ "$set_mode" = "include" ]; then
-		parse_domains < "$doms" | awk '!seen[$0]++' > "$CONF_DOMAINS.$$"
+		parse_domains < "$doms" | drop_covered > "$CONF_DOMAINS.$$"
 	else
 		: > "$CONF_DOMAINS.$$"
 	fi

@@ -205,4 +205,27 @@ t('the TUN stack is written as chosen, read back, and anything else is system', 
 	assert.ok(/\n  stack: system\n/.test(bad));
 });
 
+t('TUN gets GSO on the kernel stacks only', function () {
+	['system', 'mixed', 'gvisor', 'mips'].forEach(function (k) {
+		var y = gen.generate({ proxies: [], mode: 'tun', routing: 'direct_except_list', tunStack: k });
+		assert.strictEqual(/\n  gso: true\n  gso-max-size: 65536\n/.test(y), k === 'system' || k === 'mixed', k);
+	});
+	assert.ok(!/gso:/.test(gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' })));
+});
+
+t('no process lookups, and no GEOIP that would pull geoip.metadb', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'proxy_except_ru' });
+	assert.ok(/\nfind-process-mode: off\n/.test(y));
+	assert.ok(!/GEOIP/.test(y));
+	assert.ok(/\n  - IP-CIDR,192\.168\.0\.0\/16,DIRECT,no-resolve\n/.test(y));
+	assert.ok(/\n  - IP-CIDR,10\.0\.0\.0\/8,DIRECT,no-resolve\n/.test(y));
+});
+
+t('geosite and geoip rule-sets are fetched as mrs', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'proxy_except_ru' });
+	assert.ok(/geo\/geosite\/category-ru\.mrs/.test(y));
+	assert.ok(/geo\/geoip\/ru\.mrs/.test(y));
+	assert.ok(!/meta-rules-dat.*\.yaml/.test(y));
+});
+
 console.log(n + ' generator tests passed');

@@ -54,7 +54,7 @@ rules:
   - MATCH,DIRECT
 Y
 printf '1.2.3.0/24\n0.0.0.0/0\n1.2.3.4/33\n' > "$TMP/mihomo/providers/blocked.txt"
-printf 'payload:\n  - "+.claude.ai"\n  - "*.bad*wild.com"\n' > "$TMP/mihomo/providers/ai.yaml"
+printf 'payload:\n  - "+.claude.ai"\n  - "*.bad*wild.com"\n  - "api.claude.ai"\n  - "notclaude.ai"\n  - "claude.ai"\n' > "$TMP/mihomo/providers/ai.yaml"
 # a binary provider that is downloaded but that no converter is there to read
 printf 'binary' > "$TMP/mihomo/providers/b.mrs"
 
@@ -75,8 +75,8 @@ case "$(sh "$SETCTL" from-config)" in
 esac
 
 NFTSET=nftset sh "$SETCTL" load
-eq "dnsmasq-full gets the proxied domains, lower-cased" \
-	"chatgpt.com gemini.google.com claude.ai" "$(nftset)"
+eq "dnsmasq-full gets the proxied domains, lower-cased, without those a parent covers" \
+	"chatgpt.com gemini.google.com claude.ai notclaude.ai" "$(nftset)"
 
 uci set clashwrt.config.dns_hijack=1
 NFTSET=nftset sh "$SETCTL" load

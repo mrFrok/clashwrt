@@ -41,21 +41,32 @@ var RULESETS = {
 	'gemini':    { title: 'Google Gemini', providers: { 'geosite_gemini': geosite('google-gemini') } }
 };
 
+/* mrs rather than yaml: the same sets in a binary form mihomo loads without
+ * parsing, a fifth of the size on flash (geoip/ru: 120 KB against 600 KB)
+ * and without the garbage a YAML parse leaves behind on a small router. */
 function geosite(name) {
 	return {
-		behavior: 'domain', format: 'yaml',
-		url: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/' + name + '.yaml',
-		path: './geo/geosite/' + name + '.yaml'
+		behavior: 'domain', format: 'mrs',
+		url: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geosite/' + name + '.mrs',
+		path: './geo/geosite/' + name + '.mrs'
 	};
 }
 
 function geoip(name) {
 	return {
-		behavior: 'ipcidr', format: 'yaml',
-		url: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geoip/' + name + '.yaml',
-		path: './geo/geoip/' + name + '.yaml'
+		behavior: 'ipcidr', format: 'mrs',
+		url: 'https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/meta/geo/geoip/' + name + '.mrs',
+		path: './geo/geoip/' + name + '.mrs'
 	};
 }
+
+/* Private and special ranges, kept off the proxy. GEOIP,private would do the
+ * same, but makes mihomo download geoip.metadb (8 MB on flash, and a config
+ * test that fails while GitHub is out of reach) to answer it. */
+var PRIVATE_NETS = [
+	'0.0.0.0/8', '10.0.0.0/8', '100.64.0.0/10', '127.0.0.0/8', '169.254.0.0/16',
+	'172.16.0.0/12', '192.168.0.0/16', '224.0.0.0/4', '255.255.255.255/32'
+];
 
 var DNS_PRESETS = {
 	'local-agh':   { title: 'Local resolver (AdGuard Home etc.)', servers: ['127.0.0.1:5335'] },
@@ -1036,6 +1047,9 @@ return baseclass.extend({
 		L.push('allow-lan: false');
 		L.push('unified-delay: true');
 		L.push('tcp-concurrent: true');
+		/* the processes behind a connection are on the LAN, out of sight of
+		 * the router's /proc, so looking them up is work for nothing */
+		L.push('find-process-mode: off');
 		L.push('external-controller: 0.0.0.0:' + portOf(o.apiPort, 9090));
 		/* The controller listens on every interface so the dashboard works
 		 * from the LAN, and without a secret anyone there could switch the
@@ -1060,10 +1074,18 @@ return baseclass.extend({
 			/* system is the kernel's own stack and the fastest; gvisor and
 			 * mixed are userspace for kernels that misbehave; mips is
 			 * mihomo's userspace stack built for slow MIPS cores */
-			L.push('  stack: ' + (TUN_STACKS.indexOf(o.tunStack) >= 0 ? o.tunStack : 'system'));
+			var stack = TUN_STACKS.indexOf(o.tunStack) >= 0 ? o.tunStack : 'system';
+			L.push('  stack: ' + stack);
 			L.push('  auto-route: false');
 			L.push('  auto-redirect: false');
 			L.push('  auto-detect-interface: false');
+			/* GSO hands mihomo whole 64K segments instead of single packets,
+			 * which is most of the CPU a fast link costs in TUN mode; the
+			 * kernel's stack (system, and mixed for TCP) is what supports it */
+			if (stack === 'system' || stack === 'mixed') {
+				L.push('  gso: true');
+				L.push('  gso-max-size: 65536');
+			}
 		}
 		L.push('');
 
@@ -1266,7 +1288,7 @@ return baseclass.extend({
 			emitExtra();
 			L.push('  - RULE-SET,ru_domains,DIRECT');
 			L.push('  - RULE-SET,ru_ips,DIRECT');
-			L.push('  - GEOIP,private,DIRECT,no-resolve');
+			PRIVATE_NETS.forEach(function (n) { L.push('  - IP-CIDR,' + n + ',DIRECT,no-resolve'); });
 			/* the catch-all cannot be an AND rule, so UDP is split off just
 			 * before it */
 			if (udpSplit) L.push('  - NETWORK,udp,ProxyUDP');
