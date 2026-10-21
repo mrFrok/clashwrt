@@ -187,6 +187,17 @@ do_apply() {
 		sleep 2
 		/usr/libexec/clashwrt/fw.sh check >/dev/null 2>&1
 	fi
+
+	# The bypass set and dnsmasq's domains are read from the config's rules
+	# and providers, so they follow it; otherwise they kept the old config's
+	# until the next firewall rebuild or the nightly refresh. In the
+	# background and after a pause: mihomo fetches new providers just after
+	# its restart, and this call should not wait for that.
+	if command -v setsid >/dev/null 2>&1; then
+		setsid sh -c 'sleep 30; /usr/libexec/clashwrt/setctl.sh load' >/dev/null 2>&1 </dev/null &
+	else
+		( sleep 30; /usr/libexec/clashwrt/setctl.sh load ) >/dev/null 2>&1 </dev/null &
+	fi
 	return 0
 }
 
