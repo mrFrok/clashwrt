@@ -121,6 +121,10 @@ config clashwrt 'config'
 	option fetch_via_proxy '1'
 	option fetch_port '7899'
 
+	# A core download must hash to the SHA-256 GitHub lists for it, or it is
+	# not installed. '0' installs one GitHub gives no digest for (old releases).
+	option core_verify '1'
+
 	option watchdog '0'
 
 	# What the watchdog does when the proxy path dies but the internet is fine:

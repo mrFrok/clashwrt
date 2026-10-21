@@ -33,6 +33,10 @@ SLUG_DEFAULT="mrFrok/clashwrt"
 REPO_DEFAULT=""
 INFO="/usr/libexec/clashwrt/.install-info"
 LOG="/tmp/clashwrt-update.log"
+# Where the core lives; overridden only by the tests.
+BIN_DIR="${CLASHWRT_BIN_DIR:-/usr/bin}"
+CORE_BIN="$BIN_DIR/mihomo"
+CORE_INIT="${CLASHWRT_CORE_INIT:-/etc/init.d/mihomo}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -328,7 +332,7 @@ usable_kb() {
 # (mihomo -v) to prove it suits this CPU before anything is replaced.
 work_candidates() {
 	local usr_mp
-	usr_mp="$(mount_of /usr/bin)"
+	usr_mp="$(mount_of "$BIN_DIR")"
 	{
 		[ -n "${CLASHWRT_TMPDIR:-}" ] && echo "$CLASHWRT_TMPDIR"
 		echo /tmp
@@ -346,7 +350,7 @@ work_candidates() {
 		esac
 		echo "$d"
 	done | awk '!seen[$0]++'
-	echo /usr/bin
+	echo "$BIN_DIR"
 }
 
 # Kilobytes of spare cores prune_old_cores would remove, i.e. room that can
@@ -354,7 +358,7 @@ work_candidates() {
 spare_cores_kb() {
 	local f t=0
 	[ "${KEEP_OLD_CORES:-0}" = "1" ] && { echo 0; return; }
-	for f in /usr/bin/mihomo?*; do
+	for f in "$BIN_DIR"/mihomo?*; do
 		[ -f "$f" ] || continue
 		core_in_use "$f" && continue
 		is_elf "$f" || continue
@@ -382,7 +386,7 @@ remote_kb() {
 # ceiling; with neither, 64 MB covers every build mihomo publishes today.
 estimate_core_kb() {
 	local gz="$1" cur
-	cur="$(size_kb /usr/bin/mihomo)"
+	cur="$(size_kb "$CORE_BIN")"
 	if [ "$cur" -gt 0 ]; then
 		echo $(( cur + cur / 8 ))
 	elif [ -n "$gz" ]; then
@@ -402,21 +406,21 @@ estimate_core_kb() {
 # room back on the spot.
 install_plan() {
 	local need=$(( $1 + 1024 )) avail old=0
-	avail="$(usable_kb /usr/bin)"
-	[ -f /usr/bin/mihomo ] && old="$(size_kb /usr/bin/mihomo)"
+	avail="$(usable_kb "$BIN_DIR")"
+	[ -f "$CORE_BIN" ] && old="$(size_kb "$CORE_BIN")"
 
 	if [ "$avail" -ge "$need" ]; then
 		echo stage
 	elif [ $(( avail + old )) -ge "$need" ]; then
-		if core_in_use /usr/bin/mihomo; then echo stop; else echo inplace; fi
+		if core_in_use "$CORE_BIN"; then echo stop; else echo inplace; fi
 	else
 		return 1
 	fi
 }
 
 install_room_error() {
-	echo "ERROR: not enough room in /usr/bin for the new core: it needs about ${1}K," \
-		"there is $(usable_kb /usr/bin)K free and the current core frees $(size_kb /usr/bin/mihomo)K." \
+	echo "ERROR: not enough room in $BIN_DIR for the new core: it needs about ${1}K," \
+		"there is $(usable_kb "$BIN_DIR")K free and the current core frees $(size_kb "$CORE_BIN")K." \
 		"Free some space on the overlay (opkg remove, or delete files you added) and try again." >&2
 }
 
@@ -425,7 +429,7 @@ install_room_error() {
 # download that then fails must not have cost anyone the cores they kept.
 install_possible() {
 	local need=$(( $1 + 1024 )) have
-	have=$(( $(usable_kb /usr/bin) + $(size_kb /usr/bin/mihomo) + $(spare_cores_kb) ))
+	have=$(( $(usable_kb "$BIN_DIR") + $(size_kb "$CORE_BIN") + $(spare_cores_kb) ))
 	[ "$have" -ge "$need" ] && return 0
 	install_room_error "$1"
 	return 1
@@ -481,43 +485,43 @@ pick_workdir() {
 # fails, the router stays that way. That is why the room is checked first.
 install_core_binary() {
 	local src="$1" plan="$2"
-	local staged="/usr/bin/.mihomo.clashwrt-new" i=0
+	local staged="$BIN_DIR/.mihomo.clashwrt-new" i=0
 
 	rm -f "$staged"
 
 	case "$plan" in
 	move)
-		mv -f "$src" /usr/bin/mihomo && return 0
-		echo "ERROR: could not move the new core into /usr/bin; the old core is untouched" >&2
+		mv -f "$src" "$CORE_BIN" && return 0
+		echo "ERROR: could not move the new core into $BIN_DIR; the old core is untouched" >&2
 		return 1
 		;;
 	stage)
-		if cp -f "$src" "$staged" && chmod 0755 "$staged" && mv -f "$staged" /usr/bin/mihomo; then
+		if cp -f "$src" "$staged" && chmod 0755 "$staged" && mv -f "$staged" "$CORE_BIN"; then
 			return 0
 		fi
 		rm -f "$staged"
-		echo "ERROR: could not stage a copy in /usr/bin; the old core is untouched" >&2
+		echo "ERROR: could not stage a copy in $BIN_DIR; the old core is untouched" >&2
 		return 1
 		;;
 	stop)
 		echo "the overlay has room for one core only; stopping mihomo while it is replaced"
-		/etc/init.d/mihomo stop >/dev/null 2>&1
-		while core_in_use /usr/bin/mihomo && [ "$i" -lt 10 ]; do
+		"$CORE_INIT" stop >/dev/null 2>&1
+		while core_in_use "$CORE_BIN" && [ "$i" -lt 10 ]; do
 			sleep 1
 			i=$((i + 1))
 		done
-		core_in_use /usr/bin/mihomo && {
+		core_in_use "$CORE_BIN" && {
 			echo "ERROR: mihomo did not stop, so its blocks cannot be reused; the old core is untouched" >&2
 			return 1
 		}
 		;;
 	inplace)
-		echo "not enough room in /usr/bin for a second copy; replacing in place"
+		echo "not enough room in $BIN_DIR for a second copy; replacing in place"
 		;;
 	esac
 
-	cp -f "$src" /usr/bin/mihomo || { echo "ERROR: could not install /usr/bin/mihomo" >&2; return 1; }
-	chmod 0755 /usr/bin/mihomo
+	cp -f "$src" "$CORE_BIN" || { echo "ERROR: could not install $CORE_BIN" >&2; return 1; }
+	chmod 0755 "$CORE_BIN"
 }
 
 # Is this exact file the binary behind a process that is running right now?
@@ -545,16 +549,16 @@ is_elf() {
 # the point, is never a candidate for removal.
 list_cores() {
 	local f sz ver what
-	for f in /usr/bin/mihomo*; do
+	for f in "$BIN_DIR"/mihomo*; do
 		[ -f "$f" ] || continue
-		case "$f" in /usr/bin/.*) continue ;; esac
+		case "$f" in "$BIN_DIR"/.*) continue ;; esac
 
 		sz=$(( $(wc -c < "$f") / 1024 ))
 		ver=""
 		is_elf "$f" && ver="$("$f" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
 
 		if is_elf "$f" && "$f" -v 2>&1 | head -n1 | grep -qi mihomo; then
-			if [ "$f" = "/usr/bin/mihomo" ]; then
+			if [ "$f" = "$CORE_BIN" ]; then
 				what="live"
 				core_in_use "$f" && what="live, running"
 			elif core_in_use "$f"; then
@@ -590,10 +594,10 @@ prune_old_cores() {
 		return 0
 	fi
 
-	for f in /usr/bin/mihomo*; do
+	for f in "$BIN_DIR"/mihomo*; do
 		[ -f "$f" ] || continue
-		[ "$f" = "/usr/bin/mihomo" ] && continue
-		case "$f" in /usr/bin/.*) continue ;; esac
+		[ "$f" = "$CORE_BIN" ] && continue
+		case "$f" in "$BIN_DIR"/.*) continue ;; esac
 
 		core_in_use "$f" && { echo "keeping $f: it is running"; continue; }
 		is_elf "$f" || continue
@@ -613,7 +617,7 @@ prune_old_cores() {
 
 do_core_install() {
 	local want="$1"
-	local arch ver url tmp running need work gz_rc plan
+	local arch ver url tmp running need work gz_rc plan asset want_sha got_sha shapid
 
 	arch="$(map_arch)" || die "unsupported CPU architecture: $(uname -m) -- set MIHOMO_ARCH to name a build"
 
@@ -625,7 +629,17 @@ do_core_install() {
 	[ -n "$ver" ] || die "could not determine the mihomo version (pass it as an argument, or set MIHOMO_VERSION)"
 	valid_tag "$ver" || die "not a release tag: $ver"
 
-	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/mihomo-linux-${arch}-${ver}.gz"
+	asset="mihomo-linux-${arch}-${ver}.gz"
+	url="https://github.com/MetaCubeX/mihomo/releases/download/${ver}/${asset}"
+
+	# What the .gz must hash to, asked before anything is downloaded. A core
+	# that cannot be checked is not installed unless core_verify is '0'.
+	want_sha="$(asset_digest MetaCubeX/mihomo "$ver" "$asset")"
+	if [ -z "$want_sha" ]; then
+		[ "$(uci -q get clashwrt.config.core_verify)" = 0 ] ||
+			die "GitHub did not give the SHA-256 of $asset, so the download cannot be checked (set core_verify to '0' in /etc/config/clashwrt to install it unchecked)"
+		echo "WARNING: installing $asset without a SHA-256 check (core_verify is '0')" >&2
+	fi
 
 	# Everything about room is settled before the download, so a router that
 	# cannot take the core finds out in a second, not after a minute of
@@ -653,11 +667,18 @@ do_core_install() {
 		else
 			echo "downloading mihomo ${ver} for ${arch}"
 		fi
-		rm -f "$tmp/curl.failed" "$tmp/mihomo"
+		rm -f "$tmp/curl.failed" "$tmp/mihomo" "$tmp/gz.fifo" "$tmp/gz.sha"
+		# The .gz is hashed as it streams past, through a fifo, so checking
+		# it costs no room of its own either.
+		mkfifo "$tmp/gz.fifo" || die "cannot create a fifo in $tmp"
+		sha256_of < "$tmp/gz.fifo" > "$tmp/gz.sha" &
+		shapid=$!
 		{ curl ${proxy:+--proxy "$proxy"} -sSL --fail --proto '=https' -m 300 "$url" 2>"$tmp/curl.err" ||
 			: > "$tmp/curl.failed"; } |
+			tee "$tmp/gz.fifo" |
 			gzip -dc > "$tmp/mihomo" 2>"$tmp/gzip.err"
 		gz_rc=$?
+		wait "$shapid"
 		[ ! -e "$tmp/curl.failed" ] && [ "$gz_rc" = 0 ] && break
 		[ "$route" = proxy ] && echo "that failed; trying directly"
 	done
@@ -677,6 +698,12 @@ do_core_install() {
 		rm -rf "$tmp"
 		die "could not decompress the core${why:+: $why}"
 	fi
+	got_sha="$(cat "$tmp/gz.sha" 2>/dev/null)"
+	if [ -n "$want_sha" ] && [ "$got_sha" != "$want_sha" ]; then
+		rm -rf "$tmp"
+		die "SHA-256 mismatch for $asset: GitHub says $want_sha, the download is ${got_sha:-unreadable}; nothing was installed"
+	fi
+	[ -n "$want_sha" ] && echo "SHA-256 checked: $got_sha"
 	chmod 0755 "$tmp/mihomo"
 
 	# A core that cannot run is worse than none, and this is the one check
@@ -694,7 +721,7 @@ do_core_install() {
 	# The estimate got the download this far; the real size decides how it
 	# goes into /usr/bin. A core unpacked on the overlay already holds its
 	# room and is only renamed, so there is nothing more to find.
-	if [ "$(mount_of "$tmp")" = "$(mount_of /usr/bin)" ]; then
+	if [ "$(mount_of "$tmp")" = "$(mount_of "$BIN_DIR")" ]; then
 		plan=move
 	else
 		plan="$(ensure_install_room "$(size_kb "$tmp/mihomo")")" || { rm -rf "$tmp"; exit 1; }
@@ -703,12 +730,12 @@ do_core_install() {
 	if ! install_core_binary "$tmp/mihomo" "$plan"; then
 		rm -rf "$tmp"
 		# a core stopped to make room comes back, still the old one
-		[ "$plan" = stop ] && [ "$running" = 1 ] && /etc/init.d/mihomo start >/dev/null 2>&1
+		[ "$plan" = stop ] && [ "$running" = 1 ] && "$CORE_INIT" start >/dev/null 2>&1
 		exit 1
 	fi
 	rm -rf "$tmp"
 
-	echo "installed $(/usr/bin/mihomo -v 2>&1 | head -n1)"
+	echo "installed $("$CORE_BIN" -v 2>&1 | head -n1)"
 
 	# Only once the new core is in place and known good. A download that
 	# failed must never have cost anyone the binaries they were keeping.
@@ -719,7 +746,7 @@ do_core_install() {
 	# that was not running is left alone: this is an update, not a start.
 	if [ "$running" = 1 ]; then
 		echo "restarting mihomo"
-		/etc/init.d/mihomo restart >/dev/null 2>&1 \
+		"$CORE_INIT" restart >/dev/null 2>&1 \
 			|| echo "WARNING: mihomo did not come back up -- check the logs" >&2
 	else
 		echo "mihomo is not running; start it to use the new core"

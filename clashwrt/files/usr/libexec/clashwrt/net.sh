@@ -58,3 +58,28 @@ cw_curl() {
 	fi
 	curl "$@"
 }
+
+# The SHA-256 GitHub computed for one file of a release, from the API, or
+# nothing when it does not say (a release from before GitHub kept digests,
+# the API out of reach). Neither mihomo nor ClashWrt signs its releases; this
+# catches a download corrupted, cut short or swapped on the way -- through a
+# proxy node, say -- not a release that was bad at its source.
+#
+#   asset_digest <owner/repo> <tag> <file name>
+#
+# The API answer is pretty-printed, one key per line; each asset lists its
+# "name" before its "digest", and nothing nested in it has a "name" of its own.
+asset_digest() {
+	cw_curl -sSL --fail --proto '=https' -m 30 \
+		"https://api.github.com/repos/$1/releases/tags/$2" 2>/dev/null |
+		awk -v want="$3" '
+			/^[ \t]*"name":/ { n = $0; sub(/^[^:]*:[ \t]*"/, "", n); sub(/".*/, "", n) }
+			/^[ \t]*"digest":[ \t]*"sha256:[0-9a-f]{64}"/ && n == want {
+				d = $0; sub(/.*"sha256:/, "", d); sub(/".*/, "", d); print d; exit
+			}'
+}
+
+# The SHA-256 of a file, or of stdin, as bare hex.
+sha256_of() {
+	sha256sum ${1:+"$1"} 2>/dev/null | awk '{ print $1; exit }'
+}

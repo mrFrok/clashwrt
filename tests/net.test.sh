@@ -63,4 +63,39 @@ eq "mihomo not running: direct" "answer via direct" "$(cw_curl -sS https://x)"
 uci set clashwrt.config.fetch_via_proxy=0
 eq "fetch_via_proxy off: direct" "answer via direct" "$(cw_curl -sS https://x)"
 
+# asset_digest reads GitHub's per-file digest out of the release JSON
+H1=1111111111111111111111111111111111111111111111111111111111111111
+H2=2222222222222222222222222222222222222222222222222222222222222222
+cat > "$TMP/release.json" <<J
+{
+  "name": "v1.19.32",
+  "assets": [
+    {
+      "name": "mihomo-linux-arm64-v1.19.32.gz",
+      "uploader": {
+        "login": "github-actions[bot]"
+      },
+      "digest": "sha256:$H1"
+    },
+    {
+      "name": "mihomo-linux-amd64-v1.19.32.gz",
+      "digest": "sha256:$H2"
+    },
+    {
+      "name": "version.txt",
+      "digest": null
+    }
+  ]
+}
+J
+curl() { cat "$TMP/release.json"; }
+eq "digest of the named asset" "$H2" "$(asset_digest MetaCubeX/mihomo v1.19.32 mihomo-linux-amd64-v1.19.32.gz)"
+eq "the first asset too" "$H1" "$(asset_digest MetaCubeX/mihomo v1.19.32 mihomo-linux-arm64-v1.19.32.gz)"
+eq "no digest: nothing" "" "$(asset_digest MetaCubeX/mihomo v1.19.32 version.txt)"
+eq "unknown asset: nothing" "" "$(asset_digest MetaCubeX/mihomo v1.19.32 nope.gz)"
+unset -f curl
+printf 'abc' > "$TMP/f"
+eq "sha256_of a file" "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" "$(sha256_of "$TMP/f")"
+eq "sha256_of stdin" "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" "$(printf abc | sha256_of)"
+
 finish
