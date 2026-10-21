@@ -937,6 +937,37 @@ do_core_prepare() {
 	return 0
 }
 
+# At boot, before mihomo starts: a packed core is unpacked on the spot; one
+# kept only in RAM is downloaded in the background, since the WAN may not be up
+# yet, and mihomo is started once it is there.
+do_core_boot() {
+	case "$(core_store)" in
+		gz)  do_core_prepare ;;
+		ram) if core_ready; then link_core; else schedule_retry; fi ;;
+	esac
+}
+
+# The Go runtime's memory settings for mihomo, as KEY=VALUE words for procd.
+# GOMEMLIMIT is a soft ceiling: the collector works harder near it rather
+# than letting the heap grow, which is what a small router needs; past it
+# nothing is killed. core_mem_limit: 'auto' (by the router's RAM), 'off', or
+# a number of MiB.
+do_core_env() {
+	local v total
+	v="$(uci -q get clashwrt.config.core_mem_limit)"
+	case "$v" in
+		off) return 0 ;;
+		''|auto)
+			total="$(meminfo_kb MemTotal)"
+			if [ "$total" -lt 262144 ]; then echo "GOMEMLIMIT=48MiB GOGC=50"
+			elif [ "$total" -lt 524288 ]; then echo "GOMEMLIMIT=96MiB GOGC=75"
+			fi
+			;;
+		*[!0-9]*) return 0 ;;
+		*) echo "GOMEMLIMIT=${v}MiB" ;;
+	esac
+}
+
 # One background retry loop at a time: once a minute for a day.
 schedule_retry() {
 	local p
@@ -955,13 +986,14 @@ do_core_retry() {
 	local i=0
 	echo $$ > "$RETRY_PID"
 	while [ "$i" -lt "${CORE_RETRIES:-1440}" ]; do
-		sleep "${CORE_RETRY_DELAY:-60}"
 		i=$((i + 1))
 		if ( do_core_prepare retry ) >/dev/null 2>&1; then
 			rm -f "$RETRY_PID"
-			"$CORE_INIT" enabled >/dev/null 2>&1 && "$CORE_INIT" start >/dev/null 2>&1
+			"$CORE_INIT" enabled >/dev/null 2>&1 && ! pidof mihomo >/dev/null 2>&1 &&
+				"$CORE_INIT" start >/dev/null 2>&1
 			return 0
 		fi
+		sleep "${CORE_RETRY_DELAY:-60}"
 	done
 	rm -f "$RETRY_PID"
 	logger -t clashwrt "core download still failing after $i tries; giving up until the next boot" 2>/dev/null
@@ -1165,6 +1197,9 @@ case "${1:-}" in
 	core-status)  do_core_status ;;
 	core-install) do_core_install "${2:-}" ;;
 	core-prepare) do_core_prepare ;;
+	core-boot)    do_core_boot ;;
+	core-env)     do_core_env ;;
+	arch)         map_arch ;;
 	core-retry)   do_core_retry ;;
 	core-store)   do_core_store "${2:-}" ;;
 	cores)        list_cores ;;
