@@ -236,4 +236,8 @@ t('one box: subscriptions, node links and noise are told apart', function () {
 	assert.deepStrictEqual(gen.splitNodeLines(''), { subs: [], links: [], other: 0 });
 });
 
+t('TUN leaves the system DNS alone', function () {
+	assert.ok(/\n  dns-mode: disabled\n/.test(gen.generate({ proxies: [], mode: 'tun', routing: 'direct_except_list' })));
+});
+
 console.log(n + ' generator tests passed');

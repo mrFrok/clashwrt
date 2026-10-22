@@ -1095,6 +1095,10 @@ return baseclass.extend({
 			L.push('  auto-route: false');
 			L.push('  auto-redirect: false');
 			L.push('  auto-detect-interface: false');
+			/* ClashWrt owns routing and DNS on the router; mihomo 1.19.33+
+			 * must not point the system resolver at the tun. Older cores
+			 * ignore the key, and already behave this way without auto-route. */
+			L.push('  dns-mode: disabled');
 			/* GSO hands mihomo whole 64K segments instead of single packets,
 			 * which is most of the CPU a fast link costs in TUN mode; the
 			 * kernel's stack (system, and mixed for TCP) is what supports it */
