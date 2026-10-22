@@ -10,7 +10,7 @@
 'require clashwrt.power as power';
 'require clashwrt.maint as maint';
 
-var UI_VERSION = '0.5.0';
+var UI_VERSION = '1.5.2';
 var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -510,7 +510,7 @@ return view.extend({
 				E('strong', {}, _('Your configuration can be updated')),
 				E('p', { 'style': 'margin:6px 0' }, _('This version of ClashWrt writes better configs: less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else.')),
 				E('a', { 'class': 'cbi-button cbi-button-positive',
-					'href': L.url('admin', 'services', 'clashwrt', 'setup-wizard') + '#regen' }, _('Update the configuration')),
+					'href': L.url('admin', 'services', 'clashwrt', 'wizard') + '#regen' }, _('Update the configuration')),
 				' ',
 				E('button', { 'class': 'cbi-button', 'click': function () {
 					uci.set('clashwrt', 'wizard', 'gen_seen', String(gen.GEN_FORMAT));
@@ -553,7 +553,7 @@ return view.extend({
 				E('h3', { 'style': 'margin-top:0' }, _('ClashWrt is installed')),
 				E('p', {}, _('One step is left: tell it about your VPN. The wizard takes about two minutes and switches everything on at the end.')),
 				E('a', { 'class': 'cbi-button cbi-button-positive', 'style': 'font-size:110%;padding:.5em 1.4em;display:inline-block',
-					'href': L.url('admin', 'services', 'clashwrt', 'setup-wizard') }, _('Open the setup wizard'))
+					'href': L.url('admin', 'services', 'clashwrt', 'wizard') }, _('Open the setup wizard'))
 			]) : '',
 			E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'style': 'font-size:120%' }, [ pillBox, msgBox, updBox ]),

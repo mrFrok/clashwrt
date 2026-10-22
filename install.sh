@@ -689,7 +689,7 @@ if [ "$RU" = 1 ]; then
 	cat <<EOF
 Готово.
 
-  Откройте:  http://${LAN_IP:-<адрес роутера>}/cgi-bin/luci/admin/services/clashwrt/setup-wizard
+  Откройте:  http://${LAN_IP:-<адрес роутера>}/cgi-bin/luci/admin/services/clashwrt/wizard
   Дальше:    мастер настройки — вставьте подписку, около двух минут; в конце
              он сам всё включит.
 
@@ -699,7 +699,7 @@ else
 	cat <<EOF
 Done.
 
-  Open:  http://${LAN_IP:-<router address>}/cgi-bin/luci/admin/services/clashwrt/setup-wizard
+  Open:  http://${LAN_IP:-<router address>}/cgi-bin/luci/admin/services/clashwrt/wizard
   Next:  the setup wizard -- paste your subscription, about two minutes; it
          switches everything on at the end.
 

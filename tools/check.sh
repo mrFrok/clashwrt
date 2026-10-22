@@ -62,6 +62,11 @@ v1="$(ver clashwrt/Makefile)"
 v2="$(ver luci-app-clashwrt/Makefile)"
 [ -n "$v1" ] && [ "$v1" = "$v2" ] ||
 	fail "package versions differ: clashwrt $v1, luci-app-clashwrt $v2"
+# the "ui x.y.z" each page shows is the package version, so a stale page
+# cached by the browser can be told apart at a glance
+for f in $(grep -rl "UI_VERSION = " luci-app-clashwrt/htdocs); do
+	grep -q "UI_VERSION = '$v1';" "$f" || fail "$f: UI_VERSION is not $v1"
+done
 if [ -n "${1:-}" ] && [ "$1" != "v$v1" ]; then
 	fail "tag $1 does not match package version $v1"
 fi
