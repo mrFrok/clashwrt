@@ -32,6 +32,7 @@ out="$(SKIP_CORE=1 REPO_URL='https://github.com/mrFrok/clashwrt/archive/refs/tag
 rc=$?
 eq "the update runs to the end" "0" "$rc"
 case "$out" in *"Done."*) pass "and says so" ;; *) fail "and says so ($(echo "$out" | tail -3))" ;; esac
+case "$out" in *"/cgi-bin/luci/admin/services/clashwrt/setup-wizard"*) pass "and where to go next" ;; *) fail "and where to go next" ;; esac
 [ -x /usr/libexec/clashwrt/updctl.sh ] && pass "scripts installed" || fail "scripts installed"
 grep -q '^# written by clashwrt' /etc/init.d/mihomo && pass "mihomo init script is ClashWrt's" || fail "mihomo init script is ClashWrt's"
 case "$out" in *"keeping the existing mihomo core"*) pass "the core is left alone" ;; *) fail "the core is left alone" ;; esac

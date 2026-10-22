@@ -76,7 +76,10 @@ Developed and tested on OpenWrt 25.12 on a BananaPi BPI-R4 (`mediatek/filogic`).
 wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | sh
 ```
 
-The installer shows the router's RAM and free flash, then asks — **Enter takes the recommended answer** worked out from those numbers:
+> [!TIP]
+> **Quick start, about three minutes:** run the line above and press Enter at the first question (*quickly, with the recommended answers*). Open the address it prints at the end — the setup wizard — paste your subscription link, press **Next** twice and **Apply and switch on**. The wizard tests the router, applies the config, switches everything on and checks that the VPN answers.
+
+The installer shows the router's RAM and free flash, then asks how to install: **quickly**, taking every recommended answer, or choosing each of these (Enter takes the recommendation, worked out from those numbers). It speaks Russian when LuCI is set to Russian.
 
 1. **Version** — the latest release (checked against its SHA-256) or the development branch.
 2. **Where to keep the core** — on flash, packed on flash, or only in RAM. Only what fits is offered.
@@ -85,7 +88,7 @@ The installer shows the router's RAM and free flash, then asks — **Enter takes
 
 It sums up and asks before changing anything. Then it installs, and stops: **nothing is intercepted until you enable it**, so a bad install cannot take the network down. Re-running upgrades in place and keeps your configuration.
 
-Then open **Services → ClashWrt**, run the setup wizard, and switch the proxy on from the Overview page.
+Then open **Services → ClashWrt → Setup wizard** (the Overview leads there too until it has been run). Three steps — your VPN, what goes through it, check and switch on — with DNS, the fastest-node group and the protocol split folded under *More settings*. On the first run it tests whether this router's kernel honours TPROXY and uses it if so.
 
 > [!NOTE]
 > The questions are read from the terminal even when the script comes through a pipe. Without a terminal — the **Update** button in LuCI — nothing is asked and the earlier answers are kept. If the CPU cannot be recognised, the installer asks for the mihomo build by name (`uname -m` says `mips` on both endiannesses, so OpenWrt's own `DISTRIB_ARCH` is read first).

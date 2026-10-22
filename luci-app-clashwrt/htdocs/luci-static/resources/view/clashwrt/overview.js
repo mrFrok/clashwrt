@@ -10,7 +10,7 @@
 'require clashwrt.power as power';
 'require clashwrt.maint as maint';
 
-var UI_VERSION = '0.4.0';
+var UI_VERSION = '0.5.0';
 var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -518,6 +518,14 @@ return view.extend({
 				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' }, 'ui ' + UI_VERSION)
 			]),
 			E('div', { 'class': 'cbi-map-descr' }, _('Status, switches and maintenance. Settings are in the tabs above.')),
+			/* Nothing set up yet: lead with the one thing left to do. The
+			 * switches stay below for whoever wants them. */
+			power.firstRun(cfgText) ? E('div', { 'class': 'cbi-section', 'style': 'border:2px solid #1967d2;border-radius:6px;padding:14px' }, [
+				E('h3', { 'style': 'margin-top:0' }, _('ClashWrt is installed')),
+				E('p', {}, _('One step is left: tell it about your VPN. The wizard takes about two minutes and switches everything on at the end.')),
+				E('a', { 'class': 'cbi-button cbi-button-positive', 'style': 'font-size:110%;padding:.5em 1.4em;display:inline-block',
+					'href': L.url('admin', 'services', 'clashwrt', 'setup-wizard') }, _('Open the setup wizard'))
+			]) : '',
 			E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'style': 'font-size:120%' }, [ pillBox, msgBox, updBox ]),
 				E('div', { 'style': 'margin-top:6px' }, [ nodeBox, bypassBox ])

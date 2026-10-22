@@ -1013,6 +1013,22 @@ return baseclass.extend({
 		return { proxies: out, failed: bad };
 	},
 
+	/* The wizard has one box for everything a person may paste: subscription
+	 * URLs and node links, in any order. http(s) lines are subscriptions,
+	 * other scheme://... lines are node links, and anything else is counted
+	 * so the page can say it was ignored. */
+	splitNodeLines: function (text) {
+		var r = { subs: [], links: [], other: 0 };
+		(text || '').split(/[\r\n]+/).forEach(function (l) {
+			l = l.trim();
+			if (!l) return;
+			if (/^https?:\/\//i.test(l)) r.subs.push(l);
+			else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(l)) r.links.push(l);
+			else r.other++;
+		});
+		return r;
+	},
+
 	subscriptionsOf: function (text) {
 		return (text || '').split(/[\r\n]+/)
 			.map(function (s) { return s.trim(); })

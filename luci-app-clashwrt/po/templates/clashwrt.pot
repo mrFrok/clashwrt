@@ -1496,3 +1496,132 @@ msgstr ""
 
 msgid "A downloaded core must match the SHA-256 GitHub lists for it, or it is not installed."
 msgstr ""
+
+msgid "ClashWrt is installed"
+msgstr ""
+
+msgid "One step is left: tell it about your VPN. The wizard takes about two minutes and switches everything on at the end."
+msgstr ""
+
+msgid "Open the setup wizard"
+msgstr ""
+
+msgid "How LAN traffic is caught. The default works on every kernel; the setup wizard tests this router and picks TPROXY when it works."
+msgstr ""
+
+msgid "Step %d of %d"
+msgstr ""
+
+msgid "The wizard did not write this config.yaml. Applying replaces it whole (a backup is kept); to keep it, use \"Add to current config only\" under \"For experienced users\"."
+msgstr ""
+
+msgid "%d line(s) are neither a link nor a subscription and were ignored."
+msgstr ""
+
+msgid "Apply without switching on"
+msgstr ""
+
+msgid "your own servers"
+msgstr ""
+
+msgid "%d subscription(s), %d node link(s)"
+msgstr ""
+
+msgid "Routing"
+msgstr ""
+
+msgid "none"
+msgstr ""
+
+msgid "%d, to %s"
+msgstr ""
+
+msgid "Testing how this router can intercept traffic…"
+msgstr ""
+
+msgid "TPROXY works here: using it."
+msgstr ""
+
+msgid "Using the mode that works on every router."
+msgstr ""
+
+msgid "Paste a subscription URL or at least one node link."
+msgstr ""
+
+msgid "Could not switch it on."
+msgstr ""
+
+msgid "Saving your answers…"
+msgstr ""
+
+msgid "Writing and checking the configuration…"
+msgstr ""
+
+msgid "mihomo did not accept the configuration; nothing was changed."
+msgstr ""
+
+msgid "Starting the VPN…"
+msgstr ""
+
+msgid "Checking that the VPN answers…"
+msgstr ""
+
+msgid "Done: the VPN works (%d ms)."
+msgstr ""
+
+msgid "Open a site from your lists to check. "
+msgstr ""
+
+msgid "Go to the Overview"
+msgstr ""
+
+msgid "The proxy is on, but the VPN has not answered yet."
+msgstr ""
+
+msgid "A subscription can take a minute to download. If it stays this way, check the subscription link or the node; the Logs page says why. "
+msgstr ""
+
+msgid "Something went wrong."
+msgstr ""
+
+msgid "Replace and switch on"
+msgstr ""
+
+msgid "Apply and switch on"
+msgstr ""
+
+msgid "Back"
+msgstr ""
+
+msgid "Next"
+msgstr ""
+
+msgid "Your VPN"
+msgstr ""
+
+msgid "What goes through it"
+msgstr ""
+
+msgid "Check and switch on"
+msgstr ""
+
+msgid "Paste what your VPN provider gave you: a subscription link, or node links. One per line, in any order."
+msgstr ""
+
+msgid "Choose what goes through the VPN. The defaults suit most people."
+msgstr ""
+
+msgid "Check your answers, then switch the VPN on. Nothing changes on the network before you press the button."
+msgstr ""
+
+msgid "More settings (DNS, fastest node, protocol split)"
+msgstr ""
+
+msgid "Which resolver answers when a name is looked up. The default suits most people."
+msgstr ""
+
+msgid "For experienced users: preview, apply without switching on"
+msgstr ""
+
+msgid "Three short steps: your VPN, what goes through it, switch on."
+msgstr ""

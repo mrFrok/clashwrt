@@ -324,7 +324,11 @@ return view.extend({
 
 		/* ---------------- basic ---------------- */
 
-		o = basic(form.ListValue, 'mode', _('Interception mode'));
+		/* Basic holds what people actually change. The rest -- how traffic
+		 * is caught, DNS hijack, QUIC, DoH -- has safe defaults and is
+		 * created here with adv(), so it opens the Advanced tab instead;
+		 * options render in creation order within their tab. */
+		o = adv(form.ListValue, 'mode', _('Interception mode'));
 		o.value('tproxy', _('TPROXY — TCP + UDP'));
 		o.value('tproxy_tun', _('TPROXY for TCP + tun for UDP'));
 		o.value('tun', _('Tun — TCP + UDP'));
@@ -335,7 +339,7 @@ return view.extend({
 		 * while every extractor sees four separate literals -- so the lookup
 		 * misses and the text renders untranslated. */
 		o.description =
-			_('How LAN traffic is caught. The default works on every kernel.') +
+			_('How LAN traffic is caught. The default works on every kernel; the setup wizard tests this router and picks TPROXY when it works.') +
 			'<details><summary>' + _('Which one should I pick?') + '</summary>' +
 			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket.') + ' ' +
 			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device.') + ' ' +
@@ -355,11 +359,11 @@ return view.extend({
 		o.default = 'auto';
 		o.rmempty = false;
 
-		o = basic(form.Flag, 'dns_hijack', _('Hijack LAN DNS'),
+		o = adv(form.Flag, 'dns_hijack', _('Hijack LAN DNS'),
 			_('Sends LAN DNS queries to mihomo. Default: off. Leave off if dnsmasq already forwards to mihomo.'));
 		o.default = '0';
 
-		o = basic(form.Flag, 'block_quic', _('Block QUIC'),
+		o = adv(form.Flag, 'block_quic', _('Block QUIC'),
 			_('Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well.'));
 		o.default = '0';
 
@@ -373,12 +377,12 @@ return view.extend({
 		o.default = '1';
 		o.rmempty = false;
 
-		o = basic(form.Flag, 'block_doh', _('Block DNS-over-HTTPS'),
+		o = adv(form.Flag, 'block_doh', _('Block DNS-over-HTTPS'),
 			_('The same for browsers\' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off.'));
 		o.default = '0';
 		o.rmempty = false;
 
-		o = basic(form.DynamicList, 'doh_extra', _('More DoH resolvers'),
+		o = adv(form.DynamicList, 'doh_extra', _('More DoH resolvers'),
 			_('Extra IPv4 addresses to treat as DoH resolvers.'));
 		o.datatype = 'ip4addr';
 		o.depends('block_doh', '1');

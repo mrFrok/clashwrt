@@ -1502,3 +1502,132 @@ msgstr "Проверять загрузку ядра"
 
 msgid "A downloaded core must match the SHA-256 GitHub lists for it, or it is not installed."
 msgstr "Скачанное ядро должно совпадать с SHA-256, который GitHub указывает для него, иначе оно не ставится."
+
+msgid "ClashWrt is installed"
+msgstr "ClashWrt установлен"
+
+msgid "One step is left: tell it about your VPN. The wizard takes about two minutes and switches everything on at the end."
+msgstr "Остался один шаг: рассказать ему о вашем VPN. Мастер займёт около двух минут и в конце сам всё включит."
+
+msgid "Open the setup wizard"
+msgstr "Открыть мастер настройки"
+
+msgid "How LAN traffic is caught. The default works on every kernel; the setup wizard tests this router and picks TPROXY when it works."
+msgstr "Как перехватывается трафик LAN. Значение по умолчанию работает на любом ядре; мастер настройки проверяет этот роутер и выбирает TPROXY, если он работает."
+
+msgid "Step %d of %d"
+msgstr "Шаг %d из %d"
+
+msgid "The wizard did not write this config.yaml. Applying replaces it whole (a backup is kept); to keep it, use \"Add to current config only\" under \"For experienced users\"."
+msgstr "Этот config.yaml написан не мастером. Применение заменит его целиком (резервная копия сохранится); чтобы сохранить его, используйте «Добавить только в текущий конфиг» в разделе «Для опытных»."
+
+msgid "%d line(s) are neither a link nor a subscription and were ignored."
+msgstr "Строк, не похожих ни на ссылку, ни на подписку, пропущено: %d."
+
+msgid "Apply without switching on"
+msgstr "Применить, не включая"
+
+msgid "your own servers"
+msgstr "свои серверы"
+
+msgid "%d subscription(s), %d node link(s)"
+msgstr "подписок: %d, ссылок на узлы: %d"
+
+msgid "Routing"
+msgstr "Маршрутизация"
+
+msgid "none"
+msgstr "нет"
+
+msgid "%d, to %s"
+msgstr "%d, в %s"
+
+msgid "Testing how this router can intercept traffic…"
+msgstr "Проверяю, как этот роутер может перехватывать трафик…"
+
+msgid "TPROXY works here: using it."
+msgstr "TPROXY здесь работает — использую его."
+
+msgid "Using the mode that works on every router."
+msgstr "Использую режим, который работает на любом роутере."
+
+msgid "Paste a subscription URL or at least one node link."
+msgstr "Вставьте ссылку на подписку или хотя бы одну ссылку на узел."
+
+msgid "Could not switch it on."
+msgstr "Не удалось включить."
+
+msgid "Saving your answers…"
+msgstr "Сохраняю ответы…"
+
+msgid "Writing and checking the configuration…"
+msgstr "Записываю и проверяю конфигурацию…"
+
+msgid "mihomo did not accept the configuration; nothing was changed."
+msgstr "mihomo не принял конфигурацию; ничего не изменено."
+
+msgid "Starting the VPN…"
+msgstr "Запускаю VPN…"
+
+msgid "Checking that the VPN answers…"
+msgstr "Проверяю, что VPN отвечает…"
+
+msgid "Done: the VPN works (%d ms)."
+msgstr "Готово: VPN работает (%d мс)."
+
+msgid "Open a site from your lists to check. "
+msgstr "Откройте сайт из своих списков, чтобы проверить. "
+
+msgid "Go to the Overview"
+msgstr "Перейти в Обзор"
+
+msgid "The proxy is on, but the VPN has not answered yet."
+msgstr "Прокси включён, но VPN пока не ответил."
+
+msgid "A subscription can take a minute to download. If it stays this way, check the subscription link or the node; the Logs page says why. "
+msgstr "Подписка может скачиваться около минуты. Если так и останется — проверьте ссылку на подписку или узел; причина видна на странице «Логи». "
+
+msgid "Something went wrong."
+msgstr "Что-то пошло не так."
+
+msgid "Replace and switch on"
+msgstr "Заменить и включить"
+
+msgid "Apply and switch on"
+msgstr "Применить и включить"
+
+msgid "Back"
+msgstr "Назад"
+
+msgid "Next"
+msgstr "Далее"
+
+msgid "Your VPN"
+msgstr "Ваш VPN"
+
+msgid "What goes through it"
+msgstr "Что идёт через него"
+
+msgid "Check and switch on"
+msgstr "Проверка и включение"
+
+msgid "Paste what your VPN provider gave you: a subscription link, or node links. One per line, in any order."
+msgstr "Вставьте то, что дал вам VPN-провайдер: ссылку на подписку или ссылки на узлы. По одной в строке, в любом порядке."
+
+msgid "Choose what goes through the VPN. The defaults suit most people."
+msgstr "Выберите, что пойдёт через VPN. Значения по умолчанию подходят большинству."
+
+msgid "Check your answers, then switch the VPN on. Nothing changes on the network before you press the button."
+msgstr "Проверьте ответы и включите VPN. До нажатия кнопки в сети ничего не меняется."
+
+msgid "More settings (DNS, fastest node, protocol split)"
+msgstr "Ещё настройки (DNS, самый быстрый узел, разделение протоколов)"
+
+msgid "Which resolver answers when a name is looked up. The default suits most people."
+msgstr "Какой сервер отвечает на DNS-запросы. Значение по умолчанию подходит большинству."
+
+msgid "For experienced users: preview, apply without switching on"
+msgstr "Для опытных: предпросмотр, применение без включения"
+
+msgid "Three short steps: your VPN, what goes through it, switch on."
+msgstr "Три коротких шага: ваш VPN, что идёт через него, включение."

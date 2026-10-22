@@ -6,11 +6,14 @@
 'require uci';
 'require dom';
 'require clashwrt.generator as gen';
+'require clashwrt.power as power';
 
-var UI_VERSION = '0.4.0';
+var UI_VERSION = '0.5.0';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
+var FW = '/usr/libexec/clashwrt/fw.sh';
+var STEPS = 3;
 
 var DEFAULT_UDP_FILTER = '(?i)(hysteria|hy2|tuic)';
 var SITE_CHIP_CAP = 50;
@@ -29,17 +32,17 @@ function label(t, hint) {
 	]);
 }
 
-/* One collapsible step. Only the first starts open, so the page opens on a
- * single question rather than on every setting at once. */
-function step(num, title, intro, open, kids) {
-	return E('details', {
+/* One page of the wizard. Only one is shown at a time, with "Step N of 3"
+ * above it, so the page asks one question at a time. */
+function step(num, title, intro, kids) {
+	return E('div', {
 		'class': 'cbi-section',
 		'data-step': String(num),
-		'open': open ? '' : null
+		'style': num === 1 ? '' : 'display:none'
 	}, [
-		E('summary', { 'style': 'cursor:pointer;font-weight:bold;font-size:110%' },
-			num + '. ' + title),
-		E('div', { 'style': 'opacity:0.75;margin:4px 0' }, intro)
+		E('div', { 'style': 'opacity:0.7;font-size:90%' }, _('Step %d of %d').format(num, STEPS)),
+		E('h3', { 'style': 'margin:2px 0 4px 0' }, title),
+		E('div', { 'style': 'opacity:0.75;margin:0 0 6px 0' }, intro)
 	].concat(kids));
 }
 
@@ -211,6 +214,23 @@ return view.extend({
 			'placeholder': _('empty = all nodes')
 		});
 
+		/* The one box people paste into; subsBox and linksBox above are not
+		 * shown, they hold its two halves for the code that reads them. */
+		var nodesBox = E('textarea', {
+			'style': 'width:100%;min-height:7em;font-family:monospace;font-size:12px',
+			'placeholder': 'https://example.com/sub/token\nvless://…',
+			'aria-describedby': 'cw-nodes-err'
+		}, '');
+		var nodesErr = E('div', { 'id': 'cw-nodes-err', 'role': 'alert', 'style': 'color:#c00;font-size:90%;min-height:1.2em' });
+		var ignored = 0;
+		function splitNodes() {
+			var r = gen.splitNodeLines(nodesBox.value);
+			subsBox.value = r.subs.join('\n');
+			linksBox.value = r.links.join('\n');
+			ignored = r.other;
+			dom.content(nodesErr, '');
+		}
+
 		var detected = E('div', { 'style': 'font-size:90%;margin-top:4px' });
 		var banner = E('div');
 
@@ -305,6 +325,8 @@ return view.extend({
 		function applyAnswers(ans) {
 			subsBox.value = ans.subs;
 			linksBox.value = ans.links;
+			nodesBox.value = [ ans.subs, ans.links ].filter(function (x) { return x && x.trim(); }).join('\n');
+			ignored = 0;
 			dnsSel.value = ans.dnsPreset;
 			dnsCustom.value = ans.dnsCustom;
 			routeSel.value = ans.routing;
@@ -335,7 +357,7 @@ return view.extend({
 					_('Filled in from the installed config.yaml.')));
 			if (hasCfg && !cfg.generatedByUs)
 				rows.push(E('div', { 'class': 'alert-message warning' },
-					_('The wizard did not write this config.yaml. "Apply configuration" replaces it whole; to keep it, use "Add to current config only".')));
+					_('The wizard did not write this config.yaml. Applying replaces it whole (a backup is kept); to keep it, use "Add to current config only" under "For experienced users".')));
 			dom.content(banner, rows);
 		}
 
@@ -355,6 +377,8 @@ return view.extend({
 			}
 			if (parsed.failed)
 				msg += ' ' + _('%d line(s) could not be parsed.').format(parsed.failed);
+			if (ignored)
+				msg += ' ' + _('%d line(s) are neither a link nor a subscription and were ignored.').format(ignored);
 			var rows = [ msg ];
 			if (cfg.links > parsed.proxies.length)
 				rows.push(E('div', { 'class': 'alert-message warning', 'style': 'margin-top:6px' },
@@ -363,8 +387,7 @@ return view.extend({
 			dom.content(detected, rows);
 		}
 
-		linksBox.addEventListener('input', updateDetected);
-		subsBox.addEventListener('input', updateDetected);
+		nodesBox.addEventListener('input', function () { splitNodes(); updateDetected(); });
 
 		function collect() {
 			var sets = Object.keys(setBoxes).filter(function (k) { return setBoxes[k].checked; });
@@ -530,7 +553,7 @@ return view.extend({
 					])
 				]);
 			}
-		}, _('Apply configuration'));
+		}, _('Apply without switching on'));
 
 		function refreshCfg() {
 			return fs.exec(CONFCTL, ['read']).then(function (res) {
@@ -618,6 +641,183 @@ return view.extend({
 			}
 		}, _('Reload from config.yaml'));
 
+		/* ---- one button: test, apply, switch on, check ---- */
+
+		var placeholder = /Placeholder written by the clashwrt installer/.test(cfgText);
+		var mainOut = E('div', { 'aria-live': 'polite' });
+		var summaryBox = E('div', { 'class': 'cw-summary' });
+
+		function dnsTitle(ans) {
+			if (ans.dnsPreset === 'custom' || (ans.dnsCustom || '').trim()) return _('your own servers');
+			return (gen.DNS_PRESETS[ans.dnsPreset] || {}).title || ans.dnsPreset;
+		}
+
+		function refreshSummary() {
+			var ans = collect();
+			var subs = gen.subscriptionsOf(ans.subs).length;
+			var links = gen.parseLinks(ans.links).proxies.length;
+			var lists = ans.ruleSets.map(function (k) { return (gen.RULESETS[k] || {}).title || k; });
+			var row = function (k, v) {
+				return E('div', { 'style': 'margin:2px 0' }, [ E('span', { 'style': 'opacity:.7' }, [ k + ': ' ]), E('strong', {}, [ v ]) ]);
+			};
+			dom.content(summaryBox, [
+				row(_('Nodes'), _('%d subscription(s), %d node link(s)').format(subs, links)),
+				row(_('Routing'), routeSel.options[routeSel.selectedIndex] ? routeSel.options[routeSel.selectedIndex].text : ans.routing),
+				ans.routing === 'direct_except_list' ? row(_('Lists'), lists.length ? lists.join(', ') : _('none')) : '',
+				ans.extraDomains.length ? row(_('Sites'), _('%d, to %s').format(ans.extraDomains.length, ans.extraGroup)) : '',
+				row(_('DNS'), dnsTitle(ans))
+			]);
+		}
+
+		/* A fresh router has never had its interception mode chosen: the
+		 * default works everywhere, TPROXY is faster where the kernel honours
+		 * it. Asked once, on the first run of the wizard only, so a mode
+		 * someone picked by hand is never overridden. */
+		function pickMode(log) {
+			if (uci.get('clashwrt', 'wizard') || uci.get('clashwrt', 'config', 'mode_tested') === '1')
+				return Promise.resolve();
+			log(_('Testing how this router can intercept traffic…'));
+			return fs.exec(FW, ['selftest']).catch(function () { return null; }).then(function (r) {
+				var ok = r && r.code === 0 && /Recommended mode: tproxy/.test(r.stdout || '');
+				if (ok) uci.set('clashwrt', 'config', 'mode', 'tproxy');
+				uci.set('clashwrt', 'config', 'mode_tested', '1');
+				log(ok ? _('TPROXY works here: using it.') : _('Using the mode that works on every router.'));
+			});
+		}
+
+		function apiDelay() {
+			var port = uci.get('clashwrt', 'config', 'api_port') || 9090;
+			var key = cfg.secret || secret;
+			return window.fetch('http://' + window.location.hostname + ':' + port +
+				'/proxies/Proxy/delay?timeout=5000&url=' + encodeURIComponent('https://www.gstatic.com/generate_204'),
+				{ headers: key ? { 'Authorization': 'Bearer ' + key } : {} })
+				.then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+				.then(function (j) { if (!j || !j.delay) throw new Error('no delay'); return j.delay; });
+		}
+
+		/* Subscriptions are fetched after mihomo starts, so the first tries may
+		 * find no node yet. */
+		function checkVpn(tries) {
+			return new Promise(function (res) { window.setTimeout(res, 5000); })
+				.then(apiDelay)
+				.catch(function (e) { if (tries > 1) return checkVpn(tries - 1); throw e; });
+		}
+
+		function applyAndStart(btn) {
+			splitNodes();
+			var ans = collect();
+			if (!hasNodes(ans)) { go(1); dom.content(nodesErr, _('Paste a subscription URL or at least one node link.')); nodesBox.focus(); return; }
+			if (!groupOk(ans)) return;
+
+			var lines = E('ul', { 'style': 'margin:6px 0 0 1.2em' });
+			function log(t) { lines.appendChild(E('li', {}, [ t ])); }
+			function fail(t, raw) {
+				dom.content(mainOut, [ lines, E('div', { 'class': 'alert-message warning', 'style': 'margin-top:8px' }, [
+					E('strong', {}, [ t ]),
+					raw ? E('details', { 'style': 'margin-top:4px' }, [ E('summary', {}, _('Details')),
+						E('pre', { 'style': 'white-space:pre-wrap' }, [ raw ]) ]) : ''
+				]) ]);
+			}
+			function power1(target) {
+				return power.set(target, 'on').then(function (r) {
+					if (!r.ok) throw { msg: _('Could not switch it on.'), raw: r.text };
+				});
+			}
+
+			btn.disabled = true;
+			dom.content(mainOut, lines);
+			pickMode(log)
+				.then(function () { log(_('Saving your answers…')); return saveAnswers(ans); })
+				.then(function () {
+					log(_('Writing and checking the configuration…'));
+					return fs.write(STAGING, gen.generate(buildOptions(ans)))
+						.then(function () { return fs.exec(CONFCTL, ['apply']); })
+						.then(function (r) {
+							if (r.code !== 0) throw { msg: _('mihomo did not accept the configuration; nothing was changed.'), raw: (r.stdout || '') + (r.stderr || '') };
+						});
+				})
+				.then(function () { log(_('Starting the VPN…')); return power1('core'); })
+				.then(function () { return power1('svc'); })
+				.then(function () { return power1('proxy'); })
+				.then(function () {
+					log(_('Checking that the VPN answers…'));
+					return checkVpn(4).then(function (ms) {
+						dom.content(mainOut, [ lines, E('div', { 'class': 'alert-message success', 'style': 'margin-top:8px' }, [
+							E('strong', {}, [ _('Done: the VPN works (%d ms).').format(ms) ]), ' ',
+							_('Open a site from your lists to check. '),
+							E('a', { 'href': L.url('admin/services/clashwrt/overview') }, _('Go to the Overview'))
+						]) ]);
+					}, function () {
+						dom.content(mainOut, [ lines, E('div', { 'class': 'alert-message warning', 'style': 'margin-top:8px' }, [
+							E('strong', {}, [ _('The proxy is on, but the VPN has not answered yet.') ]), ' ',
+							_('A subscription can take a minute to download. If it stays this way, check the subscription link or the node; the Logs page says why. '),
+							E('a', { 'href': L.url('admin/services/clashwrt/overview') }, _('Go to the Overview'))
+						]) ]);
+					});
+				})
+				.then(function () { hasCfg = true; cfg.generatedByUs = true; placeholder = false; showBanner('uci'); syncQuick(); })
+				.catch(function (e) {
+					fail((e && e.msg) || _('Something went wrong.'), (e && e.raw) || (e && e.message) || String(e));
+				})
+				.finally(function () { btn.disabled = false; });
+		}
+
+		var btnMain = E('button', {
+			'class': 'cbi-button cbi-button-positive',
+			'style': 'font-size:110%;padding:.5em 1.4em',
+			'click': function (ev) {
+				var b = ev.currentTarget;
+				ev.preventDefault();
+				/* replacing a hand-written config is the one thing to ask about */
+				if (hasCfg && !cfg.generatedByUs && !placeholder) {
+					ui.showModal(_('Replace configuration'), [
+						E('p', {}, _('This replaces mihomo\'s config.yaml. The current one is backed up first, and nothing is installed unless mihomo accepts the new file.')),
+						E('div', { 'class': 'right' }, [
+							E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')), ' ',
+							E('button', { 'class': 'cbi-button cbi-button-positive', 'click': function () { ui.hideModal(); applyAndStart(b); } },
+								_('Replace and switch on'))
+						])
+					]);
+					return;
+				}
+				applyAndStart(b);
+			}
+		}, _('Apply and switch on'));
+
+		/* ---- moving between steps ---- */
+
+		var cur = 1;
+		var stepEls = [];
+		var titles = [];
+		function go(n) {
+			if (n === 3) refreshSummary();
+			cur = n;
+			stepEls.forEach(function (el, i) { el.style.display = (i + 1 === n) ? '' : 'none'; });
+			dom.content(progress, titles.map(function (t, i) {
+				return E('span', { 'style': 'margin-right:14px;' + (i + 1 === n ? 'font-weight:bold' : 'opacity:.55'),
+					'aria-current': i + 1 === n ? 'step' : null }, [ (i + 1) + '. ' + t ]);
+			}));
+			if (stepEls[n - 1]) stepEls[n - 1].scrollIntoView({ block: 'nearest' });
+		}
+		function nav(n) {
+			return E('div', { 'style': 'margin-top:16px' }, [
+				n > 1 ? E('button', { 'class': 'cbi-button', 'click': function (ev) { ev.preventDefault(); go(n - 1); } }, _('Back')) : '',
+				n < STEPS ? E('button', { 'class': 'cbi-button cbi-button-action', 'style': 'margin-left:6px', 'click': function (ev) {
+					ev.preventDefault();
+					if (n === 1) {
+						splitNodes();
+						if (!hasNodes(collect())) {
+							dom.content(nodesErr, _('Paste a subscription URL or at least one node link.'));
+							nodesBox.focus();
+							return;
+						}
+					}
+					go(n + 1);
+				} }, _('Next')) : ''
+			]);
+		}
+		var progress = E('div', { 'class': 'cbi-section', 'style': 'padding:6px 10px' });
+
 		applyAnswers(a);
 		showBanner(a.source);
 		syncQuick();
@@ -627,67 +827,55 @@ return view.extend({
 			if (ev.target !== siteInput) refreshPreview();
 		};
 
-		var page = E('div', { 'class': 'cbi-map' }, [
-			E('h2', {}, [
-				_('Setup wizard'),
-				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' },
-					'ui ' + UI_VERSION)
+		titles = [ _('Your VPN'), _('What goes through it'), _('Check and switch on') ];
+		stepEls = [
+			step(1, titles[0], _('Paste what your VPN provider gave you: a subscription link, or node links. One per line, in any order.'), [
+				nodesBox,
+				nodesErr,
+				detected,
+				nav(1)
 			]),
-			E('div', { 'class': 'cbi-map-descr' },
-				_('Builds config.yaml from your subscription or node links.')),
-			more(_('How it fits together'), _('Inbound settings follow the interception mode chosen on the Settings page, so the firewall and mihomo agree.')),
 
-			banner,
+			step(2, titles[1], _('Choose what goes through the VPN. The defaults suit most people.'), [
+				label(_('Routing strategy')),
+				routeSel,
 
-			formSection = E('div', {}, [
-				step(1, _('Nodes'), _('Where your proxy servers come from.'), true, [
-					label(_('Subscription URLs'), _('One per line. Each becomes a proxy-provider.')),
-					subsBox,
+				label(_('Lists'), _('Used by the "everything direct, except…" strategy.')),
+				setList,
 
-					label(_('Node links'), _('vless://, vmess://, trojan://, ss://, hysteria2://, tuic:// — one per line.')),
-					linksBox,
-					detected
-				]),
+				label(_('Sites'), _('Send one website to a chosen group.')),
+				more(_('How sites work'), _('Add a website by URL or by service name. Its domains are written into the config as plain rules and sent to the chosen group, ahead of the lists above.')),
+				E('div', {}, [ siteInput, groupSel, ' ', E('button', {
+					'type': 'button',
+					'class': 'cbi-button cbi-button-add',
+					'click': addSite
+				}, _('Add')) ]),
+				siteMsg,
+				chipBox,
+				nav(2)
+			]),
 
-				step(2, _('DNS'), _('Which resolver answers when a name is looked up.'), false, [
-					label(_('DNS')),
+			step(3, titles[2], _('Check your answers, then switch the VPN on. Nothing changes on the network before you press the button.'), [
+				summaryBox,
+				E('div', { 'style': 'margin-top:14px' }, [ btnMain ]),
+				mainOut,
+
+				E('details', { 'style': 'margin-top:18px' }, [
+					E('summary', { 'style': 'cursor:pointer' }, _('More settings (DNS, fastest node, protocol split)')),
+
+					label(_('DNS'), _('Which resolver answers when a name is looked up. The default suits most people.')),
 					dnsSel,
 					E('div', { 'style': 'margin-top:6px' }, [
 						E('div', { 'style': 'font-size:90%;opacity:0.75' },
 							_('Custom servers, one per line. If filled, these win over the preset.')),
 						dnsCustom
 					]),
-
 					label(_('Fake-IP DNS'), _('Off by default.')),
 					E('label', {}, [ fakeCb, ' ', _('Answer lookups with addresses from mihomo\'s own range') ]),
 					more(_('What it changes'), _('Connections start without waiting for a real lookup, and proxied names are never resolved on the router. In exchange the kernel bypass set stops working (it is held back automatically), and while the proxy is switched off or bypassed by the watchdog, devices keep using the fake addresses they cached and cannot reach sites until that cache expires.')),
-
 					label(_('Russian sites through Yandex DNS'), _('Off by default.')),
 					E('label', {}, [ yandexCb, ' ', _('Use Yandex DNS for the Russian domain set') ]),
-					more(_('Why use it?'), _('Resolves Russian domains with Yandex over DoH, and everything else with the resolver chosen above. A resolver abroad returns whichever CDN node is closest to itself, so RU sites end up pointed at distant edges — and those answers are the ones least in need of hiding.'))
-				]),
-
-				step(3, _('Routing and sites'), _('What goes through the proxy and what goes direct.'), false, [
-					label(_('Routing strategy')),
-					routeSel,
-
-					label(_('Lists'), _('Used by the "everything direct, except…" strategy.')),
-					setList,
-
-					label(_('Sites'), _('Send one website to a chosen group.')),
-					more(_('How sites work'), _('Add a website by URL or by service name. Its domains are written into the config as plain rules and sent to the chosen group, ahead of the lists above.')),
-					E('div', {}, [ siteInput, groupSel, ' ', E('button', {
-						'type': 'button',
-						'class': 'cbi-button cbi-button-add',
-						'click': addSite
-					}, _('Add')) ]),
-					siteMsg,
-					chipBox
-				]),
-
-				step(4, _('Protocol split and apply'), _('Optional split, then generate and apply.'), false, [
-					label(_('TUN stack'), _('How the tun device hands packets to mihomo. Leave at system unless something does not work.')),
-					stackSel,
+					more(_('Why use it?'), _('Resolves Russian domains with Yandex over DoH, and everything else with the resolver chosen above. A resolver abroad returns whichever CDN node is closest to itself, so RU sites end up pointed at distant edges — and those answers are the ones least in need of hiding.')),
 
 					label(_('Fastest node'), _('On by default.')),
 					E('label', {}, [ autoCb, ' ', _('Pick the fastest node automatically') ]),
@@ -703,17 +891,35 @@ return view.extend({
 						E('div', {}, _('TCP node filter:')),
 						tcpFilter
 					]),
+					label(_('TUN stack'), _('How the tun device hands packets to mihomo. Leave at system unless something does not work.')),
+					stackSel
+				]),
 
-					E('div', { 'style': 'margin-top:14px' }, [ btnPreview, btnApply, btnQuick, btnReload ]),
-					out
-				])
-			]),
-
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Preview')),
-				preview
+				E('details', { 'style': 'margin-top:10px' }, [
+					E('summary', { 'style': 'cursor:pointer' }, _('For experienced users: preview, apply without switching on')),
+					more(_('How it fits together'), _('Inbound settings follow the interception mode chosen on the Settings page, so the firewall and mihomo agree.')),
+					E('div', { 'style': 'margin-top:8px' }, [ btnPreview, btnApply, btnQuick, btnReload ]),
+					out,
+					E('h4', {}, _('Preview')),
+					preview
+				]),
+				nav(3)
 			])
+		];
+
+		var page = E('div', { 'class': 'cbi-map' }, [
+			E('h2', {}, [
+				_('Setup wizard'),
+				E('span', { 'style': 'font-size:55%;font-weight:normal;opacity:0.6;margin-left:8px' },
+					'ui ' + UI_VERSION)
+			]),
+			E('div', { 'class': 'cbi-map-descr' },
+				_('Three short steps: your VPN, what goes through it, switch on.')),
+			banner,
+			progress,
+			formSection = E('div', {}, stepEls)
 		]);
+		go(1);
 
 		formSection.addEventListener('input', onFormChange);
 		formSection.addEventListener('change', onFormChange);

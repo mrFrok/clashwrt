@@ -133,13 +133,24 @@ function classify(st) {
 	return c;
 }
 
+/* A mark beside the colour, so the state does not rest on colour alone. */
+var MARKS = { green: '\u2713', amber: '!', red: '\u00d7', blue: '\u2022', gray: '?' };
+
 function pill(tone, label) {
 	var c = TONES[tone] || TONES.gray;
 	return E('span', {
 		'class': 'cw-pill',
 		'style': 'display:inline-block;padding:2px 10px;border-radius:10px;font-weight:bold;' +
 			'background:' + c[0] + ';color:' + c[1] + ';'
-	}, label);
+	}, [ E('span', { 'aria-hidden': 'true', 'style': 'margin-right:5px' }, MARKS[tone] || MARKS.gray), label ]);
+}
+
+/* Nothing set up yet: no config.yaml, or still the installer's placeholder.
+ * The Overview then leads with the wizard instead of switches that have
+ * nothing to switch. */
+function firstRun(cfgText) {
+	var t = String(cfgText || '');
+	return !t.trim() || /Placeholder written by the clashwrt installer/.test(t);
 }
 
 /* The API secret from config.yaml text: the top-level 'secret:' line, quotes
@@ -193,6 +204,7 @@ return baseclass.extend({
 	serviceLive: serviceLive,
 	serviceHalf: serviceHalf,
 	pill: pill,
+	firstRun: firstRun,
 	TONES: TONES,
 
 	/* Never rejects: a page that polls this must keep polling. */

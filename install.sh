@@ -147,11 +147,21 @@ if [ "$SKIP_CORE" != 1 ] && [ -z "$REPO_URL" ] && ( : < /dev/tty ) 2>/dev/null; 
 	INTERACTIVE=1
 fi
 
+# Russian when LuCI is set to it (or to auto on a Russian browser, which the
+# shell cannot see: auto counts as Russian only if no other language is set).
+RU=0
+case "$(uci -q get luci.main.lang 2>/dev/null || true)" in ru|ru_*) RU=1 ;; esac
+# t <english> <russian>
+t() { if [ "$RU" = 1 ]; then printf '%s' "$2"; else printf '%s' "$1"; fi; }
+
+# With QUICK=1 every question takes its recommended answer unasked.
+QUICK=0
+
 # ask <question> <default> <key|label>...  prints the key chosen: by number,
 # by key, or Enter for the default
 ask() {
 	_q="$1"; _def="$2"; shift 2
-	if [ "$INTERACTIVE" != 1 ]; then echo "$_def"; return 0; fi
+	if [ "$INTERACTIVE" != 1 ] || [ "$QUICK" = 1 ]; then echo "$_def"; return 0; fi
 	while :; do
 		{
 			echo
@@ -159,10 +169,10 @@ ask() {
 			_i=0
 			for _c in "$@"; do
 				_i=$((_i + 1))
-				_m=""; [ "${_c%%|*}" = "$_def" ] && _m="   (recommended)"
+				_m=""; [ "${_c%%|*}" = "$_def" ] && _m="   ($(t recommended рекомендуется))"
 				printf '  %d) %s%s\n' "$_i" "${_c#*|}" "$_m"
 			done
-			printf 'Choice [Enter = %s]: ' "$_def"
+			printf '%s [Enter = %s]: ' "$(t Choice Выбор)" "$_def"
 		} > /dev/tty
 		read -r _a < /dev/tty || _a=""
 		[ -n "$_a" ] || { echo "$_def"; return 0; }
@@ -171,7 +181,7 @@ ask() {
 			_i=$((_i + 1))
 			if [ "$_a" = "$_i" ] || [ "$_a" = "${_c%%|*}" ]; then echo "${_c%%|*}"; return 0; fi
 		done
-		echo "  that is not one of the choices" > /dev/tty
+		echo "  $(t 'that is not one of the choices' 'такого варианта нет')" > /dev/tty
 	done
 }
 
@@ -196,24 +206,28 @@ HAVE_CORE=0; command -v mihomo >/dev/null 2>&1 && HAVE_CORE=1
 
 if [ "$INTERACTIVE" = 1 ]; then
 	echo
-	echo "ClashWrt installer"
-	echo "  router:  $(cat /tmp/sysinfo/model 2>/dev/null || echo unknown)"
+	t 'ClashWrt installer' 'Установка ClashWrt'; echo
+	echo "  $(t 'router' 'роутер'):  $(cat /tmp/sysinfo/model 2>/dev/null || echo unknown)"
 	echo "  RAM:     $(mb "$MEM_KB")"
-	echo "  flash:   $(mb "$FLASH_KB") free for the core"
+	echo "  $(t 'flash' 'флеш'):   $(mb "$FLASH_KB") $(t 'free for the core' 'свободно для ядра')"
+	_q="$(ask "$(t 'How to install?' 'Как устанавливать?')" quick \
+		"quick|$(t 'quickly, with the recommended answers' 'быстро, с рекомендуемыми ответами')" \
+		"custom|$(t 'let me choose (version, where the core goes, dashboard)' 'выбрать самому (версия, где хранить ядро, дашборд)')")"
+	[ "$_q" = quick ] && QUICK=1
 fi
 
 CHANNEL="$CUR_CHANNEL"
-[ "$INTERACTIVE" = 1 ] && CHANNEL="$(ask "Which version?" "$CUR_CHANNEL" \
-	"release|the latest release (checked against its SHA-256)" \
-	"main|the development branch (newest, unchecked)")"
+[ "$INTERACTIVE" = 1 ] && CHANNEL="$(ask "$(t 'Which version?' 'Какую версию?')" "$CUR_CHANNEL" \
+	"release|$(t 'the latest release (checked against its SHA-256)' 'последний релиз (с проверкой SHA-256)')" \
+	"main|$(t 'the development branch (newest, unchecked)' 'ветка разработки (самое новое, без проверки)')")"
 
 # where the core goes: only what fits is offered
 CORE_UPDATE=no
 CORE_STORE=""
 if [ "$SKIP_CORE" != 1 ]; then
 	CORE_UPDATE=yes
-	[ "$HAVE_CORE" = 1 ] && CORE_UPDATE="$(ask "Update the mihomo core to the latest release?" yes \
-		"yes|yes" "no|no, keep the one installed")"
+	[ "$HAVE_CORE" = 1 ] && CORE_UPDATE="$(ask "$(t 'Update the mihomo core to the latest release?' 'Обновить ядро mihomo до последнего релиза?')" yes \
+		"yes|$(t yes да)" "no|$(t 'no, keep the one installed' 'нет, оставить установленное')")"
 	_opts=""; _rec=""
 	if [ "$FLASH_KB" -ge "$CORE_FLASH_KB" ]; then _opts="$_opts flash"; _rec=flash; fi
 	if [ "$RAM_OK" = 1 ] && [ "$FLASH_KB" -ge "$CORE_GZ_KB" ]; then _opts="$_opts gz"; [ -n "$_rec" ] || _rec=gz; fi
@@ -223,12 +237,12 @@ if [ "$SKIP_CORE" != 1 ]; then
 	set --
 	for _o in $_opts; do
 		case "$_o" in
-			flash) set -- "$@" "flash|on flash: about 60 MB of flash, no RAM taken" ;;
-			gz)    set -- "$@" "gz|packed on flash, unpacked into RAM at boot: about 22 MB of flash and 60 MB of RAM" ;;
-			ram)   set -- "$@" "ram|only in RAM, downloaded at every boot: no flash, 60 MB of RAM, no core while GitHub is out of reach" ;;
+			flash) set -- "$@" "flash|$(t 'on flash: about 60 MB of flash, no RAM taken' 'на флеше: около 60 МБ флеша, RAM не занимает')" ;;
+			gz)    set -- "$@" "gz|$(t 'packed on flash, unpacked into RAM at boot: about 22 MB of flash and 60 MB of RAM' 'сжатым на флеше, распаковка в RAM при загрузке: около 22 МБ флеша и 60 МБ RAM')" ;;
+			ram)   set -- "$@" "ram|$(t 'only in RAM, downloaded at every boot: no flash, 60 MB of RAM, no core while GitHub is out of reach' 'только в RAM, скачивается при каждой загрузке: флеш не нужен, 60 МБ RAM, без GitHub ядра нет')" ;;
 		esac
 	done
-	CORE_STORE="$(ask "Where should the mihomo core be kept?" "$_rec" "$@")"
+	CORE_STORE="$(ask "$(t 'Where should the mihomo core be kept?' 'Где хранить ядро mihomo?')" "$_rec" "$@")"
 fi
 
 # what is left for the rest
@@ -242,19 +256,19 @@ UI_NAME=none
 if [ "$SKIP_CORE" != 1 ] && [ ! -f "$MIHOMO_DIR/ui/index.html" ]; then
 	_rec=none
 	if [ "$LEFT_KB" -ge 12288 ]; then _rec=metacubexd; elif [ "$LEFT_KB" -ge 6144 ]; then _rec=yacd; fi
-	UI_NAME="$(ask "Which web dashboard? (the LuCI pages work without one)" "$_rec" \
-		"metacubexd|metacubexd, about 8 MB" "zashboard|zashboard, about 12 MB" \
-		"yacd|Yacd-meta, about 5 MB" "none|none")"
+	UI_NAME="$(ask "$(t 'Which web dashboard? (the LuCI pages work without one)' 'Какой веб-дашборд? (страницы LuCI работают и без него)')" "$_rec" \
+		"metacubexd|metacubexd, $(t 'about' 'около') 8 MB" "zashboard|zashboard, $(t 'about' 'около') 12 MB" \
+		"yacd|Yacd-meta, $(t 'about' 'около') 5 MB" "none|$(t none без)")"
 fi
 UI_STORE=""
 if [ "$UI_NAME" != none ] && [ "$RAM_OK" = 1 ]; then
 	case "$UI_NAME" in zashboard) _ui=12288 ;; yacd) _ui=5120 ;; *) _ui=8192 ;; esac
 	_rec=flash; [ "$LEFT_KB" -ge $((_ui + 4096)) ] || _rec=gz
 	_cur="$(uci -q get clashwrt.config.ui_store 2>/dev/null)" || _cur=""; [ -n "$_cur" ] && _rec="$_cur"
-	UI_STORE="$(ask "Where should the dashboard be kept?" "$_rec" \
-		"flash|on flash, about $(mb "$_ui")" \
-		"gz|packed on flash, unpacked into RAM at boot: about a third of that on flash" \
-		"ram|only in RAM, fetched again after every boot: no flash")"
+	UI_STORE="$(ask "$(t 'Where should the dashboard be kept?' 'Где хранить дашборд?')" "$_rec" \
+		"flash|$(t 'on flash, about' 'на флеше, около') $(mb "$_ui")" \
+		"gz|$(t 'packed on flash, unpacked into RAM at boot: about a third of that on flash' 'сжатым на флеше, распаковка в RAM: около трети этого на флеше')" \
+		"ram|$(t 'only in RAM, fetched again after every boot: no flash' 'только в RAM, скачивается после каждой загрузки: без флеша')")"
 	case "$UI_STORE" in flash) LEFT_KB=$((LEFT_KB - _ui)) ;; gz) LEFT_KB=$((LEFT_KB - _ui / 3)) ;; esac
 fi
 
@@ -262,22 +276,23 @@ DNSMASQ_FULL=no
 if ! { dnsmasq --version 2>/dev/null | grep -qw nftset && ! dnsmasq --version 2>/dev/null | grep -qw no-nftset; }; then
 	_rec=no; [ "$LEFT_KB" -ge 4096 ] && _rec=yes
 	[ "$SKIP_CORE" = 1 ] && _rec=no
-	DNSMASQ_FULL="$(ask "Replace dnsmasq with dnsmasq-full? It lets the bypass set take config.yaml's domains (about 0.5 MB)" "$_rec" \
-		"yes|yes" "no|no, keep the stock dnsmasq")"
+	DNSMASQ_FULL="$(ask "$(t "Replace dnsmasq with dnsmasq-full? It lets the bypass set take config.yaml's domains (about 0.5 MB)" 'Заменить dnsmasq на dnsmasq-full? Нужен, чтобы обход брал домены из config.yaml (около 0,5 МБ)')" "$_rec" \
+		"yes|$(t yes да)" "no|$(t 'no, keep the stock dnsmasq' 'нет, оставить обычный dnsmasq')")"
 fi
 
 if [ "$INTERACTIVE" = 1 ]; then
 	{
 		echo
-		echo "About to install:"
-		echo "  version:   $CHANNEL"
-		[ -n "$CORE_STORE" ] && echo "  core:      $( [ "$CORE_UPDATE" = yes ] && echo "latest release" || echo "keep the installed one"), kept: $CORE_STORE"
-		echo "  dashboard: $UI_NAME${UI_STORE:+, kept: $UI_STORE}"
+		t 'About to install:' 'Будет установлено:'; echo
+		echo "  $(t 'version' 'версия'):   $CHANNEL"
+		if [ "$CORE_UPDATE" = yes ]; then _cu="$(t 'latest release' 'последний релиз')"; else _cu="$(t 'keep the installed one' 'оставить установленное')"; fi
+		[ -n "$CORE_STORE" ] && echo "  $(t 'core' 'ядро'):      $_cu, $(t kept хранится): $CORE_STORE"
+		echo "  $(t 'dashboard' 'дашборд'): $UI_NAME${UI_STORE:+, $(t kept хранится): $UI_STORE}"
 		echo "  dnsmasq-full: $DNSMASQ_FULL"
-		printf 'Proceed? [Y/n]: '
+		printf '%s [Y/n]: ' "$(t 'Proceed?' 'Продолжить?')"
 	} > /dev/tty
 	read -r _a < /dev/tty || _a=""
-	case "$_a" in [nN]*) echo "nothing was changed"; exit 0 ;; esac
+	case "$_a" in [nN]*) t 'nothing was changed' 'ничего не изменено'; echo; exit 0 ;; esac
 fi
 
 # --------------------------------------------------------------------------
@@ -667,14 +682,27 @@ fi
 rm -f /tmp/luci-indexcache* 2>/dev/null || true
 /etc/init.d/rpcd restart >/dev/null 2>&1 || true
 
-cat <<EOF
+# Where to go next, as a link: the router's own LAN address.
+LAN_IP="$(uci -q get network.lan.ipaddr 2>/dev/null || true)"; LAN_IP="${LAN_IP%%/*}"
+echo
+if [ "$RU" = 1 ]; then
+	cat <<EOF
+Готово.
 
+  Откройте:  http://${LAN_IP:-<адрес роутера>}/cgi-bin/luci/admin/services/clashwrt/setup-wizard
+  Дальше:    мастер настройки — вставьте подписку, около двух минут; в конце
+             он сам всё включит.
+
+До этого ничего в сети не меняется.
+EOF
+else
+	cat <<EOF
 Done.
 
-  Interface : Services -> ClashWrt
-  Next      : run the Setup wizard, then switch the proxy on from the Overview page
+  Open:  http://${LAN_IP:-<router address>}/cgi-bin/luci/admin/services/clashwrt/setup-wizard
+  Next:  the setup wizard -- paste your subscription, about two minutes; it
+         switches everything on at the end.
 
-The firewall side stays off until you enable it, so nothing on the network has
-changed yet. If you do not know which interception mode this kernel supports,
-press "Test TPROXY support" on the Settings page and it will tell you.
+Nothing on the network changes before that.
 EOF
+fi

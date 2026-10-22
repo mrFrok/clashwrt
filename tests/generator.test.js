@@ -228,4 +228,12 @@ t('geosite and geoip rule-sets are fetched as mrs', function () {
 	assert.ok(!/meta-rules-dat.*\.yaml/.test(y));
 });
 
+t('one box: subscriptions, node links and noise are told apart', function () {
+	var r = gen.splitNodeLines('  https://sub.example/a \nvless://x@h:443?y#n\n\njunk line\nHYSTERIA2://p@h:1\nhttp://b\n');
+	assert.deepStrictEqual(r.subs, ['https://sub.example/a', 'http://b']);
+	assert.deepStrictEqual(r.links, ['vless://x@h:443?y#n', 'HYSTERIA2://p@h:1']);
+	assert.strictEqual(r.other, 1);
+	assert.deepStrictEqual(gen.splitNodeLines(''), { subs: [], links: [], other: 0 });
+});
+
 console.log(n + ' generator tests passed');
