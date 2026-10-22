@@ -205,6 +205,25 @@ return view.extend({
 				mips: _('mips — userspace, built for slow MIPS routers')
 			}[k] ]);
 		}));
+		var MODES = {
+			auto: _('Auto — test this router, TPROXY if it works (recommended)'),
+			tproxy: _('TPROXY — TCP + UDP'),
+			tproxy_tun: _('TPROXY for TCP + tun for UDP'),
+			tun: _('Tun — TCP + UDP'),
+			redirect_tun: _('NAT redirect for TCP + tun for UDP')
+		};
+		var modeSel = E('select', { 'class': 'cbi-input-select' }, Object.keys(MODES).map(function (k) {
+			return E('option', { 'value': k }, MODES[k]);
+		}));
+		/* Auto unless the mode in use is not the one the test chose: then it
+		 * was picked by hand, here or in Settings, and is shown as such. */
+		(function () {
+			var curMode = uci.get('clashwrt', 'config', 'mode') || 'redirect_tun';
+			var auto = uci.get('clashwrt', 'config', 'mode_auto');
+			var pinned = uci.get('clashwrt', 'wizard', 'mode_choice');
+			modeSel.value = (pinned && MODES[pinned]) ? pinned
+				: (!auto || auto === curMode) ? 'auto' : curMode;
+		})();
 		var yandexCb = E('input', { 'type': 'checkbox' });
 		var udpFilter = E('input', {
 			'type': 'text', 'class': 'cbi-input-text', 'style': 'width:24em'
@@ -388,6 +407,7 @@ return view.extend({
 		}
 
 		nodesBox.addEventListener('input', function () { splitNodes(); updateDetected(); });
+		modeSel.addEventListener('change', function () { if (cur === 3) refreshSummary(); });
 
 		function collect() {
 			var sets = Object.keys(setBoxes).filter(function (k) { return setBoxes[k].checked; });
@@ -472,6 +492,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'auto_best', ans.autoBest ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'fake_ip', ans.fakeIp ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'tun_stack', ans.tunStack);
+			uci.set('clashwrt', 'wizard', 'mode_choice', modeSel.value);
 			uci.set('clashwrt', 'wizard', 'yandex_dns', ans.yandexDns ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'udp_filter', ans.udpFilter);
 			uci.set('clashwrt', 'wizard', 'tcp_filter', ans.tcpFilter);
@@ -665,22 +686,34 @@ return view.extend({
 				row(_('Routing'), routeSel.options[routeSel.selectedIndex] ? routeSel.options[routeSel.selectedIndex].text : ans.routing),
 				ans.routing === 'direct_except_list' ? row(_('Lists'), lists.length ? lists.join(', ') : _('none')) : '',
 				ans.extraDomains.length ? row(_('Sites'), _('%d, to %s').format(ans.extraDomains.length, ans.extraGroup)) : '',
-				row(_('DNS'), dnsTitle(ans))
+				row(_('DNS'), dnsTitle(ans)),
+				row(_('Interception'), MODES[modeSel.value])
 			]);
 		}
 
-		/* A fresh router has never had its interception mode chosen: the
-		 * default works everywhere, TPROXY is faster where the kernel honours
-		 * it. Asked once, on the first run of the wizard only, so a mode
-		 * someone picked by hand is never overridden. */
+		/* Auto: TPROXY for TCP and UDP where the kernel honours it, else the
+		 * mode that works on every kernel. The kernel is tested once and the
+		 * answer kept (mode_auto), so applying again costs nothing. A mode
+		 * picked here, or later in Settings, is used as it is. */
 		function pickMode(log) {
-			if (uci.get('clashwrt', 'wizard') || uci.get('clashwrt', 'config', 'mode_tested') === '1')
+			var want = modeSel.value;
+			if (want !== 'auto') {
+				uci.set('clashwrt', 'config', 'mode', want);
 				return Promise.resolve();
+			}
+			var known = uci.get('clashwrt', 'config', 'mode_auto');
+			if (known) {
+				uci.set('clashwrt', 'config', 'mode', known);
+				return Promise.resolve();
+			}
 			log(_('Testing how this router can intercept traffic…'));
 			return fs.exec(FW, ['selftest']).catch(function () { return null; }).then(function (r) {
 				var ok = r && r.code === 0 && /Recommended mode: tproxy/.test(r.stdout || '');
-				if (ok) uci.set('clashwrt', 'config', 'mode', 'tproxy');
-				uci.set('clashwrt', 'config', 'mode_tested', '1');
+				/* no answer at all (no socat): not kept, so it is asked again */
+				var sure = r && (r.code === 0 || r.code === 1);
+				var m = ok ? 'tproxy' : 'redirect_tun';
+				uci.set('clashwrt', 'config', 'mode', m);
+				if (sure) uci.set('clashwrt', 'config', 'mode_auto', m);
 				log(ok ? _('TPROXY works here: using it.') : _('Using the mode that works on every router.'));
 			});
 		}
@@ -861,7 +894,10 @@ return view.extend({
 				mainOut,
 
 				E('details', { 'style': 'margin-top:18px' }, [
-					E('summary', { 'style': 'cursor:pointer' }, _('More settings (DNS, fastest node, protocol split)')),
+					E('summary', { 'style': 'cursor:pointer' }, _('More settings (interception, DNS, fastest node, protocol split)')),
+
+					label(_('Interception mode'), _('How LAN traffic reaches mihomo. Auto suits nearly everyone; it can be changed later in Settings → Advanced.')),
+					modeSel,
 
 					label(_('DNS'), _('Which resolver answers when a name is looked up. The default suits most people.')),
 					dnsSel,
@@ -919,7 +955,8 @@ return view.extend({
 			progress,
 			formSection = E('div', {}, stepEls)
 		]);
-		go(1);
+		/* the Overview's "update the config" link lands on the last step */
+		go(window.location.hash === '#regen' && hasNodes(collect()) ? 3 : 1);
 
 		formSection.addEventListener('input', onFormChange);
 		formSection.addEventListener('change', onFormChange);

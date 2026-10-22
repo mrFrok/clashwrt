@@ -1631,3 +1631,30 @@ msgstr "Для опытных: предпросмотр, применение б
 
 msgid "Three short steps: your VPN, what goes through it, switch on."
 msgstr "Три коротких шага: ваш VPN, что идёт через него, включение."
+
+msgid "Your configuration can be updated"
+msgstr "Конфигурацию можно обновить"
+
+msgid "This version of ClashWrt writes better configs: less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else."
+msgstr "Эта версия ClashWrt пишет конфиг лучше: меньше памяти, быстрее TUN, а режим перехвата можно менять в Настройках без пересоздания. Ваши ответы сохранены, так что обновление больше ничего не меняет."
+
+msgid "Update the configuration"
+msgstr "Обновить конфигурацию"
+
+msgid "Not now"
+msgstr "Не сейчас"
+
+msgid "A config written by the wizard serves every mode, so a change here takes effect on Save & Apply."
+msgstr "Конфиг, созданный мастером, подходит для любого режима, поэтому смена здесь вступает в силу после «Сохранить и применить»."
+
+msgid "Auto — test this router, TPROXY if it works (recommended)"
+msgstr "Авто — проверить роутер, TPROXY, если он работает (рекомендуется)"
+
+msgid "Interception"
+msgstr "Перехват"
+
+msgid "More settings (interception, DNS, fastest node, protocol split)"
+msgstr "Ещё настройки (перехват, DNS, самый быстрый узел, разделение протоколов)"
+
+msgid "How LAN traffic reaches mihomo. Auto suits nearly everyone; it can be changed later in Settings → Advanced."
+msgstr "Как трафик LAN попадает в mihomo. «Авто» подходит почти всем; позже режим можно сменить в «Настройки» → «Дополнительно»."

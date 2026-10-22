@@ -493,6 +493,34 @@ return view.extend({
 			}).catch(function () { dom.content(bypassBox, ''); });
 		}
 
+		/* ---------------- an older generated config ---------------- */
+
+		/* Offered once per generator format: a config the wizard wrote
+		 * before the generator learned something new (and whose answers
+		 * are saved, so regenerating keeps everything) gets one card. "Not
+		 * now" remembers the format, so it does not come back until the
+		 * next one. */
+		function regenCard() {
+			var c = gen.parseConfig(cfgText);
+			if (!c.generatedByUs || c.genFormat >= gen.GEN_FORMAT || !uci.get('clashwrt', 'wizard'))
+				return '';
+			if (uci.get('clashwrt', 'wizard', 'gen_seen') === String(gen.GEN_FORMAT))
+				return '';
+			var card = E('div', { 'class': 'cbi-section', 'style': 'border:2px solid #1967d2;border-radius:6px;padding:12px' }, [
+				E('strong', {}, _('Your configuration can be updated')),
+				E('p', { 'style': 'margin:6px 0' }, _('This version of ClashWrt writes better configs: less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else.')),
+				E('a', { 'class': 'cbi-button cbi-button-positive',
+					'href': L.url('admin', 'services', 'clashwrt', 'setup-wizard') + '#regen' }, _('Update the configuration')),
+				' ',
+				E('button', { 'class': 'cbi-button', 'click': function () {
+					uci.set('clashwrt', 'wizard', 'gen_seen', String(gen.GEN_FORMAT));
+					uci.save().then(function () { return uci.apply(); }).catch(function () {});
+					card.style.display = 'none';
+				} }, _('Not now'))
+			]);
+			return card;
+		}
+
 		/* ---------------- assembly ---------------- */
 
 		paint(cur);
@@ -520,6 +548,7 @@ return view.extend({
 			E('div', { 'class': 'cbi-map-descr' }, _('Status, switches and maintenance. Settings are in the tabs above.')),
 			/* Nothing set up yet: lead with the one thing left to do. The
 			 * switches stay below for whoever wants them. */
+			regenCard(),
 			power.firstRun(cfgText) ? E('div', { 'class': 'cbi-section', 'style': 'border:2px solid #1967d2;border-radius:6px;padding:14px' }, [
 				E('h3', { 'style': 'margin-top:0' }, _('ClashWrt is installed')),
 				E('p', {}, _('One step is left: tell it about your VPN. The wizard takes about two minutes and switches everything on at the end.')),

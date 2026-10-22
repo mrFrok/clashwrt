@@ -294,10 +294,10 @@ check_prereq() {
 	[ -f "$MIHOMO_CONF" ] || die "mihomo config not found at $MIHOMO_CONF"
 
 	if mode_needs_tproxy_port && [ -z "$tproxy_port" ]; then
-		die "mode '$mode' needs 'tproxy-port' in $MIHOMO_CONF (or tproxy_port in UCI)"
+		die "mode '$mode' needs 'tproxy-port' in $MIHOMO_CONF (or tproxy_port in UCI); a config from the setup wizard gets every inbound when it is applied again"
 	fi
 	if mode_needs_redir_port && [ -z "$redir_port" ]; then
-		die "mode '$mode' needs 'redir-port' in $MIHOMO_CONF (or redir_port in UCI)"
+		die "mode '$mode' needs 'redir-port' in $MIHOMO_CONF (or redir_port in UCI); a config from the setup wizard gets every inbound when it is applied again"
 	fi
 	if mode_needs_tun && ! grep -qE '^[[:space:]]*enable:[[:space:]]*true' "$MIHOMO_CONF"; then
 		# Only a hint: the key lives under tun: and a flat grep cannot prove

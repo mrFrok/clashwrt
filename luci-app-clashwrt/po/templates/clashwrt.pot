@@ -1625,3 +1625,30 @@ msgstr ""
 
 msgid "Three short steps: your VPN, what goes through it, switch on."
 msgstr ""
+
+msgid "Your configuration can be updated"
+msgstr ""
+
+msgid "This version of ClashWrt writes better configs: less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else."
+msgstr ""
+
+msgid "Update the configuration"
+msgstr ""
+
+msgid "Not now"
+msgstr ""
+
+msgid "A config written by the wizard serves every mode, so a change here takes effect on Save & Apply."
+msgstr ""
+
+msgid "Auto — test this router, TPROXY if it works (recommended)"
+msgstr ""
+
+msgid "Interception"
+msgstr ""
+
+msgid "More settings (interception, DNS, fastest node, protocol split)"
+msgstr ""
+
+msgid "How LAN traffic reaches mihomo. Auto suits nearly everyone; it can be changed later in Settings → Advanced."
+msgstr ""

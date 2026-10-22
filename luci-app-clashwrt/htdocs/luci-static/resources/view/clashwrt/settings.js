@@ -339,7 +339,8 @@ return view.extend({
 		 * while every extractor sees four separate literals -- so the lookup
 		 * misses and the text renders untranslated. */
 		o.description =
-			_('How LAN traffic is caught. The default works on every kernel; the setup wizard tests this router and picks TPROXY when it works.') +
+			_('How LAN traffic is caught. The default works on every kernel; the setup wizard tests this router and picks TPROXY when it works.') + ' ' +
+			_('A config written by the wizard serves every mode, so a change here takes effect on Save & Apply.') +
 			'<details><summary>' + _('Which one should I pick?') + '</summary>' +
 			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket.') + ' ' +
 			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device.') + ' ' +

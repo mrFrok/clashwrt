@@ -153,6 +153,23 @@ do_validate() {
 	die "configuration is not valid"
 }
 
+# Asks the running mihomo to load config.yaml again (PUT /configs), with the
+# controller address and secret of the file now installed -- which the old
+# process still listens on unless this very change moved them, in which case
+# the call fails and the caller restarts instead.
+api_reload() {
+	local ctl secret port host
+	ctl="$(sed -n 's/^external-controller:[ \t]*//p' "$CONF" | head -n1 | tr -d "\"'" | sed 's/[ \t]*#.*//')"
+	port="${ctl##*:}"
+	case "$port" in ''|*[!0-9]*) return 1 ;; esac
+	host="${ctl%:*}"
+	case "$host" in ''|0.0.0.0|'[::]'|::) host=127.0.0.1 ;; esac
+	secret="$(sed -n 's/^secret:[ \t]*//p' "$CONF" | head -n1 | sed 's/[ \t]#.*//; s/^["'"'"']//; s/["'"'"'][ \t]*$//')"
+	curl -s -o /dev/null -f -m 15 -X PUT \
+		${secret:+-H "Authorization: Bearer $secret"} \
+		"http://$host:$port/configs?force=true" -d '{"path":"","payload":""}' 2>/dev/null
+}
+
 do_apply() {
 	# global, not local: the EXIT trap runs after this function has returned
 	STAGED="$(take_staged)" || exit 1
@@ -179,8 +196,16 @@ do_apply() {
 	/usr/libexec/clashwrt/provctl.sh place >/dev/null 2>&1
 
 	if pidof mihomo >/dev/null 2>&1; then
-		/etc/init.d/mihomo restart >/dev/null 2>&1
-		echo "mihomo restarted"
+		# Reloaded in place through the API when it can be: connections and
+		# the tun device survive, and a sites-only change costs nothing.
+		# mihomo recreates the tun only if its own settings changed. A
+		# restart is the fallback, for a config whose API moved or vanished.
+		if api_reload; then
+			echo "mihomo reloaded the configuration"
+		else
+			/etc/init.d/mihomo restart >/dev/null 2>&1
+			echo "mihomo restarted"
+		fi
 		# the tun device is recreated by that restart, taking its policy
 		# route with it; hotplug normally repairs this, but ask explicitly
 		# so the answer is already correct by the time the page refreshes
@@ -192,7 +217,7 @@ do_apply() {
 	# and providers, so they follow it; otherwise they kept the old config's
 	# until the next firewall rebuild or the nightly refresh. In the
 	# background and after a pause: mihomo fetches new providers just after
-	# its restart, and this call should not wait for that.
+	# its reload, and this call should not wait for that.
 	if command -v setsid >/dev/null 2>&1; then
 		setsid sh -c 'sleep 30; /usr/libexec/clashwrt/setctl.sh load' >/dev/null 2>&1 </dev/null &
 	else

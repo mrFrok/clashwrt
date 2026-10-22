@@ -97,6 +97,7 @@ t('one box takes a subscription and a link; Next, Next, Back', function () {
 	click(btn('Next')[1]);
 	assert.deepStrictEqual(shown(), [ '3' ]);
 	assert.ok(/1 subscription\(s\), 1 node link\(s\)/.test(page.text()));
+	assert.ok(/Interception: Auto/.test(page.text()));
 	click(btn('Back')[1]);
 	assert.deepStrictEqual(shown(), [ '2' ]);
 });
@@ -108,7 +109,10 @@ click(btn('Next')[1]);
 click(btn('Apply and switch on')[0]);
 setTimeout(function () {
 	t('Apply and switch on: tests the mode once, applies, switches on, checks', function () {
-		assert.strictEqual(store.config.mode_tested, '1');
+		/* the stand-in selftest says nothing about TPROXY: the safe mode, kept */
+		assert.strictEqual(store.config.mode_auto, 'redirect_tun');
+		assert.strictEqual(store.config.mode, 'redirect_tun');
+		assert.strictEqual(store.wizard.mode_choice, 'auto');
 		assert.ok(store.wizard, 'answers saved');
 		assert.ok(/Done: the VPN works \(48 ms\)/.test(page.text()), page.text().slice(-300));
 	});
