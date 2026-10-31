@@ -8,7 +8,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.power as power';
 
-var UI_VERSION = '1.5.2';
+var UI_VERSION = '1.6.0';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -91,6 +91,7 @@ return view.extend({
 				ruleSets: gl('ruleset'),
 				udpSplit: g('udp_split', '0') === '1',
 				autoBest: g('auto_best', '1') === '1',
+				aiGroup: g('ai_group', '1') === '1',
 				yandexDns: g('yandex_dns', '0') === '1',
 				udpFilter: g('udp_filter', DEFAULT_UDP_FILTER),
 				tcpFilter: g('tcp_filter', ''),
@@ -105,7 +106,7 @@ return view.extend({
 		return {
 			source: 'none',
 			subs: '', links: '', dnsPreset: gen.DEFAULT_DNS, dnsCustom: '', fakeIp: false, tunStack: 'system',
-			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true,
+			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true, aiGroup: true,
 			yandexDns: false, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
 			extraDomains: [], extraGroup: 'Proxy'
 		};
@@ -131,6 +132,8 @@ return view.extend({
 			udpSplit: cfg.udpSplit,
 			/* a config written elsewhere has no Auto group; offer it anyway */
 			autoBest: cfg.generatedByUs ? cfg.autoBest : true,
+			/* configs from before the AI group get it, as new ones do */
+			aiGroup: cfg.genFormat >= 3 ? cfg.aiGroup : true,
 			yandexDns: cfg.yandexDns,
 			udpFilter: cfg.udpFilter || DEFAULT_UDP_FILTER,
 			tcpFilter: cfg.tcpFilter,
@@ -196,6 +199,7 @@ return view.extend({
 
 		var splitCb = E('input', { 'type': 'checkbox' });
 		var autoCb = E('input', { 'type': 'checkbox' });
+		var aiCb = E('input', { 'type': 'checkbox' });
 		var fakeCb = E('input', { 'type': 'checkbox' });
 		var stackSel = E('select', { 'class': 'cbi-input-select' }, gen.TUN_STACKS.map(function (k) {
 			return E('option', { 'value': k }, [ {
@@ -266,6 +270,7 @@ return view.extend({
 
 		function fillGroups(selected) {
 			var names = ['Proxy', 'DIRECT'];
+			if (aiCb.checked) names.push(gen.AI_GROUP);
 			cfg.groups.forEach(function (n) {
 				if (n !== gen.UDP_GROUP && n !== gen.AUTO_UDP_GROUP && names.indexOf(n) < 0) names.push(n);
 			});
@@ -354,6 +359,7 @@ return view.extend({
 			});
 			splitCb.checked = ans.udpSplit;
 			autoCb.checked = ans.autoBest;
+			aiCb.checked = ans.aiGroup;
 			fakeCb.checked = ans.fakeIp;
 			stackSel.value = ans.tunStack;
 			yandexCb.checked = ans.yandexDns;
@@ -407,6 +413,10 @@ return view.extend({
 		}
 
 		nodesBox.addEventListener('input', function () { splitNodes(); updateDetected(); });
+		/* the AI group is a target for sites only while it is generated */
+		aiCb.addEventListener('change', function () {
+			fillGroups(groupSel.value === gen.AI_GROUP && !aiCb.checked ? 'Proxy' : groupSel.value);
+		});
 		modeSel.addEventListener('change', function () { if (cur === 3) refreshSummary(); });
 
 		function collect() {
@@ -420,6 +430,7 @@ return view.extend({
 				ruleSets: sets,
 				udpSplit: splitCb.checked,
 				autoBest: autoCb.checked,
+				aiGroup: aiCb.checked,
 				fakeIp: fakeCb.checked,
 				tunStack: stackSel.value,
 				yandexDns: yandexCb.checked,
@@ -458,6 +469,7 @@ return view.extend({
 				ruleSets: ans.ruleSets,
 				udpSplit: ans.udpSplit,
 				autoBest: ans.autoBest,
+				aiGroup: ans.aiGroup,
 				fakeIp: ans.fakeIp,
 				tunStack: ans.tunStack,
 				yandexDns: ans.yandexDns,
@@ -490,6 +502,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'routing', ans.routing);
 			uci.set('clashwrt', 'wizard', 'udp_split', ans.udpSplit ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'auto_best', ans.autoBest ? '1' : '0');
+			uci.set('clashwrt', 'wizard', 'ai_group', ans.aiGroup ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'fake_ip', ans.fakeIp ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'tun_stack', ans.tunStack);
 			uci.set('clashwrt', 'wizard', 'mode_choice', modeSel.value);
@@ -499,10 +512,14 @@ return view.extend({
 			return uci.save().then(function () { return uci.apply(); });
 		}
 
-		/* A generated config only contains Proxy (and ProxyUDP); any other
+		/* A generated config only contains Proxy, ProxyUDP and AI; any other
 		 * group exists only in a config somebody wrote. */
+		function genGroup(ans) {
+			return !ans.extraDomains.length || ans.extraGroup === 'Proxy' || ans.extraGroup === 'DIRECT' ||
+				(ans.aiGroup && ans.extraGroup === gen.AI_GROUP);
+		}
 		function groupOk(ans) {
-			if (!ans.extraDomains.length || ans.extraGroup === 'Proxy' || ans.extraGroup === 'DIRECT')
+			if (genGroup(ans))
 				return true;
 			say(out, false, _('A generated configuration only has the Proxy group. Pick Proxy or DIRECT, or use "Add to current config only" to target "%s".')
 				.format(ans.extraGroup));
@@ -519,8 +536,7 @@ return view.extend({
 		 * was pre-filled and looks as if nothing happened. */
 		function refreshPreview() {
 			var ans = collect();
-			var good = hasNodes(ans) && (!ans.extraDomains.length ||
-				ans.extraGroup === 'Proxy' || ans.extraGroup === 'DIRECT');
+			var good = hasNodes(ans) && genGroup(ans);
 			preview.value = good ? gen.generate(buildOptions(ans)) : '';
 			previewKind = good ? 'generate' : '';
 			return good;
@@ -685,6 +701,7 @@ return view.extend({
 				row(_('Nodes'), _('%d subscription(s), %d node link(s)').format(subs, links)),
 				row(_('Routing'), routeSel.options[routeSel.selectedIndex] ? routeSel.options[routeSel.selectedIndex].text : ans.routing),
 				ans.routing === 'direct_except_list' ? row(_('Lists'), lists.length ? lists.join(', ') : _('none')) : '',
+				row(_('AI services'), ans.aiGroup ? _('through one server') : _('like other traffic')),
 				ans.extraDomains.length ? row(_('Sites'), _('%d, to %s').format(ans.extraDomains.length, ans.extraGroup)) : '',
 				row(_('DNS'), dnsTitle(ans)),
 				row(_('Interception'), MODES[modeSel.value])
@@ -875,6 +892,10 @@ return view.extend({
 
 				label(_('Lists'), _('Used by the "everything direct, except…" strategy.')),
 				setList,
+
+				label(_('AI services'), _('On by default.')),
+				E('label', {}, [ aiCb, ' ', _('Send ChatGPT, Claude, Gemini, Perplexity and Grok through one server') ]),
+				more(_('Why one server?'), _('These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An "AI" group keeps them on the first node that answers and moves on only if it dies; a node can be pinned in the dashboard. Whatever the routing strategy, they go through the VPN.')),
 
 				label(_('Sites'), _('Send one website to a chosen group.')),
 				more(_('How sites work'), _('Add a website by URL or by service name. Its domains are written into the config as plain rules and sent to the chosen group, ahead of the lists above.')),

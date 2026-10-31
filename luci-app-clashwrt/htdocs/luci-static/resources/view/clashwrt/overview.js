@@ -10,7 +10,7 @@
 'require clashwrt.power as power';
 'require clashwrt.maint as maint';
 
-var UI_VERSION = '1.5.2';
+var UI_VERSION = '1.6.0';
 var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -508,7 +508,7 @@ return view.extend({
 				return '';
 			var card = E('div', { 'class': 'cbi-section', 'style': 'border:2px solid #1967d2;border-radius:6px;padding:12px' }, [
 				E('strong', {}, _('Your configuration can be updated')),
-				E('p', { 'style': 'margin:6px 0' }, _('This version of ClashWrt writes better configs: less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else.')),
+				E('p', { 'style': 'margin:6px 0' }, _('This version of ClashWrt writes better configs: AI services (ChatGPT, Claude, Gemini) through one server, less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else.')),
 				E('a', { 'class': 'cbi-button cbi-button-positive',
 					'href': L.url('admin', 'services', 'clashwrt', 'wizard') + '#regen' }, _('Update the configuration')),
 				' ',

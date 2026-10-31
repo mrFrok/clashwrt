@@ -45,6 +45,7 @@ An alternative to ssclash, written because transparent proxying fails in ways th
 | 🔐 **Checked downloads** | The core and ClashWrt's own updates must match the SHA-256 GitHub lists for them. |
 | 🚀 **Kernel bypass** | What goes direct anyway skips mihomo in the kernel, so **flow offloading** and **SQM** work for it. |
 | 🛡️ **Leak protection** | IPv6, DNS-over-TLS and (optionally) DNS-over-HTTPS are refused while the proxy is on. |
+| 🤖 **AI through one server** | ChatGPT, Claude, Gemini and others always go through one node, so the account is not flagged for jumping between countries. |
 | 🔀 **TCP/UDP split** | UDP through Hysteria2/TUIC, the rest through Reality/VLESS — one button, on any config. |
 | 🧯 **Kill switches & watchdog** | Proxy, core or both off in one click; an opt-in watchdog goes direct — or blocks — when the VPN dies. |
 | 📝 **Editors that validate** | Config and rule lists are checked with `mihomo -t` before anything is installed, with backups. |
@@ -276,6 +277,7 @@ The form opens pre-filled — from the last answers, or read back from the insta
 - **DNS.** Quad9 over DoH by default: with `redir-host` mihomo resolves every name itself, and over plain UDP the ISP would see — and could rewrite — each lookup. **Fake-IP** is optional: connections start sooner, but the bypass set is held back.
 - **TUN stack.** `system` (fastest, default), `gvisor` or `mixed` for kernels where it misbehaves, `mips` for slow MIPS routers.
 - **Fastest node.** A `url-test` group `Auto` follows the fastest node with a 50 ms tolerance; it is the first member of `Proxy`, which stays a `select` group.
+- **AI services through one server** (on by default). ChatGPT, Claude, Gemini, Perplexity and Grok flag or block accounts whose address keeps changing country, which is exactly what `Auto` does. A `fallback` group `AI` keeps them on the first node that answers — over TCP and UDP, whatever the routing strategy — and moves on only if it dies; pin a node in the dashboard to choose it yourself. Other sites can be sent to `AI` with *Add a site*.
 
 ### TCP/UDP protocol split
 

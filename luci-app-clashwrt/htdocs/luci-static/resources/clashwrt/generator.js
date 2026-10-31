@@ -349,7 +349,7 @@ var TUN_STACKS = ['system', 'gvisor', 'mixed', 'mips'];
  * when the generator starts writing something a config should have (1.5.1:
  * mrs geo sets, GSO, no GEOIP, find-process-mode, dns-mode), so the Overview
  * can offer once to regenerate an older one. Configs before it have none. */
-var GEN_FORMAT = 2;
+var GEN_FORMAT = 3;
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -542,8 +542,29 @@ var SITE_PRESETS = {
 			'makersuite.google.com', 'generativelanguage.googleapis.com'],
 		suffixes: ['gemini.google.com', 'bard.google.com', 'aistudio.google.com', 'ai.google.dev',
 			'makersuite.google.com', 'generativelanguage.googleapis.com']
+	},
+	perplexity: {
+		title: 'Perplexity', keys: ['perplexity'],
+		hosts: ['perplexity.ai', 'pplx.ai'],
+		suffixes: ['perplexity.ai', 'pplx.ai']
+	},
+	grok: {
+		title: 'Grok / xAI', keys: ['grok', 'xai'],
+		hosts: ['grok.com', 'x.ai'],
+		suffixes: ['grok.com', 'x.ai']
 	}
 };
+
+/* Services that refuse or flag an account whose address keeps changing
+ * country or provider: an "AI" group sends all of them through one node
+ * instead of whichever the Auto group finds fastest at the moment. */
+var AI_GROUP = 'AI';
+var AI_SERVICES = ['openai', 'claude', 'gemini', 'perplexity', 'grok'];
+function aiDomains() {
+	var out = [];
+	AI_SERVICES.forEach(function (k) { out = out.concat(SITE_PRESETS[k].suffixes); });
+	return normDomains(out);
+}
 
 function normDomains(list) {
 	var seen = {}, out = [];
@@ -700,7 +721,7 @@ function parseConfig(text) {
 		subs: [], links: 0, dnsServers: [], routing: '', ruleSets: [],
 		udpSplit: false, udpFilter: '', tcpFilter: '', yandexDns: false,
 		extraDomains: [], extraGroup: 'Proxy', groups: [], generatedByUs: false, secret: '',
-		autoBest: false, fakeIp: false, tunStack: '', genFormat: 0
+		autoBest: false, aiGroup: false, fakeIp: false, tunStack: '', genFormat: 0
 	};
 	var i, r, m;
 
@@ -772,6 +793,8 @@ function parseConfig(text) {
 	res.tcpFilter = filterOf(lines, 'Proxy');
 	res.groups = groupNames(lines);
 	res.autoBest = res.groups.indexOf(AUTO_GROUP) >= 0;
+	res.aiGroup = res.groups.indexOf(AI_GROUP) >= 0;
+	var aiList = aiDomains();
 
 	r = sectionRange(lines, 'rules');
 	if (r) {
@@ -789,6 +812,7 @@ function parseConfig(text) {
 		 * service entries (DOMAIN-SUFFIX,local,DIRECT and the like) name no
 		 * proxy-group or are not a hostname, so they cannot pick the target. */
 		var mine = suffixRules.filter(function (x) {
+			if (x.g === AI_GROUP && aiList.indexOf(x.d) >= 0) return false;   /* the AI group's own */
 			return x.g !== UDP_GROUP && res.groups.indexOf(x.g) >= 0 && validHost(x.d);
 		});
 		if (mine.length) {
@@ -869,7 +893,10 @@ return baseclass.extend({
 	GEN_FORMAT: GEN_FORMAT,
 	AUTO_GROUP: AUTO_GROUP,
 	AUTO_UDP_GROUP: AUTO_UDP_GROUP,
+	AI_GROUP: AI_GROUP,
+	AI_SERVICES: AI_SERVICES,
 	SITE_PRESETS: SITE_PRESETS,
+	aiDomains: aiDomains,
 
 	siteDomains: siteDomains,
 	normDomains: normDomains,
@@ -1265,6 +1292,20 @@ return baseclass.extend({
 			urlTest(AUTO_GROUP, names, o.tcpFilter);
 			if (udpSplit) urlTest(AUTO_UDP_GROUP, udpNames, udpFilter);
 		}
+		/* AI: one node for every AI service, never Auto, so the address
+		 * they see stays put. fallback rather than select: it keeps the
+		 * first node that answers and moves on only when that one dies,
+		 * skipping the dead "expires on..." entries subscriptions put at
+		 * the top; a node can still be pinned by hand in the dashboard. */
+		var aiGroup = o.aiGroup !== false;
+		if (aiGroup) {
+			L.push('  - name: ' + AI_GROUP);
+			L.push('    type: fallback');
+			L.push('    url: https://www.gstatic.com/generate_204');
+			L.push('    interval: 300');
+			L.push('    lazy: true');
+			members(names, o.tcpFilter);
+		}
 		L.push('');
 
 		/* rule providers */
@@ -1309,6 +1350,15 @@ return baseclass.extend({
 		L.push('rules:');
 		var extra = normDomains(o.extraDomains);
 		var extraGroup = o.extraGroup || 'Proxy';
+		/* AI services go first, both TCP and UDP (QUIC), to the AI group, so
+		 * no list or protocol split moves them to another node. A domain
+		 * the user sent somewhere under Sites stays theirs. */
+		var emitAi = function () {
+			if (!aiGroup) return;
+			aiDomains().forEach(function (d) {
+				if (extra.indexOf(d) < 0) L.push('  - DOMAIN-SUFFIX,' + d + ',' + AI_GROUP);
+			});
+		};
 		var emitExtra = function () {
 			extra.forEach(function (d) {
 				if (udpSplit && extraGroup === 'Proxy')
@@ -1320,6 +1370,7 @@ return baseclass.extend({
 			/* before the RU sets, so a site the user named is not claimed
 			 * by them */
 			emitExtra();
+			emitAi();
 			L.push('  - RULE-SET,ru_domains,DIRECT');
 			L.push('  - RULE-SET,ru_ips,DIRECT');
 			PRIVATE_NETS.forEach(function (n) { L.push('  - IP-CIDR,' + n + ',DIRECT,no-resolve'); });
@@ -1329,6 +1380,7 @@ return baseclass.extend({
 			L.push('  - MATCH,Proxy');
 		} else {
 			var order = listed;
+			emitAi();
 			if (udpSplit) {
 				order.forEach(function (pn3) {
 					L.push('  - AND,((NETWORK,udp),(RULE-SET,' + pn3 + ')),ProxyUDP');
