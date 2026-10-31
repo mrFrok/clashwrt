@@ -1674,5 +1674,35 @@ msgstr "Пускать ChatGPT, Claude, Gemini, Perplexity и Grok через о
 msgid "Why one server?"
 msgstr "Зачем один сервер?"
 
-msgid "These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An \"AI\" group keeps them on the first node that answers and moves on only if it dies; a node can be pinned in the dashboard. Whatever the routing strategy, they go through the VPN."
-msgstr "Эти сервисы помечают или блокируют аккаунт, чей адрес прыгает между странами, — а выбор самого быстрого узла именно так и делает. Группа «AI» держит их на первом отвечающем узле и уходит с него, только если он умер; узел можно закрепить в панели. При любой стратегии маршрутизации они идут через VPN."
+msgid "These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An \"AI\" group keeps them on the first node that answers, of any protocol, and moves on only if it dies; a node can be pinned in the dashboard. Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) are left out. Pick a country to keep them there; the list shows the countries named in your nodes. Whatever the routing strategy, they go through the VPN."
+msgstr "Эти сервисы помечают или блокируют аккаунт, чей адрес прыгает между странами, — а выбор самого быстрого узла именно так и делает. Группа «AI» держит их на первом отвечающем узле любого протокола и уходит с него, только если он умер; узел можно закрепить в панели. Узлы в странах, где сервисы не работают (Россия, Беларусь, Китай, Гонконг, Иран и ещё несколько), не используются. Выберите страну, чтобы держать их в ней; в списке — страны, названные в ваших узлах. При любой стратегии маршрутизации они идут через VPN."
+
+msgid "Any country the services allow"
+msgstr "Любая страна, где сервисы работают"
+
+msgid "%d node(s)"
+msgstr "узлов: %d"
+
+msgid "not found now"
+msgstr "сейчас не найдена"
+
+msgid "not served"
+msgstr "не обслуживается"
+
+msgid "Looking at the subscription…"
+msgstr "Смотрю подписку…"
+
+msgid "%d node(s), %d with a country in the name."
+msgstr "Узлов: %d, со страной в названии: %d."
+
+msgid "%d subscription(s) could not be downloaded."
+msgstr "Не удалось скачать подписок: %d."
+
+msgid "through one server in %s"
+msgstr "через один сервер, %s"
+
+msgid "Country:"
+msgstr "Страна:"
+
+msgid "Look again"
+msgstr "Проверить снова"

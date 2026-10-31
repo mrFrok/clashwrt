@@ -8,7 +8,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.power as power';
 
-var UI_VERSION = '1.6.0';
+var UI_VERSION = '1.6.1';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -92,6 +92,7 @@ return view.extend({
 				udpSplit: g('udp_split', '0') === '1',
 				autoBest: g('auto_best', '1') === '1',
 				aiGroup: g('ai_group', '1') === '1',
+				aiCountry: g('ai_country', ''),
 				yandexDns: g('yandex_dns', '0') === '1',
 				udpFilter: g('udp_filter', DEFAULT_UDP_FILTER),
 				tcpFilter: g('tcp_filter', ''),
@@ -106,7 +107,7 @@ return view.extend({
 		return {
 			source: 'none',
 			subs: '', links: '', dnsPreset: gen.DEFAULT_DNS, dnsCustom: '', fakeIp: false, tunStack: 'system',
-			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true, aiGroup: true,
+			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true, aiGroup: true, aiCountry: '',
 			yandexDns: false, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
 			extraDomains: [], extraGroup: 'Proxy'
 		};
@@ -134,6 +135,7 @@ return view.extend({
 			autoBest: cfg.generatedByUs ? cfg.autoBest : true,
 			/* configs from before the AI group get it, as new ones do */
 			aiGroup: cfg.genFormat >= 3 ? cfg.aiGroup : true,
+			aiCountry: cfg.aiCountry || '',
 			yandexDns: cfg.yandexDns,
 			udpFilter: cfg.udpFilter || DEFAULT_UDP_FILTER,
 			tcpFilter: cfg.tcpFilter,
@@ -200,6 +202,59 @@ return view.extend({
 		var splitCb = E('input', { 'type': 'checkbox' });
 		var autoCb = E('input', { 'type': 'checkbox' });
 		var aiCb = E('input', { 'type': 'checkbox' });
+		var aiCountrySel = E('select', { 'class': 'cbi-input-select' });
+		var aiCountryMsg = E('div', { 'style': 'font-size:90%;margin-top:4px;min-height:1.2em' });
+		var aiCountryRow;
+		var aiFound = null, aiScanKey = null;
+
+		/* "Any" first; then the countries the nodes are in, most nodes first;
+		 * the ones the AI services refuse are listed but cannot be picked. A
+		 * saved choice stays in the list even when the scan did not find it. */
+		function fillCountries(selected) {
+			var found = aiFound || {};
+			var codes = Object.keys(found).sort(function (a, b) { return found[b] - found[a] || (a < b ? -1 : 1); });
+			if (selected && codes.indexOf(selected) < 0 && gen.COUNTRIES[selected]) codes.unshift(selected);
+			var opts = [ E('option', { 'value': '' }, [ _('Any country the services allow') ]) ];
+			codes.forEach(function (c) {
+				var blocked = gen.AI_BLOCKED.indexOf(c) >= 0;
+				var text = gen.flagOf(c) + ' ' + c + ' — ' + gen.COUNTRIES[c][0] +
+					(found[c] ? ' (' + _('%d node(s)').format(found[c]) + ')' : ' (' + _('not found now') + ')') +
+					(blocked ? ' — ' + _('not served') : '');
+				opts.push(E('option', { 'value': c, 'disabled': blocked ? '' : null }, [ text ]));
+			});
+			dom.content(aiCountrySel, opts);
+			aiCountrySel.value = (selected && gen.AI_BLOCKED.indexOf(selected) < 0) ? selected : '';
+		}
+
+		/* Node names from the pasted links, and from each subscription as the
+		 * router downloads it; once per set of nodes. */
+		function scanCountries(force) {
+			var subs = gen.subscriptionsOf(subsBox.value);
+			var key = subs.join('\n') + '\n' + linksBox.value;
+			if (!force && key === aiScanKey) return Promise.resolve();
+			aiScanKey = key;
+			var names = gen.parseLinks(linksBox.value).proxies.map(function (p) { return p.name; });
+			var failed = 0;
+			if (subs.length) dom.content(aiCountryMsg, E('em', {}, [ _('Looking at the subscription…') ]));
+			return Promise.all(subs.map(function (u) {
+				return fs.exec(CONFCTL, ['subfetch', u]).then(function (r) {
+					if (r.code !== 0) { failed++; return; }
+					names = names.concat(gen.subNodeNames(r.stdout || ''));
+				}).catch(function () { failed++; });
+			})).then(function () {
+				if (key !== aiScanKey) return;
+				var found = {}, unknown = 0;
+				names.forEach(function (n) {
+					var c = gen.countryOf(n);
+					if (c) found[c] = (found[c] || 0) + 1; else unknown++;
+				});
+				aiFound = found;
+				fillCountries(aiCountrySel.value);
+				var msg = _('%d node(s), %d with a country in the name.').format(names.length, names.length - unknown);
+				if (failed) msg += ' ' + _('%d subscription(s) could not be downloaded.').format(failed);
+				dom.content(aiCountryMsg, [ msg ]);
+			});
+		}
 		var fakeCb = E('input', { 'type': 'checkbox' });
 		var stackSel = E('select', { 'class': 'cbi-input-select' }, gen.TUN_STACKS.map(function (k) {
 			return E('option', { 'value': k }, [ {
@@ -360,6 +415,7 @@ return view.extend({
 			splitCb.checked = ans.udpSplit;
 			autoCb.checked = ans.autoBest;
 			aiCb.checked = ans.aiGroup;
+			fillCountries(ans.aiCountry);
 			fakeCb.checked = ans.fakeIp;
 			stackSel.value = ans.tunStack;
 			yandexCb.checked = ans.yandexDns;
@@ -416,6 +472,8 @@ return view.extend({
 		/* the AI group is a target for sites only while it is generated */
 		aiCb.addEventListener('change', function () {
 			fillGroups(groupSel.value === gen.AI_GROUP && !aiCb.checked ? 'Proxy' : groupSel.value);
+			aiCountryRow.style.display = aiCb.checked ? '' : 'none';
+			if (aiCb.checked) scanCountries(false);
 		});
 		modeSel.addEventListener('change', function () { if (cur === 3) refreshSummary(); });
 
@@ -431,6 +489,7 @@ return view.extend({
 				udpSplit: splitCb.checked,
 				autoBest: autoCb.checked,
 				aiGroup: aiCb.checked,
+				aiCountry: aiCountrySel.value || '',
 				fakeIp: fakeCb.checked,
 				tunStack: stackSel.value,
 				yandexDns: yandexCb.checked,
@@ -470,6 +529,7 @@ return view.extend({
 				udpSplit: ans.udpSplit,
 				autoBest: ans.autoBest,
 				aiGroup: ans.aiGroup,
+				aiCountry: ans.aiCountry,
 				fakeIp: ans.fakeIp,
 				tunStack: ans.tunStack,
 				yandexDns: ans.yandexDns,
@@ -503,6 +563,7 @@ return view.extend({
 			uci.set('clashwrt', 'wizard', 'udp_split', ans.udpSplit ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'auto_best', ans.autoBest ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'ai_group', ans.aiGroup ? '1' : '0');
+			uci.set('clashwrt', 'wizard', 'ai_country', ans.aiCountry || '');
 			uci.set('clashwrt', 'wizard', 'fake_ip', ans.fakeIp ? '1' : '0');
 			uci.set('clashwrt', 'wizard', 'tun_stack', ans.tunStack);
 			uci.set('clashwrt', 'wizard', 'mode_choice', modeSel.value);
@@ -701,7 +762,9 @@ return view.extend({
 				row(_('Nodes'), _('%d subscription(s), %d node link(s)').format(subs, links)),
 				row(_('Routing'), routeSel.options[routeSel.selectedIndex] ? routeSel.options[routeSel.selectedIndex].text : ans.routing),
 				ans.routing === 'direct_except_list' ? row(_('Lists'), lists.length ? lists.join(', ') : _('none')) : '',
-				row(_('AI services'), ans.aiGroup ? _('through one server') : _('like other traffic')),
+				row(_('AI services'), !ans.aiGroup ? _('like other traffic')
+					: ans.aiCountry ? _('through one server in %s').format(gen.flagOf(ans.aiCountry) + ' ' + gen.COUNTRIES[ans.aiCountry][0])
+					: _('through one server')),
 				ans.extraDomains.length ? row(_('Sites'), _('%d, to %s').format(ans.extraDomains.length, ans.extraGroup)) : '',
 				row(_('DNS'), dnsTitle(ans)),
 				row(_('Interception'), MODES[modeSel.value])
@@ -841,6 +904,7 @@ return view.extend({
 		var titles = [];
 		function go(n) {
 			if (n === 3) refreshSummary();
+			if (n === 2 && aiCb.checked) scanCountries(false);
 			cur = n;
 			stepEls.forEach(function (el, i) { el.style.display = (i + 1 === n) ? '' : 'none'; });
 			dom.content(progress, titles.map(function (t, i) {
@@ -895,7 +959,13 @@ return view.extend({
 
 				label(_('AI services'), _('On by default.')),
 				E('label', {}, [ aiCb, ' ', _('Send ChatGPT, Claude, Gemini, Perplexity and Grok through one server') ]),
-				more(_('Why one server?'), _('These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An "AI" group keeps them on the first node that answers and moves on only if it dies; a node can be pinned in the dashboard. Whatever the routing strategy, they go through the VPN.')),
+				aiCountryRow = E('div', { 'style': 'margin-top:6px' + (a.aiGroup ? '' : ';display:none') }, [
+					E('div', {}, _('Country:')),
+					aiCountrySel, ' ',
+					E('button', { 'type': 'button', 'class': 'cbi-button', 'click': function () { scanCountries(true); } }, _('Look again')),
+					aiCountryMsg
+				]),
+				more(_('Why one server?'), _('These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An "AI" group keeps them on the first node that answers, of any protocol, and moves on only if it dies; a node can be pinned in the dashboard. Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) are left out. Pick a country to keep them there; the list shows the countries named in your nodes. Whatever the routing strategy, they go through the VPN.')),
 
 				label(_('Sites'), _('Send one website to a chosen group.')),
 				more(_('How sites work'), _('Add a website by URL or by service name. Its domains are written into the config as plain rules and sent to the chosen group, ahead of the lists above.')),

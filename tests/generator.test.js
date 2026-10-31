@@ -258,35 +258,50 @@ var AI_NODES = [
 	{ name: 'h1', type: 'hysteria2', server: 'b.example', port: 443, password: 'p' }
 ];
 
-t('AI services go through one fallback group by default, ahead of everything', function () {
+t('AI services go through one fallback group by default, via the geosite sets', function () {
 	['direct_except_list', 'proxy_except_ru'].forEach(function (r) {
 		var y = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: r, udpSplit: true, ruleSets: ['openai'] });
 		assert.ok(/\n  - name: AI\n    type: fallback\n/.test(y), r);
 		var g = y.slice(y.indexOf('  - name: AI\n'));
 		assert.ok(g.indexOf('      - n1\n') > 0 && g.indexOf('      - h1\n') > 0, r);
 		assert.ok(g.split('\n  - name:')[0].indexOf('Auto') < 0, 'no Auto in AI: ' + r);
-		['chatgpt.com', 'claude.ai', 'anthropic.com', 'gemini.google.com', 'perplexity.ai', 'grok.com'].forEach(function (d) {
-			assert.ok(y.indexOf('\n  - DOMAIN-SUFFIX,' + d + ',AI\n') > 0, d + ' ' + r);
+		Object.keys(gen.AI_RULESETS).forEach(function (n) {
+			assert.ok(y.indexOf('\n  - RULE-SET,' + n + ',AI\n') > 0, n + ' ' + r);
+			assert.strictEqual(y.split('\n  ' + n + ':\n').length, 2, 'one provider ' + n + ' ' + r);
 		});
-		var first = y.indexOf(',AI\n');
-		['RULE-SET,', 'NETWORK,udp', 'MATCH,'].forEach(function (x) {
-			assert.ok(first < y.indexOf(x, y.indexOf('\nrules:')), x + ' after AI: ' + r);
+		assert.ok(/geo\/geosite\/anthropic\.mrs/.test(y));
+		var rules = y.slice(y.indexOf('\nrules:'));
+		var first = rules.indexOf(',AI\n');
+		['NETWORK,udp', 'MATCH,', 'RULE-SET,geosite_openai,Proxy'].forEach(function (x) {
+			if (rules.indexOf(x) >= 0) assert.ok(first < rules.indexOf(x), x + ' after AI: ' + r);
 		});
 		var c = gen.parseConfig(y);
 		assert.strictEqual(c.aiGroup, true);
-		assert.deepStrictEqual(c.extraDomains, [], 'AI rules are not read back as sites');
+		assert.deepStrictEqual(c.extraDomains, []);
 	});
 });
 
-t('AI group can be switched off, and a site sent elsewhere stays there', function () {
+t('proxy_except_ru: AI rules come after the DIRECT ones the bypass set reads', function () {
+	var y = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: 'proxy_except_ru' });
+	var rules = y.slice(y.indexOf('\nrules:'));
+	assert.ok(rules.indexOf('RULE-SET,ru_ips,DIRECT') < rules.indexOf(',AI\n'));
+	assert.ok(rules.indexOf('IP-CIDR,192.168.0.0/16,DIRECT') < rules.indexOf(',AI\n'));
+});
+
+t('AI sets are not read back as ticked lists', function () {
+	var y = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: 'direct_except_list', ruleSets: ['youtube'] });
+	assert.deepStrictEqual(gen.parseConfig(y).ruleSets, ['youtube']);
+	var both = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: 'direct_except_list', ruleSets: ['openai'] });
+	assert.deepStrictEqual(gen.parseConfig(both).ruleSets, ['openai']);
+});
+
+t('AI group can be switched off, and a site sent elsewhere goes ahead of it', function () {
 	var off = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: 'direct_except_list', aiGroup: false });
-	assert.ok(off.indexOf('name: AI') < 0 && off.indexOf(',AI\n') < 0);
+	assert.ok(off.indexOf('name: AI') < 0 && off.indexOf(',AI\n') < 0 && off.indexOf('geosite_anthropic') < 0);
 	assert.strictEqual(gen.parseConfig(off).aiGroup, false);
 	var y = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: 'direct_except_list',
 		extraDomains: ['claude.ai'], extraGroup: 'Proxy' });
-	assert.ok(y.indexOf('DOMAIN-SUFFIX,claude.ai,AI') < 0);
-	assert.ok(y.indexOf('DOMAIN-SUFFIX,claude.ai,Proxy') > 0);
-	assert.ok(y.indexOf('DOMAIN-SUFFIX,anthropic.com,AI') > 0);
+	assert.ok(y.indexOf('DOMAIN-SUFFIX,claude.ai,Proxy') < y.indexOf('RULE-SET,geosite_anthropic,AI'));
 });
 
 t('sites sent to the AI group read back as sites', function () {
@@ -295,6 +310,47 @@ t('sites sent to the AI group read back as sites', function () {
 	var c = gen.parseConfig(y);
 	assert.strictEqual(c.extraGroup, 'AI');
 	assert.deepStrictEqual(c.extraDomains, ['mistral.ai']);
+});
+
+t('countryOf: flag, names in two languages, upper-case code only', function () {
+	var cases = { '🇩🇪 Germany 1': 'DE', 'Нидерланды #2': 'NL', 'US-West': 'US', '[DE] hy2': 'DE',
+		'Helsinki hy2': 'FI', '🇷🇺 Москва': 'RU', 'Plus node': '', 'Осталось 12 дней': '', 'de lower': '', 'Login IN': '' };
+	Object.keys(cases).forEach(function (k) { assert.strictEqual(gen.countryOf(k), cases[k], k); });
+});
+
+t('AI takes every protocol, never the refused countries, whatever the TCP filter', function () {
+	var proxies = gen.parseLinks([
+		'vless://u@a.example:443?security=tls#🇷🇺 RU',
+		'hysteria2://p@b.example:443#🇳🇱 NL hy2',
+		'vless://u@c.example:443?security=tls#Finland'
+	].join('\n')).proxies;
+	var y = gen.generate({ proxies: proxies, subscriptions: ['https://s/x'], mode: 'tun',
+		routing: 'direct_except_list', tcpFilter: '(?i)vless' });
+	var g = y.slice(y.indexOf('  - name: AI\n')).split('\n\n')[0];
+	assert.ok(g.indexOf("'🇳🇱 NL hy2'") > 0 && g.indexOf('Finland') > 0, g);
+	assert.ok(g.indexOf('RU\'') < 0 && g.indexOf('🇷🇺 RU') < 0, g);
+	assert.ok(/\n    exclude-filter: /.test(g) && !/\n    filter: /.test(g), g);
+	var nl = gen.generate({ proxies: proxies, subscriptions: ['https://s/x'], mode: 'tun',
+		routing: 'direct_except_list', aiCountry: 'NL' });
+	var gn = nl.slice(nl.indexOf('  - name: AI\n')).split('\n\n')[0];
+	assert.ok(gn.indexOf('NL hy2') > 0 && gn.indexOf('Finland') < 0, gn);
+	assert.ok(/\n    filter: /.test(gn) && !/exclude-filter/.test(gn), gn);
+	assert.strictEqual(gen.parseConfig(nl).aiCountry, 'NL');
+});
+
+t('AI with no node of the country keeps the inline nodes rather than none', function () {
+	var proxies = gen.parseLinks('vless://u@a.example:443?security=tls#Finland').proxies;
+	var y = gen.generate({ proxies: proxies, mode: 'tun', routing: 'direct_except_list', aiCountry: 'NL' });
+	assert.ok(y.slice(y.indexOf('  - name: AI\n')).split('\n\n')[0].indexOf('Finland') > 0);
+});
+
+t('subNodeNames reads Clash YAML, share links and base64', function () {
+	assert.deepStrictEqual(gen.subNodeNames('proxies:\n  - { name: "🇳🇱 A", type: vless }\n  - name: \'B C\'\n    type: trojan\nproxy-groups:\n  - name: G\n'),
+		['🇳🇱 A', 'B C']);
+	var links = 'vless://u@h:443?security=none#%F0%9F%87%A9%F0%9F%87%AA%20DE\nhysteria2://p@h:443#NL';
+	assert.deepStrictEqual(gen.subNodeNames(links), ['🇩🇪 DE', 'NL']);
+	assert.deepStrictEqual(gen.subNodeNames(Buffer.from(links).toString('base64')), ['🇩🇪 DE', 'NL']);
+	assert.deepStrictEqual(gen.subNodeNames(''), []);
 });
 
 console.log(n + ' generator tests passed');

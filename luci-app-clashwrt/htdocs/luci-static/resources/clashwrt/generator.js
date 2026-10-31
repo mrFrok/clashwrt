@@ -349,7 +349,7 @@ var TUN_STACKS = ['system', 'gvisor', 'mixed', 'mips'];
  * when the generator starts writing something a config should have (1.5.1:
  * mrs geo sets, GSO, no GEOIP, find-process-mode, dns-mode), so the Overview
  * can offer once to regenerate an older one. Configs before it have none. */
-var GEN_FORMAT = 3;
+var GEN_FORMAT = 4;
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -557,14 +557,155 @@ var SITE_PRESETS = {
 
 /* Services that refuse or flag an account whose address keeps changing
  * country or provider: an "AI" group sends all of them through one node
- * instead of whichever the Auto group finds fastest at the moment. */
+ * instead of whichever the Auto group finds fastest at the moment. The
+ * geosite sets rather than SITE_PRESETS: a few hundred bytes each, and they
+ * follow the services' API, voice and CDN hosts as those change. Provider
+ * names are shared with RULESETS, so ticking the same list there does not
+ * download the file twice. */
 var AI_GROUP = 'AI';
-var AI_SERVICES = ['openai', 'claude', 'gemini', 'perplexity', 'grok'];
-function aiDomains() {
-	var out = [];
-	AI_SERVICES.forEach(function (k) { out = out.concat(SITE_PRESETS[k].suffixes); });
-	return normDomains(out);
+
+/* Countries a node name may name: the flag, names in English and Russian,
+ * and the ISO code as a separate upper-case word. Codes that are also common
+ * words (IN, IT, NO, BE, AM, IS) are left to the flag and the names. */
+var COUNTRIES = {
+	NL: ['Нидерланды', 'Netherlands', 'Holland', 'Голландия', 'Amsterdam', 'Амстердам'],
+	DE: ['Германия', 'Germany', 'Deutschland', 'Frankfurt', 'Франкфурт'],
+	FI: ['Финляндия', 'Finland', 'Helsinki', 'Хельсинки'],
+	SE: ['Швеция', 'Sweden', 'Stockholm', 'Стокгольм'],
+	NO: ['Норвегия', 'Norway', 'Oslo', 'Осло'],
+	DK: ['Дания', 'Denmark'],
+	PL: ['Польша', 'Poland', 'Warsaw', 'Варшава'],
+	LV: ['Латвия', 'Latvia', 'Riga', 'Рига'],
+	LT: ['Литва', 'Lithuania', 'Vilnius', 'Вильнюс'],
+	EE: ['Эстония', 'Estonia', 'Tallinn', 'Таллин'],
+	FR: ['Франция', 'France', 'Paris', 'Париж'],
+	GB: ['Великобритания', 'Британия', 'Англия', 'United Kingdom', 'Britain', 'England', 'London', 'Лондон', 'UK'],
+	IE: ['Ирландия', 'Ireland'],
+	ES: ['Испания', 'Spain', 'Madrid', 'Мадрид'],
+	PT: ['Португалия', 'Portugal'],
+	IT: ['Италия', 'Italy', 'Milan', 'Милан'],
+	CH: ['Швейцария', 'Switzerland', 'Zurich', 'Цюрих'],
+	AT: ['Австрия', 'Austria', 'Vienna', 'Вена'],
+	BE: ['Бельгия', 'Belgium'],
+	CZ: ['Чехия', 'Czech', 'Prague', 'Прага'],
+	HU: ['Венгрия', 'Hungary'],
+	RO: ['Румыния', 'Romania'],
+	BG: ['Болгария', 'Bulgaria'],
+	RS: ['Сербия', 'Serbia'],
+	MD: ['Молдова', 'Moldova'],
+	UA: ['Украина', 'Ukraine'],
+	GE: ['Грузия', 'Georgia', 'Tbilisi', 'Тбилиси'],
+	AM: ['Армения', 'Armenia'],
+	AZ: ['Азербайджан', 'Azerbaijan'],
+	KZ: ['Казахстан', 'Kazakhstan', 'Almaty', 'Алматы'],
+	TR: ['Турция', 'Turkey', 'Türkiye', 'Istanbul', 'Стамбул'],
+	IL: ['Израиль', 'Israel'],
+	AE: ['ОАЭ', 'Эмираты', 'Emirates', 'UAE', 'Dubai', 'Дубай'],
+	IN: ['Индия', 'India'],
+	SG: ['Сингапур', 'Singapore'],
+	JP: ['Япония', 'Japan', 'Tokyo', 'Токио'],
+	KR: ['Корея', 'Korea', 'Seoul', 'Сеул'],
+	US: ['США', 'Америка', 'United States', 'America', 'USA', 'New York', 'Нью-Йорк', 'Los Angeles'],
+	CA: ['Канада', 'Canada', 'Toronto'],
+	BR: ['Бразилия', 'Brazil'],
+	AU: ['Австралия', 'Australia', 'Sydney'],
+	RU: ['Россия', 'Russia', 'Москва', 'Moscow', 'РФ'],
+	BY: ['Беларусь', 'Белоруссия', 'Belarus'],
+	CN: ['Китай', 'China'],
+	HK: ['Гонконг', 'Hong Kong', 'Hongkong'],
+	MO: ['Макао', 'Macau', 'Macao'],
+	IR: ['Иран', 'Iran'],
+	KP: ['КНДР', 'North Korea'],
+	CU: ['Куба', 'Cuba'],
+	SY: ['Сирия', 'Syria']
+};
+var CODE_WORDS_SKIP = ['IN', 'IT', 'NO', 'BE', 'AM', 'IS'];
+
+/* Where OpenAI and Anthropic do not serve: "any country" for AI leaves
+ * these out, and the wizard does not offer them. */
+var AI_BLOCKED = ['RU', 'BY', 'CN', 'HK', 'MO', 'IR', 'KP', 'CU', 'SY'];
+
+function flagOf(code) {
+	return String.fromCharCode(0xD83C, 0xDDE6 + code.charCodeAt(0) - 65,
+		0xD83C, 0xDDE6 + code.charCodeAt(1) - 65);
 }
+
+function reEsc(x) { return x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function countryOf(name) {
+	name = String(name || '');
+	var m = name.match(/\uD83C[\uDDE6-\uDDFF]\uD83C[\uDDE6-\uDDFF]/);
+	if (m)
+		return String.fromCharCode(65 + m[0].charCodeAt(1) - 0xDDE6, 65 + m[0].charCodeAt(3) - 0xDDE6);
+	var low = name.toLowerCase();
+	for (var c in COUNTRIES)
+		for (var i = 0; i < COUNTRIES[c].length; i++)
+			if (low.indexOf(COUNTRIES[c][i].toLowerCase()) >= 0) return c;
+	for (var c2 in COUNTRIES)
+		if (CODE_WORDS_SKIP.indexOf(c2) < 0 && new RegExp('(^|[^A-Za-z])' + c2 + '([^A-Za-z]|$)').test(name))
+			return c2;
+	return '';
+}
+
+/* The same test as countryOf, as one Go RE2 pattern for mihomo's filter:
+ * flag and names case-insensitive, the code upper-case only. */
+function countryRe2(codes) {
+	var words = [], upper = [];
+	codes.forEach(function (c) {
+		words.push(flagOf(c));
+		(COUNTRIES[c] || []).forEach(function (w) { words.push(reEsc(w)); });
+		if (CODE_WORDS_SKIP.indexOf(c) < 0) upper.push(c);
+	});
+	var re = '(?i:' + words.join('|') + ')';
+	if (upper.length) re += '|(?:^|[^A-Za-z])(?:' + upper.join('|') + ')(?:[^A-Za-z]|$)';
+	return re;
+}
+
+/* Node names out of a downloaded subscription: Clash YAML, or share links,
+ * plain or base64. */
+function subNodeNames(body) {
+	body = String(body || '');
+	var names = [];
+	var lines = body.split(/\r?\n/);
+	var r = sectionRange(lines, 'proxies');
+	if (r) {
+		for (var i = r.start; i < r.end; i++) {
+			var m = lines[i].match(/(?:^\s*-\s*\{?\s*|[{,]\s*|^\s+)name:\s*('(?:[^']|'')*'|"[^"]*"|[^,}#]+)/);
+			if (m) names.push(unq(m[1].trim()));
+		}
+		return names;
+	}
+	var text = body.indexOf('://') >= 0 ? body : b64decode(body.replace(/\s+/g, ''));
+	text.split(/[\r\n]+/).forEach(function (l) {
+		l = l.trim();
+		if (l.indexOf('://') < 0) return;
+		var p = parseLink(l);
+		var n = p ? p.name : tagOf(l, '');
+		if (n) names.push(n);
+	});
+	return names;
+}
+
+/* What the AI group is made of: inline nodes filtered here, provider nodes
+ * filtered by mihomo. Every protocol, hysteria2 included. */
+function aiMembers(names, country) {
+	var keep = names.filter(function (n) {
+		var c = countryOf(n);
+		return country ? c === country : AI_BLOCKED.indexOf(c) < 0;
+	});
+	return {
+		list: keep.length ? keep : names,
+		filter: country ? countryRe2([country]) : '',
+		exclude: country ? '' : countryRe2(AI_BLOCKED)
+	};
+}
+var AI_RULESETS = {
+	'geosite_openai':     geosite('openai'),
+	'geosite_anthropic':  geosite('anthropic'),
+	'geosite_gemini':     geosite('google-gemini'),
+	'geosite_xai':        geosite('xai'),
+	'geosite_perplexity': geosite('perplexity')
+};
 
 function normDomains(list) {
 	var seen = {}, out = [];
@@ -794,25 +935,32 @@ function parseConfig(text) {
 	res.groups = groupNames(lines);
 	res.autoBest = res.groups.indexOf(AUTO_GROUP) >= 0;
 	res.aiGroup = res.groups.indexOf(AI_GROUP) >= 0;
-	var aiList = aiDomains();
+	res.aiCountry = '';
+	var aiF = filterOf(lines, AI_GROUP);
+	if (aiF) Object.keys(COUNTRIES).forEach(function (c) { if (countryRe2([c]) === aiF) res.aiCountry = c; });
 
 	r = sectionRange(lines, 'rules');
 	if (r) {
-		var lastMatch = null, suffixRules = [];
+		var lastMatch = null, suffixRules = [], setUse = {};
 		for (i = r.start; i < r.end; i++) {
 			var pr = plainRule(lines[i]);
 			if (!pr) continue;
+			if (pr.parts[0] === 'RULE-SET' && pr.parts.length >= 3)
+				setUse[pr.parts[1]] = (setUse[pr.parts[1]] || '') + (pr.parts[2] === AI_GROUP ? 'a' : 'o');
 			if (pr.parts[0] === 'MATCH' && pr.parts.length >= 2) lastMatch = pr.parts[1];
 			else if (pr.parts[0] === 'DOMAIN-SUFFIX' && pr.parts.length >= 3)
 				suffixRules.push({ d: pr.parts[1].toLowerCase(), g: pr.parts[2] });
 		}
 		if (lastMatch !== null)
 			res.routing = lastMatch === 'DIRECT' ? 'direct_except_list' : 'proxy_except_ru';
+		/* the AI group's sets are not lists the user ticked */
+		res.ruleSets = res.ruleSets.filter(function (k) {
+			return !Object.keys(RULESETS[k].providers).every(function (n) { return setUse[n] === 'a'; });
+		});
 		/* Only rules that send a real site to a proxy-group count. System and
 		 * service entries (DOMAIN-SUFFIX,local,DIRECT and the like) name no
 		 * proxy-group or are not a hostname, so they cannot pick the target. */
 		var mine = suffixRules.filter(function (x) {
-			if (x.g === AI_GROUP && aiList.indexOf(x.d) >= 0) return false;   /* the AI group's own */
 			return x.g !== UDP_GROUP && res.groups.indexOf(x.g) >= 0 && validHost(x.d);
 		});
 		if (mine.length) {
@@ -894,9 +1042,14 @@ return baseclass.extend({
 	AUTO_GROUP: AUTO_GROUP,
 	AUTO_UDP_GROUP: AUTO_UDP_GROUP,
 	AI_GROUP: AI_GROUP,
-	AI_SERVICES: AI_SERVICES,
+	AI_RULESETS: AI_RULESETS,
+	AI_BLOCKED: AI_BLOCKED,
+	COUNTRIES: COUNTRIES,
+	countryOf: countryOf,
+	countryRe2: countryRe2,
+	flagOf: flagOf,
+	subNodeNames: subNodeNames,
 	SITE_PRESETS: SITE_PRESETS,
-	aiDomains: aiDomains,
 
 	siteDomains: siteDomains,
 	normDomains: normDomains,
@@ -1297,14 +1450,22 @@ return baseclass.extend({
 		 * first node that answers and moves on only when that one dies,
 		 * skipping the dead "expires on..." entries subscriptions put at
 		 * the top; a node can still be pinned by hand in the dashboard. */
-		var aiGroup = o.aiGroup !== false;
-		if (aiGroup) {
+		if (o.aiGroup !== false) {
+			var am = aiMembers(names, COUNTRIES[o.aiCountry] ? o.aiCountry : '');
 			L.push('  - name: ' + AI_GROUP);
 			L.push('    type: fallback');
 			L.push('    url: https://www.gstatic.com/generate_204');
 			L.push('    interval: 300');
 			L.push('    lazy: true');
-			members(names, o.tcpFilter);
+			if (am.list.length) {
+				L.push('    proxies:');
+				am.list.forEach(function (n) { L.push('      - ' + yamlScalar(n)); });
+			}
+			if (providerNames.length) {
+				L.push('    use: [' + providerNames.join(', ') + ']');
+				if (am.filter) L.push('    filter: ' + yamlScalar(am.filter));
+				if (am.exclude) L.push('    exclude-filter: ' + yamlScalar(am.exclude));
+			}
 		}
 		L.push('');
 
@@ -1325,6 +1486,9 @@ return baseclass.extend({
 		 * routing strategy would not have pulled it in. */
 		if (o.yandexDns)
 			provs['ru_domains'] = geosite('category-ru');
+		var aiGroup = o.aiGroup !== false;
+		if (aiGroup)
+			for (var an in AI_RULESETS) provs[an] = AI_RULESETS[an];
 
 		if (o.routing === 'proxy_except_ru') {
 			provs['ru_domains'] = geosite('category-ru');
@@ -1350,14 +1514,12 @@ return baseclass.extend({
 		L.push('rules:');
 		var extra = normDomains(o.extraDomains);
 		var extraGroup = o.extraGroup || 'Proxy';
-		/* AI services go first, both TCP and UDP (QUIC), to the AI group, so
-		 * no list or protocol split moves them to another node. A domain
-		 * the user sent somewhere under Sites stays theirs. */
+		/* AI services, both TCP and UDP (QUIC), to the AI group, ahead of
+		 * the lists and the protocol split so neither moves them to another
+		 * node; behind the user's own Sites, which stay theirs. */
 		var emitAi = function () {
 			if (!aiGroup) return;
-			aiDomains().forEach(function (d) {
-				if (extra.indexOf(d) < 0) L.push('  - DOMAIN-SUFFIX,' + d + ',' + AI_GROUP);
-			});
+			Object.keys(AI_RULESETS).forEach(function (n) { L.push('  - RULE-SET,' + n + ',' + AI_GROUP); });
 		};
 		var emitExtra = function () {
 			extra.forEach(function (d) {
@@ -1370,16 +1532,20 @@ return baseclass.extend({
 			/* before the RU sets, so a site the user named is not claimed
 			 * by them */
 			emitExtra();
-			emitAi();
 			L.push('  - RULE-SET,ru_domains,DIRECT');
 			L.push('  - RULE-SET,ru_ips,DIRECT');
 			PRIVATE_NETS.forEach(function (n) { L.push('  - IP-CIDR,' + n + ',DIRECT,no-resolve'); });
+			/* after the DIRECT rules: the kernel bypass set reads them only
+			 * up to the first rule that proxies something (setctl.sh), and
+			 * no AI service lives on a Russian domain or address */
+			emitAi();
 			/* the catch-all cannot be an AND rule, so UDP is split off just
 			 * before it */
 			if (udpSplit) L.push('  - NETWORK,udp,ProxyUDP');
 			L.push('  - MATCH,Proxy');
 		} else {
 			var order = listed;
+			emitExtra();
 			emitAi();
 			if (udpSplit) {
 				order.forEach(function (pn3) {
@@ -1389,7 +1555,6 @@ return baseclass.extend({
 			order.forEach(function (pn4) {
 				L.push('  - RULE-SET,' + pn4 + ',Proxy');
 			});
-			emitExtra();
 			L.push('  - MATCH,DIRECT');
 		}
 

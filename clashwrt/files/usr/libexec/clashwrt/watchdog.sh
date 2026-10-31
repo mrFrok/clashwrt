@@ -22,6 +22,11 @@
 #      ruleset), and N consecutive passes after a minimum hold -> restore.
 #   4. A path that keeps coming back and dying again gets a longer hold each
 #      time, up to a cap, so it cannot flap the network.
+#   5. Before a failure counts, the url-test and fallback groups are asked to
+#      time their nodes again (GET /group/<name>/delay) and the path is
+#      probed once more. Their own checks run every few minutes, lazily, so
+#      a node that died in between keeps Auto pointed at it; one dead node
+#      in a subscription full of live ones is not a dead VPN.
 #
 # The user's choice always wins: with the proxy switched off (UCI enabled=0)
 # this does nothing, and it can never switch the proxy on.
@@ -43,6 +48,7 @@ FW="${CLASHWRT_FW:-/usr/libexec/clashwrt/fw.sh}"
 
 FLAP_WINDOW=600
 RESET_GRACE=30
+RETEST_EVERY=60
 
 DEFAULT_URLS="http://www.gstatic.com/generate_204 http://cp.cloudflare.com/generate_204 http://www.google.com/generate_204"
 
@@ -185,6 +191,60 @@ probe_proxy() {
 	return 0
 }
 
+# "name<TAB>url" for every url-test and fallback group in config.yaml, block
+# or flow style. The url is the group's own: mihomo keeps delay history per
+# test URL and a group picks by the history of its own one, so timing it
+# with any other URL would change nothing.
+retest_groups_list() {
+	[ -f "$CONF" ] || return 0
+	awk '
+	function unq(v) {
+		sub(/^[ \t]+/, "", v); sub(/[ \t]*(#.*)?$/, "", v); sub(/[ \t]+$/, "", v)
+		if (v ~ /^".*"$/ || v ~ /^\047.*\047$/) v = substr(v, 2, length(v) - 2)
+		return v
+	}
+	function val(line, key,   m) {
+		if (!match(line, "(^|[{,[:space:]])" key ":[[:space:]]*(\"[^\"]*\"|\047[^\047]*\047|[^,}#]+)")) return ""
+		m = substr(line, RSTART, RLENGTH)
+		sub("^[{,[:space:]]*" key ":", "", m)
+		return unq(m)
+	}
+	function out() {
+		if (n != "" && (t == "url-test" || t == "fallback"))
+			print n "\t" (u != "" ? u : "https://www.gstatic.com/generate_204")
+		n = ""; t = ""; u = ""
+	}
+	/^[A-Za-z0-9_-]+:/ { out(); g = ($0 ~ /^proxy-groups:/); base = -1; next }
+	!g { next }
+	/^[ \t]*-[ \t]/ {
+		match($0, /^[ \t]*/)
+		if (base < 0) base = RLENGTH
+		if (RLENGTH == base) out()
+	}
+	{
+		if (n == "" && (x = val($0, "name")) != "") n = x
+		if (t == "" && (x = val($0, "type")) != "") t = x
+		if (u == "" && (x = val($0, "url")) != "") u = x
+	}
+	END { out() }
+	' "$CONF"
+}
+
+# Asks mihomo to time every node of those groups now, so a url-test group
+# moves off a dead node and a fallback group skips it. Each call is bounded
+# by the probe timeout; mihomo times the nodes of one group in parallel.
+retest_groups() {
+	local tab name url secret
+	tab="$(printf '\t')"
+	secret="$(api_secret)"
+	retest_groups_list | while IFS="$tab" read -r name url; do
+		[ -n "$name" ] || continue
+		curl -s -o /dev/null -m "$((TIMEOUT + 3))" ${secret:+-H "Authorization: Bearer $secret"} \
+			"http://127.0.0.1:${api_port}/group/$(urlenc "$name")/delay?url=$(urlenc "$url")&timeout=$((TIMEOUT * 1000))" 2>/dev/null
+	done
+	return 0
+}
+
 wan_device() {
 	"$FW" detect 2>/dev/null | sed -n 's/^wan_device:[[:space:]]*//p' | head -n1
 }
@@ -224,6 +284,7 @@ LAST_RESTORE=0
 GRACE_UNTIL=0
 NEXT=20
 DELAY=""
+LAST_RETEST=0
 
 set_state() {
 	[ "$ST" = "$1" ] || ST_SINCE="$(now)"
@@ -327,6 +388,15 @@ tick() {
 	fi
 
 	if [ "$ST" = "bypassed" ]; then
+		# the groups' own lazy checks may never run while nothing goes
+		# through mihomo; once the hold is over, nudge them now and then
+		if [ "$PROBE_PX" != "ok" ] && [ $((t - BYP_TS)) -ge "$HOLD_CUR" ] &&
+			[ $((t - LAST_RETEST)) -ge "$RETEST_EVERY" ]; then
+			LAST_RETEST="$t"
+			retest_groups
+			probe_proxy
+			DELAY="$PROBE_DELAY"
+		fi
 		if [ "$PROBE_PX" = "ok" ]; then
 			OKS=$((OKS + 1))
 		else
@@ -354,6 +424,27 @@ tick() {
 		set_state grace "starting up: $PROBE_WHY"
 		NEXT="$FAST"
 		return 0
+	fi
+
+	# first failure of a streak: let the groups pick a live node, then look
+	# again before anything counts
+	if [ "$FAILS" -eq 0 ] && [ $((t - LAST_RETEST)) -ge "$RETEST_EVERY" ]; then
+		LAST_RETEST="$t"
+		retest_groups
+		probe_proxy
+		DELAY="$PROBE_DELAY"
+		if [ "$PROBE_PX" = "skip" ]; then
+			set_state skip "$PROBE_WHY"
+			NEXT="$INTERVAL"
+			return 0
+		fi
+		if [ "$PROBE_PX" = "ok" ]; then
+			log "proxy path failed once and recovered after the groups re-timed their nodes"
+			GRACE_UNTIL=0
+			set_state ok ""
+			NEXT="$INTERVAL"
+			return 0
+		fi
 	fi
 
 	if probe_wan; then

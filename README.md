@@ -235,7 +235,7 @@ Switching the core off while the proxy is on asks first, since the LAN would be 
 
 ### Fail-open watchdog
 
-Off by default (Settings → Basic). A procd daemon asks mihomo to time a request through the proxy group. After `watchdog_fail` failures in a row (3) it checks that the WAN itself works, and only then **bypasses** the proxy. If the WAN is down too, nothing changes — bypassing would not help.
+Off by default (Settings → Basic). A procd daemon asks mihomo to time a request through the proxy group. After `watchdog_fail` failures in a row (3) it checks that the WAN itself works, and only then **bypasses** the proxy. If the WAN is down too, nothing changes — bypassing would not help. Before a failure counts, it asks mihomo to time the nodes of every `url-test` and `fallback` group again and probes once more: those groups check their nodes only every few minutes, so one dead node would otherwise keep `Auto` on it and look like a dead VPN. In a bypass it does the same at most once a minute, once the hold is over.
 
 A bypass is held for at least `watchdog_hold` seconds (120) and lifted after `watchdog_ok` good probes (3). If it flaps again within 10 minutes the hold doubles, up to `watchdog_hold_max` (900). For `watchdog_grace` seconds after start (90) it only watches, so a slow boot is not mistaken for an outage. Your switch always wins.
 
@@ -277,7 +277,7 @@ The form opens pre-filled — from the last answers, or read back from the insta
 - **DNS.** Quad9 over DoH by default: with `redir-host` mihomo resolves every name itself, and over plain UDP the ISP would see — and could rewrite — each lookup. **Fake-IP** is optional: connections start sooner, but the bypass set is held back.
 - **TUN stack.** `system` (fastest, default), `gvisor` or `mixed` for kernels where it misbehaves, `mips` for slow MIPS routers.
 - **Fastest node.** A `url-test` group `Auto` follows the fastest node with a 50 ms tolerance; it is the first member of `Proxy`, which stays a `select` group.
-- **AI services through one server** (on by default). ChatGPT, Claude, Gemini, Perplexity and Grok flag or block accounts whose address keeps changing country, which is exactly what `Auto` does. A `fallback` group `AI` keeps them on the first node that answers — over TCP and UDP, whatever the routing strategy — and moves on only if it dies; pin a node in the dashboard to choose it yourself. Other sites can be sent to `AI` with *Add a site*.
+- **AI services through one server** (on by default). ChatGPT, Claude, Gemini, Perplexity and Grok flag or block accounts whose address keeps changing country, which is exactly what `Auto` does. A `fallback` group `AI` keeps them on the first node that answers — any protocol, Hysteria2 included, over TCP and UDP, whatever the routing strategy — and moves on only if it dies; pin a node in the dashboard to choose it yourself. The services are matched by the small [meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) sets `openai`, `anthropic`, `google-gemini`, `xai` and `perplexity` (a few hundred bytes each). Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Macau, Iran, North Korea, Cuba, Syria) are left out by the flag or name in the node's name; the wizard downloads the subscription on the router and offers the countries it finds, so `AI` can be kept in one. Other sites can be sent to `AI` with *Add a site*.
 
 ### TCP/UDP protocol split
 

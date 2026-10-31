@@ -15,8 +15,17 @@
 #
 # Usage: confctl.sh read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>
 #        confctl.sh export|import
+#        confctl.sh subfetch <url>   print a subscription, for the wizard to
+#                                    read the node names (countries) from
 
 . /lib/functions.sh
+# downloads go through the proxy first, as everywhere (net.sh)
+if [ -f "$(dirname "$0")/net.sh" ]; then
+	# shellcheck source=net.sh
+	. "$(dirname "$0")/net.sh"
+else
+	cw_curl() { curl "$@"; }
+fi
 
 NAME="clashwrt"
 STAGING="/tmp/clashwrt-staging"
@@ -363,6 +372,22 @@ do_import() {
 	return 0
 }
 
+# The wizard cannot fetch a subscription from the browser (another origin),
+# so the router does. Only http(s), and the answer is capped: it goes back
+# through rpcd to the page. The User-Agent asks for Clash YAML, which names
+# the nodes the way mihomo will see them.
+do_subfetch() {
+	local url="$1"
+	case "$url" in
+		http://*|https://*) ;;
+		*) die "not a subscription URL" ;;
+	esac
+	case "$url" in *[[:space:]]*) die "not a subscription URL" ;; esac
+	[ "${#url}" -le 2048 ] || die "the URL is too long"
+	cw_curl -sSL --fail --proto '=http,https' --proto-redir '=http,https' -m 25 \
+		--max-filesize 2097152 -A 'clash.meta' "$url" || die "could not download the subscription"
+}
+
 case "${1:-}" in
 	read)     do_read ;;
 	export)   do_export ;;
@@ -373,5 +398,6 @@ case "${1:-}" in
 	restore)  do_restore "${2:-}" ;;
 	delete-backup) do_delete_backup "${2:-}" ;;
 	rename-backup) do_rename_backup "${2:-}" "${3:-}" ;;
-	*) echo "usage: $0 read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>|export|import" >&2; exit 1 ;;
+	subfetch) do_subfetch "${2:-}" ;;
+	*) echo "usage: $0 read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>|export|import|subfetch <url>" >&2; exit 1 ;;
 esac

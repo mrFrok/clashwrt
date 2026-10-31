@@ -1668,5 +1668,35 @@ msgstr ""
 msgid "Why one server?"
 msgstr ""
 
-msgid "These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An \"AI\" group keeps them on the first node that answers and moves on only if it dies; a node can be pinned in the dashboard. Whatever the routing strategy, they go through the VPN."
+msgid "These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An \"AI\" group keeps them on the first node that answers, of any protocol, and moves on only if it dies; a node can be pinned in the dashboard. Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) are left out. Pick a country to keep them there; the list shows the countries named in your nodes. Whatever the routing strategy, they go through the VPN."
+msgstr ""
+
+msgid "Any country the services allow"
+msgstr ""
+
+msgid "%d node(s)"
+msgstr ""
+
+msgid "not found now"
+msgstr ""
+
+msgid "not served"
+msgstr ""
+
+msgid "Looking at the subscription…"
+msgstr ""
+
+msgid "%d node(s), %d with a country in the name."
+msgstr ""
+
+msgid "%d subscription(s) could not be downloaded."
+msgstr ""
+
+msgid "through one server in %s"
+msgstr ""
+
+msgid "Country:"
+msgstr ""
+
+msgid "Look again"
 msgstr ""

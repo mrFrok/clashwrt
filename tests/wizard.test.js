@@ -15,13 +15,15 @@ function El(tag, attrs, kids) {
 	this.append(kids);
 }
 El.prototype.append = function (k) {
+	if (this.tagName === 'select' && k instanceof El && k.tagName === 'option')
+		k.disabledOpt = k.attrs.disabled !== null && k.attrs.disabled !== undefined;
 	var self = this;
 	if (k === undefined || k === null || k === '') return;
 	if (Array.isArray(k)) { k.forEach(function (x) { self.append(x); }); return; }
 	if (!(k instanceof El)) { this.children.push(String(k)); return; }
 	this.children.push(k);
 	if (this.tagName === 'select' && k.tagName === 'option') {
-		this.options.push({ value: k.attrs.value, text: k.text() });
+		this.options.push({ value: k.attrs.value, text: k.text(), disabled: !!k.disabledOpt });
 		if (!this.value) this.value = k.attrs.value;
 	}
 	if (this.tagName === 'textarea' && typeof k === 'string') this.value = k;
@@ -47,6 +49,9 @@ global.L = { url: function () { return '/x'; } };
 String.prototype.format = function () { var a = arguments, i = 0; return this.replace(/%[sd]/g, function () { return a[i++]; }); };
 
 var store = {};
+var written = '';
+var SUB = 'proxies:\n  - { name: "🇳🇱 Amsterdam", type: vless, server: a }\n  - { name: "🇳🇱 NL hy2", type: hysteria2, server: b }\n' +
+	'  - { name: "🇷🇺 Moscow", type: vless, server: c }\n  - { name: "Info: 12 days", type: vless, server: d }\n';
 var uci = {
 	get: function (c, s, k) { return k === undefined ? (store[s] ? {} : undefined) : (store[s] || {})[k]; },
 	set: function (c, s, k, v) { (store[s] = store[s] || {})[k] = v; },
@@ -56,12 +61,19 @@ var uci = {
 	apply: function () { return Promise.resolve(); },
 	load: function () { return Promise.resolve(); }
 };
-var dom = { content: function (n, k) { n.children = []; n.append(k); } };
+var dom = { content: function (n, k) { n.children = []; if (n.tagName === 'select') { n.options = []; n.value = ''; } n.append(k); } };
 var gen = L.gen();
 var power = { set: function () { return Promise.resolve({ ok: true }); } };
 var view = L.load('view/clashwrt/setup-wizard.js', {
 	view: { extend: function (o) { return o; } },
-	fs: { exec: function () { return Promise.resolve({ code: 0, stdout: '' }); }, write: function () { return Promise.resolve(); } },
+	fs: {
+		exec: function (cmd, args) {
+			if (args && args[0] === 'subfetch')
+				return Promise.resolve({ code: 0, stdout: SUB });
+			return Promise.resolve({ code: 0, stdout: '' });
+		},
+		write: function (path, text) { written = text; return Promise.resolve(); }
+	},
 	ui: { showModal: function () {}, hideModal: function () {} },
 	uci: uci, dom: dom, gen: gen, power: power,
 	_: function (s) { return s; }
@@ -102,6 +114,8 @@ t('one box takes a subscription and a link; Next, Next, Back', function () {
 	assert.deepStrictEqual(shown(), [ '2' ]);
 });
 
+var aiSel = page.find(function (e) { return e.tagName === 'select' && e.options.some(function (o) { return /Any country/.test(o.text); }); })[0];
+
 /* the one button, end to end, with every call answering well */
 global.window.setTimeout = function (f) { return setTimeout(f, 0); };
 global.window.fetch = function () { return Promise.resolve({ ok: true, json: function () { return { delay: 48 }; } }); };
@@ -115,6 +129,19 @@ setTimeout(function () {
 		assert.strictEqual(store.wizard.mode_choice, 'auto');
 		assert.ok(store.wizard, 'answers saved');
 		assert.ok(/Done: the VPN works \(48 ms\)/.test(page.text()), page.text().slice(-300));
+	});
+	t('AI country: found in the subscription, refused ones off, the pick reaches the config', function () {
+		var nl = aiSel.options.filter(function (o) { return o.value === 'NL'; })[0];
+		var ru = aiSel.options.filter(function (o) { return o.value === 'RU'; })[0];
+		assert.ok(nl && /2 node/.test(nl.text) && !nl.disabled, JSON.stringify(aiSel.options));
+		assert.ok(ru && ru.disabled);
+		assert.ok(/exclude-filter: /.test(written), 'any country: the refused ones are excluded');
+		assert.ok(/5 node\(s\), 3 with a country/.test(page.text()), 'one inline link and four from the subscription');
+		aiSel.value = 'NL';
+		var form = page.find(function (e) { return e.listeners.change && e.tagName === 'div'; })[0];
+		form.listeners.change.forEach(function (f) { f({ target: aiSel }); });
+		var preview = page.find(function (e) { return e.tagName === 'textarea' && /^# Generated/.test(e.value); })[0];
+		assert.strictEqual(gen.parseConfig(preview.value).aiCountry, 'NL');
 	});
 	console.log(n + ' wizard tests passed');
 }, 200);
