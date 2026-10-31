@@ -258,10 +258,10 @@ var AI_NODES = [
 	{ name: 'h1', type: 'hysteria2', server: 'b.example', port: 443, password: 'p' }
 ];
 
-t('AI services go through one fallback group by default, via the geosite sets', function () {
+t('AI services go through one url-test group by default, via the geosite sets', function () {
 	['direct_except_list', 'proxy_except_ru'].forEach(function (r) {
 		var y = gen.generate({ proxies: AI_NODES, mode: 'tun', routing: r, udpSplit: true, ruleSets: ['openai'] });
-		assert.ok(/\n  - name: AI\n    type: fallback\n/.test(y), r);
+		assert.ok(/\n  - name: AI\n    type: url-test\n/.test(y), r);
 		var g = y.slice(y.indexOf('  - name: AI\n'));
 		assert.ok(g.indexOf('      - n1\n') > 0 && g.indexOf('      - h1\n') > 0, r);
 		assert.ok(g.split('\n  - name:')[0].indexOf('Auto') < 0, 'no Auto in AI: ' + r);

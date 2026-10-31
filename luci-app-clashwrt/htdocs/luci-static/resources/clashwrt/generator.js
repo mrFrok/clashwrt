@@ -349,7 +349,7 @@ var TUN_STACKS = ['system', 'gvisor', 'mixed', 'mips'];
  * when the generator starts writing something a config should have (1.5.1:
  * mrs geo sets, GSO, no GEOIP, find-process-mode, dns-mode), so the Overview
  * can offer once to regenerate an older one. Configs before it have none. */
-var GEN_FORMAT = 4;
+var GEN_FORMAT = 5;
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -1445,17 +1445,18 @@ return baseclass.extend({
 			urlTest(AUTO_GROUP, names, o.tcpFilter);
 			if (udpSplit) urlTest(AUTO_UDP_GROUP, udpNames, udpFilter);
 		}
-		/* AI: one node for every AI service, never Auto, so the address
-		 * they see stays put. fallback rather than select: it keeps the
-		 * first node that answers and moves on only when that one dies,
-		 * skipping the dead "expires on..." entries subscriptions put at
-		 * the top; a node can still be pinned by hand in the dashboard. */
+		/* AI: the fastest node of one country, so the address the services
+		 * see changes provider at most, never country. A url-test like
+		 * Auto, over its own members: the wizard's country, or failing that
+		 * every country the services serve. A node can still be pinned by
+		 * hand in the dashboard. */
 		if (o.aiGroup !== false) {
 			var am = aiMembers(names, COUNTRIES[o.aiCountry] ? o.aiCountry : '');
 			L.push('  - name: ' + AI_GROUP);
-			L.push('    type: fallback');
+			L.push('    type: url-test');
 			L.push('    url: https://www.gstatic.com/generate_204');
 			L.push('    interval: 300');
+			L.push('    tolerance: 50');
 			L.push('    lazy: true');
 			if (am.list.length) {
 				L.push('    proxies:');

@@ -723,10 +723,64 @@ flag_action() {
 	[ "$(cat "$FLAG" 2>/dev/null)" = block ] && echo block || echo direct
 }
 
+# The AI services must not see the home address: with the VPN down and
+# traffic let out direct, their names stop resolving (NXDOMAIN from
+# dnsmasq) until the path is back. Only when config.yaml sends them to an AI
+# group, i.e. the user asked for them to stay on one server. The suffixes are
+# the ones the wizard's AI rule-sets name; each also covers its subdomains.
+# What was added is listed on flash, so a power cut mid-bypass is undone by
+# the next apply, and only those entries are ever taken out again.
+AI_DNS_LIST="${CLASHWRT_AI_DNS:-/etc/clashwrt-ai-dns.list}"
+AI_BLOCK_DOMAINS="openai.com chatgpt.com chat.com openai.org chatgpt.site oaistatic.com oaiusercontent.com
+oaistatsig.com sora.com anthropic.com claude.ai claude.com claude.app clau.de claudeusercontent.com
+anthropic.team gemini.google.com gemini.google bard.google.com aistudio.google.com ai.google.dev
+makersuite.google.com generativelanguage.googleapis.com alkalimakersuite-pa.clients6.google.com
+geminiweb-pa.clients6.google.com notebooklm.google.com notebooklm.google x.ai grok.com
+perplexity.ai perplexity.com pplx.ai"
+
+ai_routed() {
+	[ -f "$MIHOMO_CONF" ] &&
+		grep -q -E '^[[:space:]]*-[[:space:]]*(RULE-SET|DOMAIN-SUFFIX|DOMAIN),[^,]+,AI[[:space:]]*(#.*)?$' "$MIHOMO_CONF"
+}
+
+# Both return 0 when they changed dnsmasq's settings, 1 when not.
+ai_dns_block_on() {
+	local d
+	[ ! -e "$AI_DNS_LIST" ] || return 1
+	ai_routed || return 1
+	for d in $AI_BLOCK_DOMAINS; do echo "/$d/"; done > "$AI_DNS_LIST.tmp" &&
+		mv "$AI_DNS_LIST.tmp" "$AI_DNS_LIST" ||
+		{ rm -f "$AI_DNS_LIST.tmp"; log "auto-bypass: cannot record the AI block, AI services are not blocked"; return 1; }
+	while read -r d; do uci add_list "$DNSMASQ_SEC.address=$d"; done < "$AI_DNS_LIST"
+	return 0
+}
+
+ai_dns_block_off() {
+	local d
+	[ -e "$AI_DNS_LIST" ] || return 1
+	while read -r d; do
+		[ -n "$d" ] && uci -q del_list "$DNSMASQ_SEC.address=$d"
+	done < "$AI_DNS_LIST"
+	rm -f "$AI_DNS_LIST"
+	return 0
+}
+
 # DNS follows the flag: forwards are out while traffic goes direct, back when
 # it is gone. A kill switch leaves DNS alone -- nothing is meant to get out.
 dns_sync() {
-	if [ "$(flag_action)" = direct ]; then dns_fallback_on; else dns_restore; fi
+	if [ "$(flag_action)" = direct ]; then
+		dns_fallback_on
+		if ai_dns_block_on; then
+			dns_commit
+			log "auto-bypass: AI services blocked while traffic goes direct"
+		fi
+	else
+		dns_restore
+		if ai_dns_block_off; then
+			dns_commit
+			log "AI services resolve again"
+		fi
+	fi
 }
 
 # The kill switch's whole ruleset: LAN traffic to anywhere but the LAN is

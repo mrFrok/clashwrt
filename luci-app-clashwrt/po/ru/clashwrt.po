@@ -1674,11 +1674,9 @@ msgstr "Пускать ChatGPT, Claude, Gemini, Perplexity и Grok через о
 msgid "Why one server?"
 msgstr "Зачем один сервер?"
 
-msgid "These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An \"AI\" group keeps them on the first node that answers, of any protocol, and moves on only if it dies; a node can be pinned in the dashboard. Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) are left out. Pick a country to keep them there; the list shows the countries named in your nodes. Whatever the routing strategy, they go through the VPN."
-msgstr "Эти сервисы помечают или блокируют аккаунт, чей адрес прыгает между странами, — а выбор самого быстрого узла именно так и делает. Группа «AI» держит их на первом отвечающем узле любого протокола и уходит с него, только если он умер; узел можно закрепить в панели. Узлы в странах, где сервисы не работают (Россия, Беларусь, Китай, Гонконг, Иран и ещё несколько), не используются. Выберите страну, чтобы держать их в ней; в списке — страны, названные в ваших узлах. При любой стратегии маршрутизации они идут через VPN."
+msgid "These services flag or block an account whose address keeps jumping between countries. An \"AI\" group picks the fastest node, of any protocol, but only among the nodes of one country, so the address may change provider but never country; a node can be pinned in the dashboard. The list shows the countries named in your nodes, most nodes first; those the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) cannot be picked. Whatever the routing strategy, they go through the VPN, and if the watchdog lets traffic go direct, they are blocked instead."
+msgstr "Эти сервисы помечают или блокируют аккаунт, чей адрес прыгает между странами. Группа «AI» выбирает самый быстрый узел любого протокола, но только среди узлов одной страны: адрес может сменить провайдера, но не страну; узел можно закрепить в панели. В списке — страны, названные в ваших узлах, сначала те, где узлов больше; страны, где сервисы не работают (Россия, Беларусь, Китай, Гонконг, Иран и ещё несколько), выбрать нельзя. При любой стратегии маршрутизации они идут через VPN, а если сторож пускает трафик напрямую — блокируются."
 
-msgid "Any country the services allow"
-msgstr "Любая страна, где сервисы работают"
 
 msgid "%d node(s)"
 msgstr "узлов: %d"
@@ -1706,3 +1704,9 @@ msgstr "Страна:"
 
 msgid "Look again"
 msgstr "Проверить снова"
+
+msgid "No country in the node names: the fastest node the services serve"
+msgstr "В названиях узлов нет стран: самый быстрый узел там, где сервисы работают"
+
+msgid "Looking for countries…"
+msgstr "Ищу страны…"

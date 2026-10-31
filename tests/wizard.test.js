@@ -114,7 +114,7 @@ t('one box takes a subscription and a link; Next, Next, Back', function () {
 	assert.deepStrictEqual(shown(), [ '2' ]);
 });
 
-var aiSel = page.find(function (e) { return e.tagName === 'select' && e.options.some(function (o) { return /Any country/.test(o.text); }); })[0];
+var aiSel = page.find(function (e) { return e.tagName === 'select' && e.options.some(function (o) { return /Looking for countries|node\(s\)/.test(o.text); }); })[0];
 
 /* the one button, end to end, with every call answering well */
 global.window.setTimeout = function (f) { return setTimeout(f, 0); };
@@ -130,12 +130,14 @@ setTimeout(function () {
 		assert.ok(store.wizard, 'answers saved');
 		assert.ok(/Done: the VPN works \(48 ms\)/.test(page.text()), page.text().slice(-300));
 	});
-	t('AI country: found in the subscription, refused ones off, the pick reaches the config', function () {
+	t('AI country: found in the subscription, refused ones off, the top one applied', function () {
 		var nl = aiSel.options.filter(function (o) { return o.value === 'NL'; })[0];
 		var ru = aiSel.options.filter(function (o) { return o.value === 'RU'; })[0];
 		assert.ok(nl && /2 node/.test(nl.text) && !nl.disabled, JSON.stringify(aiSel.options));
 		assert.ok(ru && ru.disabled);
-		assert.ok(/exclude-filter: /.test(written), 'any country: the refused ones are excluded');
+		assert.strictEqual(aiSel.value, 'NL', 'the allowed country with most nodes is chosen');
+		assert.strictEqual(gen.parseConfig(written).aiCountry, 'NL', 'and reaches the applied config');
+		assert.ok(!aiSel.options.some(function (o) { return o.value === ''; }), 'no "any country" choice');
 		assert.ok(/5 node\(s\), 3 with a country/.test(page.text()), 'one inline link and four from the subscription');
 		aiSel.value = 'NL';
 		var form = page.find(function (e) { return e.listeners.change && e.tagName === 'div'; })[0];

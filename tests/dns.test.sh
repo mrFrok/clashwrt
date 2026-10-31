@@ -91,6 +91,39 @@ rm -f "$FLAG"
 dns_sync
 eq "restored on the next sync after a reboot" "127.0.0.1#1053" "$(servers)"
 
+# AI services: blocked by name while traffic goes direct, only when the
+# config routes them to an AI group, and only what was added is taken out
+export CLASHWRT_AI_DNS="$TMP/ai.list"; AI_DNS_LIST="$TMP/ai.list"
+ADDR="dhcp.@dnsmasq[0].address"
+rm -f "$UCI_DB"/* "$DNSMASQ_LOG"
+uci add_list "$ADDR=/ads.example/"
+MIHOMO_CONF="$TMP/config.yaml"
+printf 'rules:\n  - RULE-SET,geosite_openai,AI\n  - MATCH,DIRECT\n' > "$MIHOMO_CONF"
+echo direct > "$FLAG"; dns_sync
+case " $(uci -q get "$ADDR") " in *" /chatgpt.com/ "*" /claude.ai/ "*) pass "direct bypass: AI names blocked" ;; *) fail "AI names not blocked: $(uci -q get "$ADDR")" ;; esac
+[ -e "$AI_DNS_LIST" ] && pass "AI block recorded on flash" || fail "no AI block record"
+eq "AI block reloaded dnsmasq" "1" "$(reloads)"
+dns_sync
+eq "second sync: no second block, no reload" "1" "$(reloads)"
+rm -f "$FLAG"; dns_sync
+eq "no flag: only the user's own address entry is left" "/ads.example/" "$(uci -q get "$ADDR")"
+[ ! -e "$AI_DNS_LIST" ] && pass "AI record removed" || fail "AI record left"
+
+echo block > "$FLAG"; dns_sync
+eq "kill switch: nothing added" "/ads.example/" "$(uci -q get "$ADDR")"
+rm -f "$FLAG"
+
+printf 'rules:\n  - MATCH,Proxy\n' > "$MIHOMO_CONF"
+echo direct > "$FLAG"; dns_sync; rm -f "$FLAG"
+eq "no AI group in the config: AI not blocked" "/ads.example/" "$(uci -q get "$ADDR")"
+dns_sync
+
+# power cut mid-bypass: the record on flash is undone by the next sync
+printf 'rules:\n  - RULE-SET,geosite_openai,AI\n' > "$MIHOMO_CONF"
+echo direct > "$FLAG"; dns_sync; rm -f "$FLAG"; dns_sync
+eq "after a reboot: AI block undone" "/ads.example/" "$(uci -q get "$ADDR")"
+MIHOMO_CONF=/nonexistent
+
 # reload: skipped when the table is there and the settings match
 rm -f "$UCI_DB"/*
 uci set clashwrt.config.enabled=1

@@ -8,7 +8,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.power as power';
 
-var UI_VERSION = '1.6.1';
+var UI_VERSION = '1.6.2';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
@@ -205,16 +205,23 @@ return view.extend({
 		var aiCountrySel = E('select', { 'class': 'cbi-input-select' });
 		var aiCountryMsg = E('div', { 'style': 'font-size:90%;margin-top:4px;min-height:1.2em' });
 		var aiCountryRow;
-		var aiFound = null, aiScanKey = null;
+		var aiFound = null, aiScanKey = null, aiScan = Promise.resolve();
 
-		/* "Any" first; then the countries the nodes are in, most nodes first;
-		 * the ones the AI services refuse are listed but cannot be picked. A
-		 * saved choice stays in the list even when the scan did not find it. */
+		/* The countries the nodes are in, most nodes first; the ones the AI
+		 * services refuse are listed but cannot be picked. One country is
+		 * always chosen -- the saved one, else the one with most nodes --
+		 * because AI on one country is the whole point. Only when no node
+		 * name says a country is there nothing to choose. */
 		function fillCountries(selected) {
 			var found = aiFound || {};
 			var codes = Object.keys(found).sort(function (a, b) { return found[b] - found[a] || (a < b ? -1 : 1); });
 			if (selected && codes.indexOf(selected) < 0 && gen.COUNTRIES[selected]) codes.unshift(selected);
-			var opts = [ E('option', { 'value': '' }, [ _('Any country the services allow') ]) ];
+			var usable = codes.filter(function (c) { return gen.AI_BLOCKED.indexOf(c) < 0; });
+			var opts = [];
+			if (!usable.length)
+				opts.push(E('option', { 'value': '' }, [ aiFound
+					? _('No country in the node names: the fastest node the services serve')
+					: _('Looking for countries…') ]));
 			codes.forEach(function (c) {
 				var blocked = gen.AI_BLOCKED.indexOf(c) >= 0;
 				var text = gen.flagOf(c) + ' ' + c + ' — ' + gen.COUNTRIES[c][0] +
@@ -223,7 +230,7 @@ return view.extend({
 				opts.push(E('option', { 'value': c, 'disabled': blocked ? '' : null }, [ text ]));
 			});
 			dom.content(aiCountrySel, opts);
-			aiCountrySel.value = (selected && gen.AI_BLOCKED.indexOf(selected) < 0) ? selected : '';
+			aiCountrySel.value = usable.indexOf(selected) >= 0 ? selected : (usable[0] || '');
 		}
 
 		/* Node names from the pasted links, and from each subscription as the
@@ -231,12 +238,12 @@ return view.extend({
 		function scanCountries(force) {
 			var subs = gen.subscriptionsOf(subsBox.value);
 			var key = subs.join('\n') + '\n' + linksBox.value;
-			if (!force && key === aiScanKey) return Promise.resolve();
+			if (!force && key === aiScanKey) return aiScan;
 			aiScanKey = key;
 			var names = gen.parseLinks(linksBox.value).proxies.map(function (p) { return p.name; });
 			var failed = 0;
 			if (subs.length) dom.content(aiCountryMsg, E('em', {}, [ _('Looking at the subscription…') ]));
-			return Promise.all(subs.map(function (u) {
+			return aiScan = Promise.all(subs.map(function (u) {
 				return fs.exec(CONFCTL, ['subfetch', u]).then(function (r) {
 					if (r.code !== 0) { failed++; return; }
 					names = names.concat(gen.subNodeNames(r.stdout || ''));
@@ -253,6 +260,7 @@ return view.extend({
 				var msg = _('%d node(s), %d with a country in the name.').format(names.length, names.length - unknown);
 				if (failed) msg += ' ' + _('%d subscription(s) could not be downloaded.').format(failed);
 				dom.content(aiCountryMsg, [ msg ]);
+				refreshPreview();
 			});
 		}
 		var fakeCb = E('input', { 'type': 'checkbox' });
@@ -840,7 +848,9 @@ return view.extend({
 			btn.disabled = true;
 			dom.content(mainOut, lines);
 			pickMode(log)
-				.then(function () { log(_('Saving your answers…')); return saveAnswers(ans); })
+				/* the country list may still be on its way from the subscription */
+				.then(function () { return aiCb.checked ? scanCountries(false) : null; })
+				.then(function () { ans = collect(); log(_('Saving your answers…')); return saveAnswers(ans); })
 				.then(function () {
 					log(_('Writing and checking the configuration…'));
 					return fs.write(STAGING, gen.generate(buildOptions(ans)))
@@ -965,7 +975,7 @@ return view.extend({
 					E('button', { 'type': 'button', 'class': 'cbi-button', 'click': function () { scanCountries(true); } }, _('Look again')),
 					aiCountryMsg
 				]),
-				more(_('Why one server?'), _('These services flag or block an account whose address keeps jumping between countries, which is what the fastest-node pick does. An "AI" group keeps them on the first node that answers, of any protocol, and moves on only if it dies; a node can be pinned in the dashboard. Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) are left out. Pick a country to keep them there; the list shows the countries named in your nodes. Whatever the routing strategy, they go through the VPN.')),
+				more(_('Why one server?'), _('These services flag or block an account whose address keeps jumping between countries. An "AI" group picks the fastest node, of any protocol, but only among the nodes of one country, so the address may change provider but never country; a node can be pinned in the dashboard. The list shows the countries named in your nodes, most nodes first; those the services refuse (Russia, Belarus, China, Hong Kong, Iran and a few more) cannot be picked. Whatever the routing strategy, they go through the VPN, and if the watchdog lets traffic go direct, they are blocked instead.')),
 
 				label(_('Sites'), _('Send one website to a chosen group.')),
 				more(_('How sites work'), _('Add a website by URL or by service name. Its domains are written into the config as plain rules and sent to the chosen group, ahead of the lists above.')),
