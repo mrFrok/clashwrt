@@ -97,7 +97,7 @@ eq "and the setting too" "flash" "$(uci get clashwrt.config.core_store)"
 mem 200000 100000; eq "under 256 MB: 48 MiB" "GOMEMLIMIT=48MiB GOGC=50" "$(U core-env)"
 mem 400000 200000; eq "under 512 MB: 96 MiB" "GOMEMLIMIT=96MiB GOGC=75" "$(U core-env)"
 mem 4000000 3000000; eq "more: no ceiling" "" "$(U core-env)"
-uci set clashwrt.config.core_mem_limit=64; eq "a number of MiB" "GOMEMLIMIT=64MiB" "$(U core-env)"
+uci set clashwrt.config.core_mem_limit=64; eq "a number of MiB" "GOMEMLIMIT=64MiB GOGC=50" "$(U core-env)"
 uci set clashwrt.config.core_mem_limit=off; mem 200000 100000; eq "off" "" "$(U core-env)"
 uci set clashwrt.config.core_mem_limit='1;x'; eq "garbage: nothing" "" "$(U core-env)"
 

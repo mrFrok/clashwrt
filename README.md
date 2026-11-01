@@ -156,7 +156,7 @@ In the RAM modes `/usr/bin/mihomo` and `/etc/mihomo/ui` become symlinks into `/t
 
 **Memory.** ClashWrt keeps mihomo's footprint down where it can:
 
-- **A soft memory ceiling** for mihomo's Go runtime (`core_mem_limit`): `auto` sets 48 MB under 256 MB of RAM and 96 MB under 512 MB, so the collector works harder instead of the heap growing. Nothing is killed past it.
+- **A soft memory ceiling** for mihomo's Go runtime (`core_mem_limit`): `auto` sets 48 MB under 256 MB of RAM and 96 MB under 512 MB; a number of MB you set also gets `GOGC=50` (on a BPI-R4 a 64 MB ceiling alone kept ~37 MB of anonymous memory, 32 MB with `GOGC=50` ~16 MB), so the collector works harder instead of the heap growing. Nothing is killed past it.
 - **No GeoIP database.** Private networks are matched by `IP-CIDR` rules, not `GEOIP,private`, which would make mihomo download an 8 MB `geoip.metadb` — and fail its config check while GitHub is out of reach.
 - **Binary rule sets.** The wizard fetches geosite/geoip lists as `.mrs`, a fifth of the YAML's size and loaded without parsing.
 - **No process lookups** (`find-process-mode: off`): the processes behind LAN connections are not on the router.

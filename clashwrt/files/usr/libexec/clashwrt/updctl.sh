@@ -979,7 +979,7 @@ do_core_env() {
 			fi
 			;;
 		*[!0-9]*) return 0 ;;
-		*) echo "GOMEMLIMIT=${v}MiB" ;;
+		*) echo "GOMEMLIMIT=${v}MiB GOGC=50" ;;
 	esac
 }
 
