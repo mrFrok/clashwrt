@@ -63,7 +63,7 @@ ram_no_room() {
 	local need=$(( $1 + 1024 )) total avail floor
 	total="$(meminfo_kb MemTotal)"
 	avail="$(meminfo_kb MemAvailable)"
-	[ "$total" -ge 262144 ] || { echo "the router has under 256 MB of RAM"; return 0; }
+	[ "$total" -ge 196608 ] || { echo "the router has under 256 MB of RAM"; return 0; }
 	floor=$((total * 15 / 100)); [ "$floor" -ge 32768 ] || floor=32768
 	[ $((avail - need)) -ge "$floor" ] || { echo "too little free RAM (${avail}K free, ${need}K needed)"; return 0; }
 	return 1

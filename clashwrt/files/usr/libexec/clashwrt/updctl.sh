@@ -377,6 +377,31 @@ work_candidates() {
 	echo "$BIN_DIR"
 }
 
+# Does the filesystem /usr/bin writes to compress what it stores? UBIFS (NAND)
+# and JFFS2 (NOR) do, 4 KiB at a time, and df on them counts free space as if
+# nothing compressed: a 56 MB core goes onto 36 MB "free". Under overlayfs it
+# is the upper layer's filesystem that takes the writes.
+flash_compresses() {
+	local info up
+	case "${CLASHWRT_FLASH_COMPRESSES:-}" in 1) return 0 ;; 0) return 1 ;; esac
+	info="$(mount_info "$(mount_of "$BIN_DIR")")"
+	case "$info" in overlay\ *)
+		up="$(echo "$info" | sed -n 's/.*upperdir=\([^,]*\).*/\1/p')"
+		[ -n "$up" ] && info="$(mount_info "$(mount_of "$up")")"
+		;;
+	esac
+	case "$info" in *compr=none*) return 1 ;; ubifs\ *|jffs2\ *) return 0 ;; esac
+	return 1
+}
+
+# What $1 kB of core takes on that filesystem. LZO, the weakest compressor
+# UBIFS uses, packs a mihomo build to 0.59 of itself block by block (zlib
+# 0.45), so three fifths; elsewhere all of it. The old and spare cores, being
+# the same kind of file, free the same share.
+disk_kb() {
+	if flash_compresses; then echo $(( $1 * 3 / 5 )); else echo "$1"; fi
+}
+
 # Kilobytes of spare cores prune_old_cores would remove, i.e. room that can
 # be had back on the overlay without touching anything in use.
 spare_cores_kb() {
@@ -394,14 +419,30 @@ spare_cores_kb() {
 
 # The download size of $1 in kB, from the Content-Length of the final
 # response after GitHub's redirect. Empty when the server does not say.
-remote_kb() {
+remote_bytes() {
 	local n
 	n="$(cw_curl -sSIL -m 30 "$1" 2>/dev/null | tr -d '\r' |
 		sed -n 's/^[Cc]ontent-[Ll]ength:[[:space:]]*\([0-9][0-9]*\)$/\1/p' | tail -n1)"
-	[ -n "$n" ] && [ "$n" -gt 0 ] && echo $(( n / 1024 ))
+	[ -n "$n" ] && [ "$n" -gt 0 ] && echo "$n"
 }
 
-# Kilobytes the unpacked core will need, before it is downloaded. This only
+# Kilobytes the .gz at $1 ($2 bytes long) unpacks to, without downloading it:
+# gzip ends with the unpacked size in four little-endian bytes, and GitHub's
+# asset store serves a byte range, so four bytes tell. Anything but exactly
+# four bytes back (no od, a server that ignores ranges) gives nothing.
+gz_unpacked_kb() {
+	local b n
+	[ -n "$2" ] && [ "$2" -gt 4 ] || return 1
+	b="$(cw_curl -sSL --fail -m 30 -r "$(( $2 - 4 ))-$(( $2 - 1 ))" "$1" 2>/dev/null | od -An -v -tu1 2>/dev/null)" || return 1
+	# shellcheck disable=SC2086
+	set -- $b
+	[ $# -eq 4 ] || return 1
+	n=$(( $1 + $2 * 256 + $3 * 65536 + $4 * 16777216 ))
+	[ "$n" -gt 0 ] || return 1
+	echo $(( (n + 1023) / 1024 ))
+}
+
+# Kilobytes the unpacked core will need when gz_unpacked_kb cannot tell. This only
 # decides whether a download is worth starting -- the real size is checked
 # again once the core is unpacked -- so it must not refuse a router that has
 # the room. The core already installed is the same program and the best
@@ -429,9 +470,9 @@ estimate_core_kb() {
 # over, until the process exits; only a core that is not running gives its
 # room back on the spot.
 install_plan() {
-	local need=$(( $1 + 1024 )) avail old=0
+	local need=$(( $(disk_kb "$1") + 1024 )) avail old=0
 	avail="$(usable_kb "$BIN_DIR")"
-	old="$(flash_core_kb)"
+	old="$(disk_kb "$(flash_core_kb)")"
 
 	if [ "$avail" -ge "$need" ]; then
 		echo stage
@@ -443,8 +484,8 @@ install_plan() {
 }
 
 install_room_error() {
-	echo "ERROR: not enough room in $BIN_DIR for the new core: it needs about ${1}K," \
-		"there is $(usable_kb "$BIN_DIR")K free and the current core frees $(flash_core_kb)K." \
+	echo "ERROR: not enough room in $BIN_DIR for the new core: it needs about $(disk_kb "$1")K there," \
+		"there is $(usable_kb "$BIN_DIR")K free and the current core frees $(disk_kb "$(flash_core_kb)")K." \
 		"Free some space on the overlay (opkg remove, or delete files you added) and try again." >&2
 }
 
@@ -452,8 +493,8 @@ install_room_error() {
 # the old core and any spare ones as room? Nothing is removed here -- a
 # download that then fails must not have cost anyone the cores they kept.
 install_possible() {
-	local need=$(( $1 + 1024 )) have
-	have=$(( $(usable_kb "$BIN_DIR") + $(flash_core_kb) + $(spare_cores_kb) ))
+	local need=$(( $(disk_kb "$1") + 1024 )) have
+	have=$(( $(usable_kb "$BIN_DIR") + $(disk_kb $(( $(flash_core_kb) + $(spare_cores_kb) ))) ))
 	[ "$have" -ge "$need" ] && return 0
 	install_room_error "$1"
 	return 1
@@ -508,7 +549,7 @@ pick_workdir() {
 # free, but that leaves a moment with no core at all -- and if the write then
 # fails, the router stays that way. That is why the room is checked first.
 install_core_binary() {
-	local src="$1" plan="$2"
+	local src="$1" plan="$2" backup
 	local staged="$BIN_DIR/.mihomo.clashwrt-new" i=0
 
 	rm -f "$staged"
@@ -546,7 +587,26 @@ install_core_binary() {
 
 	# a link into RAM is replaced, not written through
 	[ -L "$CORE_BIN" ] && rm -f "$CORE_BIN"
-	cp -f "$src" "$CORE_BIN" || { echo "ERROR: could not install $CORE_BIN" >&2; return 1; }
+	# On a compressing flash the room was an estimate. A copy of the old core
+	# in RAM, where there is room for one, brings it back if the write runs
+	# out of space: the half-written file goes first and frees what it took.
+	backup=""
+	if [ -f "$CORE_BIN" ] && flash_compresses && ! ram_no_room "$(size_kb "$CORE_BIN")" >/dev/null; then
+		mkdir -p "${RAM_DIR%/*}" && backup="${RAM_DIR}.old-core" && cp -f "$CORE_BIN" "$backup" || { rm -f "$backup"; backup=""; }
+	fi
+	if ! cp -f "$src" "$CORE_BIN"; then
+		rm -f "$CORE_BIN"
+		if [ -n "$backup" ] && cp -f "$backup" "$CORE_BIN"; then
+			chmod 0755 "$CORE_BIN"
+			echo "ERROR: $BIN_DIR ran out of room for the new core; the old core is back" >&2
+		else
+			rm -f "$CORE_BIN"
+			echo "ERROR: could not install $CORE_BIN; there is no core on flash now (Settings -> Storage can keep it in RAM)" >&2
+		fi
+		rm -f "$backup"
+		return 1
+	fi
+	rm -f "$backup"
 	chmod 0755 "$CORE_BIN"
 }
 
@@ -676,7 +736,9 @@ STORE_GZ="$STORE_DIR/mihomo.gz"
 STORE_NOTE="$STORE_DIR/mihomo.note"
 RETRY_PID="$RAM_DIR.retry.pid"
 MEMINFO="${CLASHWRT_MEMINFO:-/proc/meminfo}"
-MIN_RAM_KB=262144
+# A "256 MB" router reports less in MemTotal (the kernel and Wi-Fi firmware
+# keep their share: an AX3000T shows about 230 MB), so 192 MB is the line.
+MIN_RAM_KB=196608
 
 core_store() {
 	case "$(uci -q get clashwrt.config.core_store)" in
@@ -793,7 +855,7 @@ restart_if_running() {
 
 do_core_install() {
 	local want="$1"
-	local arch ver url tmp running need work plan asset want_sha mode keep="" gzkb why
+	local arch ver url tmp running need work plan asset want_sha mode keep="" gzkb gzb why
 
 	arch="$(map_arch)" || die "unsupported CPU architecture: $(uname -m) -- set MIHOMO_ARCH to name a build"
 	mode="$(core_store)"
@@ -821,8 +883,9 @@ do_core_install() {
 	# Everything about room is settled before the download, so a router that
 	# cannot take the core finds out in a second, not after a minute of
 	# downloading -- and nothing has been touched when it does.
-	gzkb="$(remote_kb "$url")"
-	need="$(estimate_core_kb "$gzkb")"
+	gzkb=""
+	gzb="$(remote_bytes "$url")" && gzkb=$(( gzb / 1024 ))
+	need="$(gz_unpacked_kb "$url" "$gzb")" || need="$(estimate_core_kb "$gzkb")"
 	if [ "$mode" = flash ]; then
 		install_possible "$need" || exit 1
 		work="$(pick_workdir "$need")" || exit 1
@@ -974,7 +1037,7 @@ do_core_env() {
 		off) return 0 ;;
 		''|auto)
 			total="$(meminfo_kb MemTotal)"
-			if [ "$total" -lt 262144 ]; then echo "GOMEMLIMIT=48MiB GOGC=50"
+			if [ "$total" -lt "$MIN_RAM_KB" ]; then echo "GOMEMLIMIT=48MiB GOGC=50"
 			elif [ "$total" -lt 524288 ]; then echo "GOMEMLIMIT=96MiB GOGC=75"
 			fi
 			;;

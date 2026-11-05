@@ -194,10 +194,28 @@ FLASH_KB="$(avail_kb /usr/bin)"
 OLD_CORE_KB=0
 [ -f /usr/bin/mihomo ] && [ ! -L /usr/bin/mihomo ] && OLD_CORE_KB="$(du -k /usr/bin/mihomo | cut -f1)"
 FLASH_KB=$((FLASH_KB + OLD_CORE_KB))
-# the core unpacked and packed, with room to spare; the dashboards unpacked
-CORE_FLASH_KB=65536
+# The core unpacked is 50-60 MB (arm64 56 MB), packed about 21 MB. Below
+# CORE_MIN_KB no build fits; above it updctl.sh reads the real size off the
+# release before downloading, and the install falls back to RAM if it does not
+# fit. UBIFS (NAND) and JFFS2 (NOR) compress what they store while df counts
+# as if they did not, and there a core takes about three fifths of itself
+# (see updctl.sh flash_compresses): what SSClash fits into 36 MB "free".
+CORE_MIN_KB=49152
+CORE_EST_KB=59392
 CORE_GZ_KB=26624
-RAM_OK=0; [ "$MEM_KB" -ge 262144 ] && RAM_OK=1
+_fs="$(awk '$2 == "/" { t = $3 " " $4 } END { print t }' /proc/mounts 2>/dev/null)"
+case "$_fs" in overlay\ *)
+	_up="$(echo "$_fs" | sed -n 's/.*upperdir=\([^,]*\).*/\1/p')"
+	_mp="$(df -k "${_up:-/overlay}" 2>/dev/null | awk 'END { print $NF }')"
+	_fs="$(awk -v m="$_mp" '$2 == m { t = $3 " " $4 } END { print t }' /proc/mounts 2>/dev/null)"
+	;;
+esac
+case "$_fs" in *compr=none*) ;; ubifs\ *|jffs2\ *)
+	CORE_MIN_KB=$((CORE_MIN_KB * 3 / 5)); CORE_EST_KB=$((CORE_EST_KB * 3 / 5)) ;;
+esac
+# A "256 MB" router shows less in MemTotal (an AX3000T about 230 MB), so the
+# line is 192 MB, as in updctl.sh.
+RAM_OK=0; [ "$MEM_KB" -ge 196608 ] && RAM_OK=1
 
 CUR_STORE="$(uci -q get clashwrt.config.core_store 2>/dev/null)" || CUR_STORE=""
 CUR_CHANNEL=release
@@ -229,15 +247,17 @@ if [ "$SKIP_CORE" != 1 ]; then
 	[ "$HAVE_CORE" = 1 ] && CORE_UPDATE="$(ask "$(t 'Update the mihomo core to the latest release?' 'Обновить ядро mihomo до последнего релиза?')" yes \
 		"yes|$(t yes да)" "no|$(t 'no, keep the one installed' 'нет, оставить установленное')")"
 	_opts=""; _rec=""
-	if [ "$FLASH_KB" -ge "$CORE_FLASH_KB" ]; then _opts="$_opts flash"; _rec=flash; fi
+	# flash first: no RAM taken and no GitHub needed at boot, and a core that
+	# turns out not to fit goes into RAM instead (below)
+	if [ "$FLASH_KB" -ge "$CORE_MIN_KB" ]; then _opts="$_opts flash"; _rec=flash; fi
 	if [ "$RAM_OK" = 1 ] && [ "$FLASH_KB" -ge "$CORE_GZ_KB" ]; then _opts="$_opts gz"; [ -n "$_rec" ] || _rec=gz; fi
 	if [ "$RAM_OK" = 1 ]; then _opts="$_opts ram"; [ -n "$_rec" ] || _rec=ram; fi
-	[ -n "$_opts" ] || die "the mihomo core does not fit: it needs $(mb "$CORE_FLASH_KB") of flash, or $(mb "$CORE_GZ_KB") of flash and 256 MB of RAM, or 256 MB of RAM alone; this router has $(mb "$FLASH_KB") free and $(mb "$MEM_KB") of RAM. External storage (extroot on a USB stick) gives it the flash."
+	[ -n "$_opts" ] || die "the mihomo core does not fit: it needs about $(mb "$CORE_EST_KB") of flash, or $(mb "$CORE_GZ_KB") of flash and 256 MB of RAM, or 256 MB of RAM alone; this router has $(mb "$FLASH_KB") free and $(mb "$MEM_KB") of RAM. External storage (extroot on a USB stick) gives it the flash."
 	[ -n "$CUR_STORE" ] && case " $_opts " in *" $CUR_STORE "*) _rec="$CUR_STORE" ;; esac
 	set --
 	for _o in $_opts; do
 		case "$_o" in
-			flash) set -- "$@" "flash|$(t 'on flash: about 60 MB of flash, no RAM taken' 'на флеше: около 60 МБ флеша, RAM не занимает')" ;;
+			flash) set -- "$@" "flash|$(t "on flash: about $(mb "$CORE_EST_KB") of flash, no RAM taken" "на флеше: около $(mb "$CORE_EST_KB" | sed 's/MB/МБ/') флеша, RAM не занимает")" ;;
 			gz)    set -- "$@" "gz|$(t 'packed on flash, unpacked into RAM at boot: about 22 MB of flash and 60 MB of RAM' 'сжатым на флеше, распаковка в RAM при загрузке: около 22 МБ флеша и 60 МБ RAM')" ;;
 			ram)   set -- "$@" "ram|$(t 'only in RAM, downloaded at every boot: no flash, 60 MB of RAM, no core while GitHub is out of reach' 'только в RAM, скачивается при каждой загрузке: флеш не нужен, 60 МБ RAM, без GitHub ядра нет')" ;;
 		esac
@@ -247,7 +267,7 @@ fi
 
 # what is left for the rest
 case "$CORE_STORE" in
-	flash) LEFT_KB=$((FLASH_KB - CORE_FLASH_KB)) ;;
+	flash) LEFT_KB=$((FLASH_KB - CORE_EST_KB)) ;;
 	gz)    LEFT_KB=$((FLASH_KB - CORE_GZ_KB)) ;;
 	*)     LEFT_KB="$FLASH_KB" ;;
 esac
@@ -554,7 +574,22 @@ else
 	fi
 	if [ "$CORE_UPDATE" = yes ] || [ "$HAVE_CORE" != 1 ]; then
 		say "installing the mihomo core"
-		/usr/libexec/clashwrt/updctl.sh core-install || die "could not install the mihomo core"
+		# Room is checked against the real size before anything is downloaded,
+		# so a core that does not fit on flash fails in a second; with the RAM
+		# for it, it is kept packed or in RAM instead.
+		if ! /usr/libexec/clashwrt/updctl.sh core-install; then
+			_ok=0
+			if [ "${CORE_STORE:-flash}" = flash ] && [ "$RAM_OK" = 1 ]; then
+				for _s in gz ram; do
+					[ "$_s" = gz ] && [ "$FLASH_KB" -lt "$CORE_GZ_KB" ] && continue
+					warn "the core did not go on flash; trying: $_s"
+					uci -q set "clashwrt.config.core_store=$_s" && uci -q commit clashwrt
+					/usr/libexec/clashwrt/updctl.sh core-install && { _ok=1; break; }
+				done
+				[ "$_ok" = 1 ] || { uci -q set clashwrt.config.core_store=flash; uci -q commit clashwrt; }
+			fi
+			[ "$_ok" = 1 ] || die "could not install the mihomo core"
+		fi
 	elif [ -n "$CORE_STORE" ] && [ "$CORE_STORE" != "${CUR_STORE:-flash}" ]; then
 		say "moving the mihomo core: $CORE_STORE"
 		/usr/libexec/clashwrt/updctl.sh core-store "$CORE_STORE" || warn "could not move the core; it stays where it was"

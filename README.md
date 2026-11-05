@@ -67,6 +67,8 @@ ClashWrt owns the firewall and routing layer only. Your `config.yaml`, your prox
 | packed on flash | ~22 MB | ~55 MB | 256 MB RAM or more |
 | only in RAM | — | ~55 MB | 256 MB RAM, GitHub reachable at boot |
 
+The installer reads the core's exact unpacked size off the release before downloading it. NAND and NOR flash (UBIFS, JFFS2) compress what they store while `df` counts as if they did not, so there the core is counted at three fifths of its size: about 34 MB for arm64, which is why 36 MB "free" on an AX3000T is enough, as it is for SSClash. If the write still runs out of room, the old core is put back, and with the RAM for it the new one is kept packed or in RAM instead. "256 MB" means a 256 MB router: its MemTotal is lower (an AX3000T shows ~230 MB), so the line is drawn at 192 MB.
+
 A router with 128 MB of RAM *and* little flash cannot run mihomo at all — give it the flash with [extroot](https://openwrt.org/docs/guide-user/additional-software/extroot_configuration) on a USB stick.
 
 Developed and tested on OpenWrt 25.12 on a BananaPi BPI-R4 (`mediatek/filogic`). The 23.05 and 24.10 feeds and LuCI APIs were checked for compatibility; if something breaks there, please open an issue.

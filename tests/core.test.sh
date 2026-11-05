@@ -11,7 +11,8 @@ mkdir -p "$TMP/bin" "$TMP/db" "$TMP/core" "$TMP/work" "$TMP/srv"
 cp "$T"/shim/uci "$T"/shim/logger "$TMP/bin/"
 
 # the "core": a script that answers -v like mihomo does
-printf '#!/bin/sh\necho "Mihomo Meta v1.19.99 linux amd64"\n' > "$TMP/srv/mihomo"
+# padded so its .gz is a fraction of it, as a real core's is
+{ printf '#!/bin/sh\necho "Mihomo Meta v1.19.99 linux amd64"\nexit 0\n#'; head -c 300000 /dev/zero | tr '\0' a; echo; } > "$TMP/srv/mihomo"
 gzip -c "$TMP/srv/mihomo" > "$TMP/srv/core.gz"
 GOOD="$(sha256sum "$TMP/srv/core.gz" | awk '{ print $1 }')"
 
@@ -23,7 +24,18 @@ case "$u" in
 https://api.github.com/*)
 	[ -n "$DIGEST" ] || { echo '{ "assets": [] }'; exit 0; }
 	printf '{\n  "assets": [\n    {\n      "name": "mihomo-linux-amd64-v1.19.99.gz",\n      "digest": "sha256:%s"\n    }\n  ]\n}\n' "$DIGEST" ;;
-*) case " $* " in *" -I"*) exit 0 ;; esac; cat "$SRV/core.gz" ;;
+*)
+	# with RANGES set it answers HEAD and byte ranges, as GitHub's asset store does
+	case " $* " in *" -I"* | *" -sSIL "*)
+		[ -n "$RANGES" ] && printf 'HTTP/1.1 200 OK\r\nContent-Length: %s\r\n\r\n' "$(wc -c < "$SRV/core.gz")"
+		exit 0 ;;
+	esac
+	r=""; prev=""; for a; do [ "$prev" = -r ] && r="$a"; prev="$a"; done
+	if [ -n "$r" ] && [ -n "$RANGES" ]; then
+		tail -c +$(( ${r%-*} + 1 )) "$SRV/core.gz" | head -c $(( ${r#*-} - ${r%-*} + 1 ))
+	else
+		cat "$SRV/core.gz"
+	fi ;;
 esac
 X
 printf '#!/bin/sh\nexit 1\n' > "$TMP/bin/pidof"
@@ -45,6 +57,41 @@ case "$out" in *"cannot be checked"*) pass "no digest: refused" ;; *) fail "no d
 out="$(DIGEST="$GOOD" inst)"
 case "$out" in *"SHA-256 checked: $GOOD"*) pass "the right digest is checked" ;; *) fail "the right digest is checked ($out)" ;; esac
 cmp -s "$TMP/core/mihomo" "$TMP/srv/mihomo" && pass "and the core installed" || fail "and the core installed"
+
+# the unpacked size is read off the .gz's last four bytes before downloading
+rm -f "$TMP/core/mihomo"
+out="$(RANGES=1 DIGEST="$GOOD" inst)"
+_kb=$(( ($(wc -c < "$TMP/srv/mihomo") + 1023) / 1024 ))
+case "$out" in *"about ${_kb}K needed"*) pass "the real unpacked size is known before the download" ;; *) fail "the real unpacked size is known before the download ($out)" ;; esac
+cmp -s "$TMP/core/mihomo" "$TMP/srv/mihomo" && pass "and the core installed" || fail "and the core installed"
+
+# a compressing flash (UBIFS, JFFS2) takes the core in three fifths of its
+# size: df there says FLASH_FREE, enough for that but not for all of it
+REAL_DF="$(command -v df)"
+cat > "$TMP/bin/df" <<X
+#!/bin/sh
+for a; do p="\$a"; done
+case "\$p" in "$TMP/core"*) [ -n "\$FLASH_FREE" ] && { echo "Filesystem 1K-blocks Used Available Use% Mounted on"; echo "ubi0 99999 1 \$FLASH_FREE 1% /fakeflash"; exit 0; } ;; esac
+exec "$REAL_DF" "\$@"
+X
+chmod +x "$TMP/bin/df"
+_disk=$(( _kb * 3 / 5 + 1024 + 30 ))
+rm -f "$TMP/core/mihomo"
+out="$(FLASH_FREE=$_disk CLASHWRT_FLASH_COMPRESSES=0 RANGES=1 DIGEST="$GOOD" inst)"
+case "$out" in *"not enough room"*) pass "plain flash: a core bigger than df's free is refused" ;; *) fail "plain flash: a core bigger than df's free is refused ($out)" ;; esac
+out="$(FLASH_FREE=$_disk CLASHWRT_FLASH_COMPRESSES=1 RANGES=1 DIGEST="$GOOD" inst)"
+cmp -s "$TMP/core/mihomo" "$TMP/srv/mihomo" && pass "compressing flash: the same core goes in" || fail "compressing flash: the same core goes in ($out)"
+
+# the estimate was wrong and the write runs out of room: the old core comes back
+{ printf '#!/bin/sh\necho "Mihomo Meta v1.19.1 linux amd64"\nexit 0\n#'; head -c 300000 /dev/zero | tr '\0' b; echo; } > "$TMP/core/mihomo"; chmod +x "$TMP/core/mihomo"
+cp "$TMP/core/mihomo" "$TMP/old"
+REAL_CP="$(command -v cp)"
+printf '#!/bin/sh\nfor a; do d="$a"; done\ncase "$*" in *old-core*) ;; *) [ "$d" = "%s" ] && [ -n "$FAIL_CP" ] && { echo partial > "$d"; echo "cp: write error: No space left on device" >&2; exit 1; } ;; esac\nexec "%s" "$@"\n' "$TMP/core/mihomo" "$REAL_CP" > "$TMP/bin/cp"
+chmod +x "$TMP/bin/cp"
+out="$(FAIL_CP=1 FLASH_FREE=1100 CLASHWRT_FLASH_COMPRESSES=1 CLASHWRT_RAM_DIR="$TMP/ram/core" RANGES=1 DIGEST="$GOOD" inst)"
+case "$out" in *"the old core is back"*) pass "a failed write says the old core is back" ;; *) fail "a failed write says the old core is back ($out)" ;; esac
+cmp -s "$TMP/core/mihomo" "$TMP/old" && pass "and it is" || fail "and it is"
+rm -f "$TMP/bin/cp" "$TMP/bin/df"
 
 rm -f "$TMP/core/mihomo"
 uci set clashwrt.config.core_verify=0

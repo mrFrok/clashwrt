@@ -28,7 +28,7 @@
 NAME="clashwrt"
 RAM="${CLASHWRT_PROV_RAM:-/tmp/clashwrt-prov}"
 MEMINFO="${CLASHWRT_MEMINFO:-/proc/meminfo}"
-MIN_RAM_KB=262144
+MIN_RAM_KB=196608	# a 256 MB router, as MemTotal sees it (updctl.sh)
 
 log() { logger -t "$NAME" "providers: $*"; return 0; }
 
