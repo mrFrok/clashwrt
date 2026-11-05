@@ -7,7 +7,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.rulefiles as rulefiles';
 
-var UI_VERSION = '1.6.2';
+var UI_VERSION = '1.6.3';
 
 var STAGING = '/tmp/clashwrt-staging';
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';
