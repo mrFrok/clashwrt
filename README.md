@@ -85,7 +85,7 @@ wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | sh
 The installer shows the router's RAM and free flash, then asks how to install: **quickly**, taking every recommended answer, or choosing each of these (Enter takes the recommendation, worked out from those numbers). It speaks Russian when LuCI is set to Russian.
 
 1. **Version** — the latest release (checked against its SHA-256) or the development branch.
-2. **Where to keep the core** — on flash, packed on flash, or only in RAM. Only what fits is offered.
+2. **Where to keep the core** — on flash, packed on flash, or only in RAM. Asked in the quick mode too; only what fits is offered, and what is left out says why. To choose it on the command line instead: `wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | CORE_STORE=ram sh` (`flash`, `gz` or `ram`).
 3. **Dashboard** — metacubexd, zashboard, Yacd-meta or none, and where to keep it.
 4. **dnsmasq-full** — lets the bypass set take your config's domains.
 

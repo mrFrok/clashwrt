@@ -25,6 +25,13 @@ SLUG="${SLUG:-mrFrok/clashwrt}"
 # REPO_URL names the source tarball, SKIP_CORE=1 leaves the core alone.
 REPO_URL="${REPO_URL:-}"
 SKIP_CORE="${SKIP_CORE:-0}"
+
+# Where to keep the mihomo core, chosen on the command line instead of asked:
+#   wget -qO- .../install.sh | CORE_STORE=ram sh
+# flash (unpacked on flash), gz (packed on flash, unpacked into RAM at boot)
+# or ram (only in RAM, downloaded at every boot).
+WANT_STORE="${CORE_STORE:-}"
+case "$WANT_STORE" in ''|flash|gz|ram) ;; *) echo "[x] CORE_STORE must be flash, gz or ram, not '$WANT_STORE'" >&2; exit 1 ;; esac
 SRC_TAG=""
 
 # An upgrade (or the Update button, which runs this) already has a mihomo to
@@ -254,6 +261,18 @@ if [ "$SKIP_CORE" != 1 ]; then
 	if [ "$RAM_OK" = 1 ]; then _opts="$_opts ram"; [ -n "$_rec" ] || _rec=ram; fi
 	[ -n "$_opts" ] || die "the mihomo core does not fit: it needs about $(mb "$CORE_EST_KB") of flash, or $(mb "$CORE_GZ_KB") of flash and 256 MB of RAM, or 256 MB of RAM alone; this router has $(mb "$FLASH_KB") free and $(mb "$MEM_KB") of RAM. External storage (extroot on a USB stick) gives it the flash."
 	[ -n "$CUR_STORE" ] && case " $_opts " in *" $CUR_STORE "*) _rec="$CUR_STORE" ;; esac
+	# what is left out, and why, so the choice is not a mystery
+	_why=""
+	case " $_opts " in *" flash "*) ;; *) _why="$_why
+  $(t "not on flash: $(mb "$FLASH_KB") free, about $(mb "$CORE_EST_KB") needed" "не на флеше: свободно $(mb "$FLASH_KB" | sed 's/MB/МБ/'), нужно около $(mb "$CORE_EST_KB" | sed 's/MB/МБ/')")" ;; esac
+	[ "$RAM_OK" = 1 ] || _why="$_why
+  $(t "not in RAM: the router has $(mb "$MEM_KB"), 256 MB is the least" "не в RAM: у роутера $(mb "$MEM_KB" | sed 's/MB/МБ/'), нужно от 256 МБ")"
+	if [ -n "$WANT_STORE" ]; then
+		case " $_opts " in
+			*" $WANT_STORE "*) _rec="$WANT_STORE" ;;
+			*) die "CORE_STORE=$WANT_STORE is not possible on this router:$(echo "$_why" | tr '\n' ' ')" ;;
+		esac
+	fi
 	set --
 	for _o in $_opts; do
 		case "$_o" in
@@ -262,7 +281,14 @@ if [ "$SKIP_CORE" != 1 ]; then
 			ram)   set -- "$@" "ram|$(t 'only in RAM, downloaded at every boot: no flash, 60 MB of RAM, no core while GitHub is out of reach' 'только в RAM, скачивается при каждой загрузке: флеш не нужен, 60 МБ RAM, без GitHub ядра нет')" ;;
 		esac
 	done
-	CORE_STORE="$(ask "$(t 'Where should the mihomo core be kept?' 'Где хранить ядро mihomo?')" "$_rec" "$@")"
+	if [ -n "$WANT_STORE" ]; then
+		CORE_STORE="$WANT_STORE"
+	else
+		# asked in the quick mode too: it decides what the core costs in flash
+		# and RAM, and whether it comes back after a reboot without GitHub
+		[ "$INTERACTIVE" = 1 ] && [ -n "$_why" ] && echo "$_why" > /dev/tty
+		CORE_STORE="$(QUICK=0 ask "$(t 'Where should the mihomo core be kept?' 'Где хранить ядро mihomo?')" "$_rec" "$@")"
+	fi
 fi
 
 # what is left for the rest
