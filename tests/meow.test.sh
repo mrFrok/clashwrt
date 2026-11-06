@@ -81,6 +81,8 @@ st() { upd core-status | sed -n "s/^$1:[[:space:]]*//p"; }
 # start from mihomo on flash
 cp "$TMP/srv/mihomo" "$TMP/core/mihomo"; chmod +x "$TMP/core/mihomo"
 
+uci set clashwrt.config.mode=tproxy
+uci set clashwrt.config.mode_auto=tproxy
 out="$(TDIG=0000000000000000000000000000000000000000000000000000000000000000 upd core-use meow tiny)"
 case "$out" in *"SHA-256 mismatch"*) pass "a meow package with the wrong digest is refused" ;; *) fail "a meow package with the wrong digest is refused ($out)" ;; esac
 [ -L "$TMP/core/mihomo" ] && fail "and mihomo stays" || pass "and mihomo stays"
@@ -93,6 +95,7 @@ eq "mihomo links to meow" "$TMP/core/meow" "$(readlink "$TMP/core/mihomo")"
 [ -f "$TMP/pkg/usr/lib/opkg/info/meow-tiny.control" ] && pass "installed as a package" || fail "installed as a package"
 eq "core_type is meow" meow "$(uci get clashwrt.config.core_type)"
 eq "core_profile is tiny" tiny "$(uci get clashwrt.config.core_profile)"
+eq "the mode follows: meow captures by itself" auto_redirect "$(uci get clashwrt.config.mode)"
 eq "the release is noted" "owrt-v0.29.0-1 meow-tiny" "$(cat "$TMP/store/meow.note")"
 
 eq "status: the core" meow "$(st core)"
@@ -130,6 +133,11 @@ out="$(upd core-use mihomo)"
 [ -f "$TMP/pkg/usr/lib/opkg/info/meow-full.control" ] && fail "meow's package is removed" || pass "meow's package is removed"
 [ -e "$TMP/store/meow.note" ] && fail "and its note" || pass "and its note"
 eq "core_type is mihomo" mihomo "$(uci get clashwrt.config.core_type)"
+eq "and back to what the wizard's test chose" tproxy "$(uci get clashwrt.config.mode)"
 eq "status: the core" mihomo "$(st core)"
 
+uci set clashwrt.wizard.mode_choice=tun
+uci set clashwrt.config.mode=tun
+upd core-use meow tiny >/dev/null 2>&1
+eq "a mode picked by hand stays" tun "$(uci get clashwrt.config.mode)"
 finish

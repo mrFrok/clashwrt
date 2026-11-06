@@ -14,6 +14,7 @@
 # always kept.
 #
 # Usage: confctl.sh read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>
+#        confctl.sh check-file /tmp/clashwrt-conf.XXXXXX   (for fw.sh)
 #        confctl.sh export|import
 #        confctl.sh subfetch <url>   print a subscription, for the wizard to
 #                                    read the node names (countries) from
@@ -197,6 +198,9 @@ do_apply() {
 
 	cat "$STAGED" > "$CONF"
 	echo "installed $CONF"
+	# with the core capturing by itself (auto_redirect), the new file gets
+	# its tun keys before the core reads it
+	/usr/libexec/clashwrt/fw.sh core-sync --no-reload >/dev/null 2>&1
 
 	# only now, with a good config in place and a fresh backup beside it
 	prune_legacy_backups
@@ -399,5 +403,12 @@ case "${1:-}" in
 	delete-backup) do_delete_backup "${2:-}" ;;
 	rename-backup) do_rename_backup "${2:-}" "${3:-}" ;;
 	subfetch) do_subfetch "${2:-}" ;;
+	# fw.sh's rewrite of the tun keys, tested before it replaces config.yaml;
+	# only the temporary files fw.sh makes, never a path of anyone's choosing
+	check-file)
+		case "${2:-}" in /tmp/clashwrt-conf.*) ;; *) die "not a candidate of fw.sh: ${2:-}" ;; esac
+		[ -f "$2" ] && [ ! -L "$2" ] || die "no such file: $2"
+		validate_file "$2" || exit 1
+		;;
 	*) echo "usage: $0 read|validate|apply|backups|restore <name>|delete-backup <name>|rename-backup <old> <new>|export|import|subfetch <url>" >&2; exit 1 ;;
 esac

@@ -21,9 +21,7 @@ WANT="$(uci -q get clashwrt.config.tun_device)" || exit 0
 [ -n "$WANT" ] || exit 0
 [ "$DEV" = "$WANT" ] || exit 0
 
-[ "$(uci -q get clashwrt.config.enabled)" = "1" ] || exit 0
-
-# switched off from the Overview page: stay idle
-ls /etc/rc.d/S[0-9][0-9]clashwrt >/dev/null 2>&1 || exit 0
-
-/usr/libexec/clashwrt/fw.sh check
+# fw.sh decides: with the proxy on, the usual repair ('check'); with it off
+# or switched off, nothing -- except that a core capturing by itself
+# (auto_redirect) and restarted meanwhile is told to stop again.
+/usr/libexec/clashwrt/fw.sh hotplug

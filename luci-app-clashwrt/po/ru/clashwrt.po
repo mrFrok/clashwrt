@@ -1635,8 +1635,8 @@ msgstr "Три коротких шага: ваш VPN, что идёт через
 msgid "Your configuration can be updated"
 msgstr "Конфигурацию можно обновить"
 
-msgid "This version of ClashWrt writes better configs: AI services (ChatGPT, Claude, Gemini) through one server, less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else."
-msgstr "Эта версия ClashWrt пишет конфиг лучше: нейросети (ChatGPT, Claude, Gemini) идут через один сервер, меньше памяти, быстрее TUN, а режим перехвата можно менять в Настройках без пересоздания. Ваши ответы сохранены, так что обновление больше ничего не меняет."
+msgid "This version of ClashWrt writes better configs: proxy servers are found even where the ISP blocks encrypted DNS, AI services (ChatGPT, Claude, Gemini) go through one server, less memory, faster TUN. Your answers are saved, so updating changes nothing else."
+msgstr "Эта версия ClashWrt пишет конфиг лучше: серверы прокси находятся, даже когда провайдер блокирует шифрованный DNS, нейросети (ChatGPT, Claude, Gemini) идут через один сервер, меньше памяти, быстрее TUN. Ваши ответы сохранены, так что обновление больше ничего не меняет."
 
 msgid "Update the configuration"
 msgstr "Обновить конфигурацию"
@@ -1728,3 +1728,12 @@ msgstr "Ядро прокси"
 
 msgid "meow-openwrt is a mihomo-compatible core in Rust: the same config.yaml and API in 9–14 MB of flash and little RAM, for aarch64, ARMv7 (IPQ40xx), MT7621 and ath79. It is installed as a package and stays on flash. Nodes of a protocol the chosen build lacks load as unavailable."
 msgstr "meow-openwrt — совместимое с mihomo ядро на Rust: тот же config.yaml и API в 9–14 МБ флеша и с малым расходом RAM, для aarch64, ARMv7 (IPQ40xx), MT7621 и ath79. Ставится пакетом и хранится на флеше. Узлы протоколов, которых нет в выбранной сборке, будут недоступны."
+
+msgid "The core captures by itself (meow-openwrt)"
+msgstr "Ядро перехватывает само (meow-openwrt)"
+
+msgid "Auto — the core captures by itself (recommended for meow-openwrt)"
+msgstr "Авто — ядро перехватывает само (рекомендуется для meow-openwrt)"
+
+msgid "<strong>The core captures by itself</strong> (meow-openwrt only): meow installs its own nftables rules and, under “direct except the lists”, captures only the addresses its DNS answers name for proxied sites; everything else is forwarded by the kernel, offloading included. It captures every network but its own, LAN DNS goes through dnsmasq to the core, and per-device bypass is not available."
+msgstr "<strong>Ядро перехватывает само</strong> (только meow-openwrt): meow ставит свои правила nftables и в режиме «напрямую, кроме списков» перехватывает только адреса, которые его DNS выдал для сайтов через прокси; всё остальное ядро Linux пересылает само, с offload. Перехватываются все сети, кроме собственных сетей роутера, DNS из LAN идёт через dnsmasq в ядро, обход прокси для отдельных устройств недоступен."

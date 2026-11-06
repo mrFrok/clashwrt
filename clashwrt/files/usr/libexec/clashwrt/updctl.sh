@@ -43,6 +43,7 @@ CORE_INIT="${CLASHWRT_CORE_INIT:-/etc/init.d/mihomo}"
 # it in /usr/bin/meow; /usr/bin/mihomo is then a link to it, so everything
 # that starts or looks for "mihomo" by name finds it.
 MEOW_SLUG="mrFrok/meow-openwrt"
+FW="${CLASHWRT_FW:-/usr/libexec/clashwrt/fw.sh}"
 MEOW_BIN="$BIN_DIR/meow"
 # where opkg and apk keep what is installed; overridden only by the tests
 PKG_ROOT="${CLASHWRT_PKG_ROOT:-}"
@@ -998,6 +999,8 @@ do_core_install() {
 	fi
 	rm -f "$MEOW_NOTE"
 	set_core_type mihomo
+	# before mihomo starts: the capture keys come out of config.yaml first
+	follow_core_mode mihomo
 
 	# The old binary keeps serving until the daemon is restarted, so leaving
 	# it running would report a version nothing is actually using. A core
@@ -1233,6 +1236,30 @@ set_core_type() {
 	uci -q set "clashwrt.config.core_type=$1"
 	[ -n "${2:-}" ] && uci -q set "clashwrt.config.core_profile=$2"
 	uci -q commit clashwrt
+}
+
+# The interception mode follows the core, unless it was picked by hand in the
+# wizard (wizard.mode_choice): meow-openwrt captures by itself
+# (auto_redirect), which mihomo does not do here, so mihomo gets back the
+# mode the wizard's test chose. Applied at once when the firewall is up.
+follow_core_mode() {
+	local cur want pinned
+	cur="$(uci -q get clashwrt.config.mode)"
+	pinned="$(uci -q get clashwrt.wizard.mode_choice)"
+	case "$1" in
+		meow)
+			case "$pinned" in ""|auto) ;; *) return 0 ;; esac
+			want=auto_redirect ;;
+		*)
+			[ "$cur" = auto_redirect ] || return 0
+			want="$(uci -q get clashwrt.config.mode_auto)"
+			case "$want" in ""|auto_redirect) want=redirect_tun ;; esac ;;
+	esac
+	[ "$cur" = "$want" ] && return 0
+	uci -q set "clashwrt.config.mode=$want" && uci -q commit clashwrt
+	echo "interception mode: $want (follows the core)"
+	[ -x "$FW" ] && "$FW" reload >/dev/null 2>&1
+	return 0
 }
 
 meow_profile() {
@@ -1515,6 +1542,8 @@ do_meow_install() {
 	else
 		restart_if_running "$running"
 	fi
+	# once meow runs: its keys go to meow, never to the mihomo it replaced
+	follow_core_mode meow
 }
 
 # Switches the core: mihomo, or meow-openwrt in one of its profiles.

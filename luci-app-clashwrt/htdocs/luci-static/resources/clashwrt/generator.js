@@ -347,9 +347,10 @@ var TUN_STACKS = ['system', 'gvisor', 'mixed', 'mips'];
 
 /* What a generated config looks like, as a number in its first line. Raised
  * when the generator starts writing something a config should have (1.5.1:
- * mrs geo sets, GSO, no GEOIP, find-process-mode, dns-mode), so the Overview
- * can offer once to regenerate an older one. Configs before it have none. */
-var GEN_FORMAT = 5;
+ * mrs geo sets, GSO, no GEOIP, find-process-mode, dns-mode; 6:
+ * proxy-server-nameserver), so the Overview can offer once to regenerate an
+ * older one. Configs before it have none. */
+var GEN_FORMAT = 6;
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -1343,6 +1344,16 @@ return baseclass.extend({
 		boot.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
 		L.push('  nameserver:');
 		dnsServers.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
+		/* The proxy servers' own names are looked up over plain DNS. Left to
+		 * the nameservers above, an ISP that cuts DoH to the resolver (Quad9,
+		 * Cloudflare and Google are all cut in places) leaves every node
+		 * named by host unresolvable: they all fail the delay test while
+		 * the nodes themselves are fine. Those lookups only name the
+		 * servers, which the ISP sees being connected to anyway. */
+		if (boot.length && dnsServers.some(function (s) { return !/^[0-9.]+(:\d+)?$/.test(s); })) {
+			L.push('  proxy-server-nameserver:');
+			boot.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });
+		}
 		if (o.directDns && o.directDns.length) {
 			L.push('  direct-nameserver:');
 			o.directDns.forEach(function (s) { L.push('    - ' + yamlScalar(s)); });

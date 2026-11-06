@@ -279,6 +279,11 @@ return view.extend({
 			tun: _('Tun — TCP + UDP'),
 			redirect_tun: _('NAT redirect for TCP + tun for UDP')
 		};
+		var meowCore = uci.get('clashwrt', 'config', 'core_type') === 'meow';
+		if (meowCore) {
+			MODES.auto = _('Auto — the core captures by itself (recommended for meow-openwrt)');
+			MODES.auto_redirect = _('The core captures by itself (meow-openwrt)');
+		}
 		var modeSel = E('select', { 'class': 'cbi-input-select' }, Object.keys(MODES).map(function (k) {
 			return E('option', { 'value': k }, MODES[k]);
 		}));
@@ -289,7 +294,7 @@ return view.extend({
 			var auto = uci.get('clashwrt', 'config', 'mode_auto');
 			var pinned = uci.get('clashwrt', 'wizard', 'mode_choice');
 			modeSel.value = (pinned && MODES[pinned]) ? pinned
-				: (!auto || auto === curMode) ? 'auto' : curMode;
+				: (!auto || auto === curMode || (meowCore && curMode === 'auto_redirect')) ? 'auto' : curMode;
 		})();
 		var yandexCb = E('input', { 'type': 'checkbox' });
 		var udpFilter = E('input', {
@@ -787,6 +792,11 @@ return view.extend({
 			var want = modeSel.value;
 			if (want !== 'auto') {
 				uci.set('clashwrt', 'config', 'mode', want);
+				return Promise.resolve();
+			}
+			/* meow-openwrt captures by itself: nothing to test */
+			if (meowCore) {
+				uci.set('clashwrt', 'config', 'mode', 'auto_redirect');
 				return Promise.resolve();
 			}
 			var known = uci.get('clashwrt', 'config', 'mode_auto');

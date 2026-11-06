@@ -369,9 +369,11 @@ config_records() {
 		line = unq(line)
 		# a compound rule cannot go in the set, but where it sends traffic
 		# still matters to which later rules may (see pick_rules)
+		# (the body, without its target, rides along for core-routes)
 		if (line ~ /^(AND|OR|NOT|SUB-RULE),/) {
 			t = line; sub(/.*,/, "", t)
-			print "R\tCOMPOUND\t\t" unq(t)
+			b = line; sub(/,[^,]*$/, "", b)
+			print "R\tCOMPOUND\t" b "\t" unq(t)
 			next
 		}
 		n = split(line, f, ",")
@@ -773,6 +775,15 @@ do_update() {
 # config.yaml is picked up by the next apply.
 do_load() {
 	load_cfg
+	# the core captures by itself: no set to fill, no dnsmasq rules; its tun
+	# keys follow the config instead (fw.sh core-sync rewrites them if the
+	# rules changed what they should say)
+	if core_captures; then
+		set_mode=""
+		dns_sync_domains
+		"${CLASHWRT_LIBEXEC:-/usr/libexec/clashwrt}/fw.sh" core-sync >/dev/null 2>&1
+		return 0
+	fi
 	# off leaves no domain rules behind in dnsmasq (set_mode is "off" here,
 	# so dns_sync_domains removes them)
 	[ "$set_mode_raw" = "off" ] && { dns_sync_domains; return 0; }
@@ -824,6 +835,10 @@ do_load() {
 
 do_status() {
 	load_cfg
+	if core_captures; then
+		do_core_status
+		return 0
+	fi
 	if [ "$set_mode_raw" != "auto" ]; then
 		echo "mode:     $set_mode"
 	elif [ -n "$set_mode" ]; then
@@ -1060,6 +1075,150 @@ do_offload() {
 	do_offload
 }
 
+# ---------------------------------------------------------------------------
+# the core's own capture (fw.sh mode auto_redirect)
+# ---------------------------------------------------------------------------
+#
+# With meow-openwrt's tun.auto-redirect the core installs its own nftables
+# table, and this script's set is not built at all. The same decision is
+# handed to the core as tun keys instead (fw.sh writes them into config.yaml):
+#
+#   exclude  route-exclude-address(-set): the address rules to DIRECT ahead of
+#            the first proxying rule, as for the set (pick_rules). ipcidr
+#            providers go by name, so the core follows their refreshes.
+#
+#   include  route-address-dns: the core adds the addresses its DNS answers
+#            give for names the rules send anywhere but DIRECT -- the job
+#            dnsmasq's nftset= did, without dnsmasq-full and judged by the
+#            rules themselves. Bare addresses have no DNS answer, so address
+#            rules and ipcidr providers go into route-address(-set) as well.
+#            A proxying rule that neither can express (a port, GEOIP, a
+#            classical provider, NOT...) would send its traffic past the
+#            core: then nothing is narrowed and everything is captured, which
+#            only costs speed. 'held:' says why.
+#
+# Prints "direction:", then exclude_net/exclude_set or route_net/route_set/
+# route_dns lines, or "held:". The downloaded lists are not used here.
+core_routes_awk() {
+	awk -F '\t' -v dir="$1" '
+	function cidr(v) { return v ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(\/[0-9]+)?$/ }
+	function name(v) { return v ~ /^[A-Za-z0-9_.-]+$/ }
+	function out(k, v) { if (!seen[k, v]++) buf = buf k ": " v "\n" }
+	function domainish(t) { return t ~ /^(DOMAIN|DOMAIN-SUFFIX|DOMAIN-KEYWORD|DOMAIN-REGEX|DOMAIN-WILDCARD|GEOSITE)$/ }
+	# one destination part of an include rule: 1 when DNS or a route covers
+	# it (and the route is written), 0 when nothing can
+	function cover(t, v,   b) {
+		if (domainish(t)) return 1
+		if (t == "IP-CIDR") { if (!cidr(v)) return 0; out("route_net", v); return 1 }
+		if (t == "IP-CIDR6") return 1
+		if (t == "RULE-SET") {
+			b = beh[v]
+			if (b == "ipcidr" && name(v)) { out("route_set", v); return 1 }
+			if (b == "domain") return 1
+			if (gapwhy == "") gapwhy = "rule-set " v (b == "" ? " has no rule-providers entry" : " is " b ", whose addresses no DNS answer names")
+			return 0
+		}
+		if (gapwhy == "") gapwhy = t " rules name traffic by something other than its destination"
+		return 0
+	}
+	function compound(body,   op, s, part, t, v, c, any, all) {
+		op = body; sub(/,.*/, "", op)
+		s = substr(body, length(op) + 2)
+		any = 0; all = 1
+		while (match(s, /\([A-Za-z0-9-]+,[^(),]*\)/)) {
+			part = substr(s, RSTART + 1, RLENGTH - 2)
+			s = substr(s, RSTART + RLENGTH)
+			c = index(part, ",")
+			t = substr(part, 1, c - 1); v = substr(part, c + 1)
+			if (t ~ /^(NETWORK|DST-PORT|SRC-PORT|IN-PORT|IN-TYPE|IN-NAME|IN-USER|PROCESS-NAME|PROCESS-PATH|UID|SRC-IP-CIDR|SRC-GEOIP|SRC-IP-ASN|DSCP)$/) { all = 0; continue }
+			if (cover(t, v)) any = 1; else all = 0
+		}
+		if (op == "AND" && any) return 1
+		if (op == "OR" && all && any) return 1
+		if (gapwhy == "") gapwhy = op " rules that are not narrowed to a destination"
+		return 0
+	}
+	$1 == "P" { beh[$2] = $3; next }
+	$1 == "F" { fake = $2; next }
+	$1 == "R" && $2 != "MATCH" { r[++n] = $0 }
+	END {
+		for (i = 1; i <= n; i++) {
+			split(r[i], f, "\t")
+			t = f[2]; v = f[3]; to = f[4]
+			if (dir == "exclude") {
+				if (to != "DIRECT") { closed = 1; continue }
+				if (closed || t == "COMPOUND") continue
+				if (t == "IP-CIDR" && cidr(v)) out("exclude_net", v)
+				else if (t == "RULE-SET" && beh[v] == "ipcidr" && name(v)) out("exclude_set", v)
+				continue
+			}
+			if (to == "DIRECT") continue
+			if (t == "COMPOUND") { if (!compound(v)) held = 1; continue }
+			if (!cover(t, v)) held = 1
+		}
+		if (dir == "include") {
+			if (held) { print "held: " gapwhy; exit }
+			if (fake != "") out("route_net", fake)
+			out("route_dns", 1)
+		}
+		printf "%s", buf
+	}
+	' "$2"
+}
+
+do_core_routes() {
+	load_cfg
+	local recs
+	if [ "$set_mode_raw" = "off" ]; then
+		echo "direction: off"
+		return 0
+	fi
+	if [ -z "$set_mode" ]; then
+		echo "direction: off"
+		echo "held: $(detect_failure_message)"
+		return 0
+	fi
+	mkdir -p "$STATE_DIR"
+	recs="$STATE_DIR/.core.$$"
+	if [ -f "$MIHOMO_CONF" ]; then config_records > "$recs"; else : > "$recs"; fi
+	echo "direction: $set_mode"
+	core_routes_awk "$set_mode" "$recs"
+	rm -f "$recs"
+	[ "$set_source" = "config" ] ||
+		echo "note: the downloaded list ($set_source) is not used when the core captures; its own rules decide"
+	return 0
+}
+
+# fw.sh's mode: with auto_redirect the core owns the capture
+core_captures() { [ "$(uci -q get "$NAME.config.mode")" = "auto_redirect" ]; }
+
+# 'status' for that mode, in the same shape the Overview reads: in_kernel is
+# what the core's own sets hold (what DNS answers added, or the exceptions).
+do_core_status() {
+	local r dir held n
+	r="$(do_core_routes)"
+	dir="$(echo "$r" | sed -n 's/^direction: //p')"
+	held="$(echo "$r" | sed -n 's/^held: //p')"
+	if [ "$set_mode_raw" = "auto" ] && [ "$dir" != off ]; then
+		echo "mode:     auto -> $dir ($set_mode_why)"
+	else
+		echo "mode:     $dir"
+	fi
+	echo "source:   core"
+	[ -n "$held" ] && [ "$dir" != off ] && echo "HELD BACK: the set is not used, everything goes to mihomo: $held"
+	echo "$r" | sed -n 's/^note: /note:     /p'
+	case "$dir" in
+		include) n="$(nft list set inet meow route4_dns 2>/dev/null | grep -o 'expires' | wc -l)" ;;
+		exclude) n="$(nft list set inet meow exclude4 2>/dev/null | sed -n '/elements/,/}/p' | tr -cd ',' | wc -c)"; n=$((n + 1)) ;;
+		*) n="" ;;
+	esac
+	if nft list table inet meow >/dev/null 2>&1; then
+		echo "in_kernel: ${n:-0} entries"
+	else
+		echo "in_kernel: set not present"
+	fi
+}
+
 case "${1:-}" in
 	update)  do_update "${2:-}" ;;
 	load)    do_load ;;
@@ -1073,5 +1232,6 @@ case "${1:-}" in
 	doh-update) do_doh_update force ;;
 	doh-load)   do_doh_load ;;
 	offload)    do_offload "${2:-}" ;;
-	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full | doh-update | doh-load | offload [off|sw|hw]" >&2; exit 1 ;;
+	core-routes) do_core_routes ;;
+	*) echo "usage: $0 update [force] | load | status | clear | sources | direction | detect | from-config | install-dnsmasq-full | doh-update | doh-load | offload [off|sw|hw] | core-routes" >&2; exit 1 ;;
 esac

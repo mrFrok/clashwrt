@@ -1629,7 +1629,7 @@ msgstr ""
 msgid "Your configuration can be updated"
 msgstr ""
 
-msgid "This version of ClashWrt writes better configs: AI services (ChatGPT, Claude, Gemini) through one server, less memory, faster TUN, and the interception mode can be switched in Settings without regenerating. Your answers are saved, so updating changes nothing else."
+msgid "This version of ClashWrt writes better configs: proxy servers are found even where the ISP blocks encrypted DNS, AI services (ChatGPT, Claude, Gemini) go through one server, less memory, faster TUN. Your answers are saved, so updating changes nothing else."
 msgstr ""
 
 msgid "Update the configuration"
@@ -1721,4 +1721,13 @@ msgid "Proxy core"
 msgstr ""
 
 msgid "meow-openwrt is a mihomo-compatible core in Rust: the same config.yaml and API in 9–14 MB of flash and little RAM, for aarch64, ARMv7 (IPQ40xx), MT7621 and ath79. It is installed as a package and stays on flash. Nodes of a protocol the chosen build lacks load as unavailable."
+msgstr ""
+
+msgid "The core captures by itself (meow-openwrt)"
+msgstr ""
+
+msgid "Auto — the core captures by itself (recommended for meow-openwrt)"
+msgstr ""
+
+msgid "<strong>The core captures by itself</strong> (meow-openwrt only): meow installs its own nftables rules and, under “direct except the lists”, captures only the addresses its DNS answers name for proxied sites; everything else is forwarded by the kernel, offloading included. It captures every network but its own, LAN DNS goes through dnsmasq to the core, and per-device bypass is not available."
 msgstr ""

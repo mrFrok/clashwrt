@@ -15,6 +15,14 @@
 #   redirect_tun  TCP     -> nat dnat     -> mihomo redir-port
 #                 UDP     -> fwmark       -> policy route -> tun device
 #
+# and a fifth, where the core does it all itself:
+#
+#   auto_redirect meow-openwrt's tun.auto-redirect: the core installs its own
+#                 table (inet meow) and policy rules, and with
+#                 route-address-dns captures only what its rules proxy.
+#                 ClashWrt writes the keys and switches it (see "the core's
+#                 own capture" below).
+#
 # Why four modes exist at all:
 #
 #   TPROXY is the "correct" transparent proxy mechanism and the only one that
@@ -32,6 +40,7 @@
 # Usage: fw.sh apply|reload|flush|status|check|detect|selftest
 #        fw.sh dns-sync
 #        fw.sh autobypass on|off
+#        fw.sh core-sync [--no-reload] | hotplug
 
 # Deliberately no `set -u`: OpenWrt's /lib/functions.sh reads IPKG_INSTROOT and
 # friends unset, so nounset makes sourcing it abort.
@@ -112,6 +121,7 @@ load_cfg() {
 	config_get block_dot     config block_dot     1
 	config_get wd_action     config watchdog_action direct
 	config_get block_doh     config block_doh     0
+	config_get doh_extra     config doh_extra     ""
 	config_get api_port      config api_port      9090
 	config_get block_quic    config block_quic    0
 	config_get dns_hijack    config dns_hijack    0
@@ -133,7 +143,10 @@ load_cfg() {
 	# setctl.sh is asked for every mode, not only 'auto': it is also what
 	# holds a set built from config.yaml back when the set could not cover
 	# everything config.yaml proxies.
-	if [ "$set_mode" != "off" ]; then
+	# The core's own capture has no set of ours; setctl.sh core-routes says
+	# what it narrows to instead.
+	[ "$mode" = auto_redirect ] && set_mode="core"
+	if [ "$set_mode" != "off" ] && [ "$set_mode" != "core" ]; then
 		set_mode="$(/usr/libexec/clashwrt/setctl.sh direction 2>/dev/null)" || set_mode=""
 		case "$set_mode" in
 			exclude|include|off) ;;
@@ -249,6 +262,8 @@ conf_modes() {
 	[ -n "$has_tproxy" ] && [ -n "$has_tun" ] && out="$out tproxy_tun"
 	[ -n "$has_redir" ]  && [ -n "$has_tun" ] && out="$out redirect_tun"
 	[ -n "$has_tun" ]    && out="$out tun"
+	# the keys it needs are written in by core-sync; a tun and meow suffice
+	[ -n "$has_tun" ] && core_is_meow && out="$out auto_redirect"
 
 	out="${out# }"
 	[ -n "$out" ] || return 1
@@ -287,11 +302,15 @@ mode_needs_redir_port() {
 
 check_prereq() {
 	case "$mode" in
-		tproxy|tproxy_tun|tun|redirect_tun) ;;
-		*) die "unknown mode '$mode' (expected: tproxy, tproxy_tun, tun, redirect_tun)" ;;
+		tproxy|tproxy_tun|tun|redirect_tun|auto_redirect) ;;
+		*) die "unknown mode '$mode' (expected: tproxy, tproxy_tun, tun, redirect_tun, auto_redirect)" ;;
 	esac
 
 	[ -f "$MIHOMO_CONF" ] || die "mihomo config not found at $MIHOMO_CONF"
+
+	if [ "$mode" = auto_redirect ] && ! core_is_meow; then
+		die "mode 'auto_redirect' needs the meow-openwrt core, which captures by itself; this router runs mihomo. Switch the core in Settings -> Storage and memory -> Proxy core (or: updctl.sh core-use meow), or pick another interception mode."
+	fi
 
 	if mode_needs_tproxy_port && [ -z "$tproxy_port" ]; then
 		die "mode '$mode' needs 'tproxy-port' in $MIHOMO_CONF (or tproxy_port in UCI); a config from the setup wizard gets every inbound when it is applied again"
@@ -496,11 +515,38 @@ build_bypass() {
 	# reject, so apps fall back to IPv4 at once instead of timing out. The
 	# router's own IPv6, and IPv6 between LAN devices, are untouched; a
 	# bypass or a switched-off proxy removes the table and this with it.
-	[ "$block_ipv6" = 1 ] && {
-		nb add chain $TABLE leak6 "{ type filter hook forward priority filter - 5 ; }"
-		nb add rule $TABLE leak6 iifname $lan_set meta nfproto ipv6 oifname != $lan_set \
-			reject with icmpx type admin-prohibited
+	build_leak6
+	return 0
+}
+
+build_leak6() {
+	[ "$block_ipv6" = 1 ] || return 0
+	nb add chain $TABLE leak6 "{ type filter hook forward priority filter - 5 ; }"
+	nb add rule $TABLE leak6 iifname $lan_set meta nfproto ipv6 oifname != $lan_set \
+		reject with icmpx type admin-prohibited
+}
+
+# The table in auto_redirect mode: meow captures in its own, so this one
+# holds only what the core does not do -- the IPv6 leak (meow leaves IPv6
+# alone without an inet6-address) and QUIC, rejected on its way out of the
+# LAN. It exists even when empty: its presence is what the rest of ClashWrt
+# reads as "the proxy rules are loaded".
+apply_nft_core() {
+	NFT_BATCH="$(mktemp /tmp/clashwrt-nft.XXXXXX)" || die "cannot create a temporary file"
+	nb add table $TABLE
+	nb delete table $TABLE
+	nb add table $TABLE
+	build_leak6
+	[ "$block_quic" = 1 ] && {
+		nb add chain $TABLE quic "{ type filter hook forward priority filter - 5 ; }"
+		nb add rule $TABLE quic iifname $lan_set oifname != $lan_set udp dport 443 reject
 	}
+	local err
+	if ! err="$(nft -f "$NFT_BATCH" 2>&1)"; then
+		rm -f "$NFT_BATCH"
+		die "nft refused the ruleset, the previous one is still in place: $err"
+	fi
+	rm -f "$NFT_BATCH"
 	return 0
 }
 
@@ -799,6 +845,298 @@ apply_block() {
 	fi
 	rm -f "$NFT_BATCH"
 	flush_rules
+	# the core would otherwise go on carrying the LAN out through the proxy
+	core_marked && core_capture off
+	return 0
+}
+
+# ---------------------------------------------------------------------------
+# the core's own capture (mode auto_redirect, meow-openwrt)
+# ---------------------------------------------------------------------------
+#
+# meow-openwrt's tun.auto-redirect does what the other four modes build here:
+# it puts its own table (inet meow) and policy rules in place, redirects TCP
+# to a listener of its own and routes UDP into the tun, leaves its own
+# sockets (routing-mark) and the router's subnets alone, and accepts the tun
+# in fw4 itself. With route-address-dns it also judges every DNS answer by
+# its rules and captures only the addresses of names that go to a proxy, so
+# the rest is forwarded by the kernel (flowtable and hardware offload
+# included) and never reaches the core.
+#
+# What stays with ClashWrt:
+#
+#   the keys     written into config.yaml's tun: block (core-sync), from UCI
+#                and from the config's own rules (setctl.sh core-routes). A
+#                comment line marks them; everything after it in tun: is ours.
+#                The core reads them at start and at a reload, and that is the
+#                only way: its DNS hook is set up from the file, not by PATCH.
+#   the switch   PATCH /configs {"tun":{"enable":...}} turns the capture off
+#                and on at runtime without touching the file, for the proxy
+#                switch, the watchdog and the kill switch. The file keeps
+#                asking for capture, so a core that restarts while ClashWrt
+#                is off captures again -- the hotplug event of its new tun is
+#                what turns that off again (do_hotplug).
+#   DNS          route-address-dns sees only the lookups the core answers, so
+#                dnsmasq is pointed at the core (dns_core_on) for as long as
+#                the mode is on, and put back as it was afterwards.
+
+CORE_BIN="${CLASHWRT_CORE_BIN:-/usr/bin/mihomo}"
+MEOW_BIN="${CLASHWRT_MEOW_BIN:-/usr/bin/meow}"
+CONFCTL="${CLASHWRT_CONFCTL:-/usr/libexec/clashwrt/confctl.sh}"
+SETCTL="${CLASHWRT_SETCTL:-/usr/libexec/clashwrt/setctl.sh}"
+CORE_INIT="${CLASHWRT_CORE_INIT:-/etc/init.d/mihomo}"
+TUN_MARK_LINE="# ClashWrt: from here to the end of tun: follows Settings -> Interception mode (auto_redirect)"
+TUN_MANAGED="enable auto-route auto-redirect dns-hijack route-address route-address-set route-exclude-address route-exclude-address-set route-address-dns block-encrypted-dns block-encrypted-dns-address"
+
+core_is_meow() { [ -L "$CORE_BIN" ] && [ "$(readlink "$CORE_BIN")" = "$MEOW_BIN" ]; }
+core_running() { pidof mihomo >/dev/null 2>&1 || pidof meow >/dev/null 2>&1; }
+core_table() { nft list table inet meow >/dev/null 2>&1; }
+# config.yaml asks the core to capture (core-sync wrote the keys)
+core_marked() { [ -f "$MIHOMO_CONF" ] && grep -qF "$TUN_MARK_LINE" "$MIHOMO_CONF"; }
+
+# The core's REST API, at the controller config.yaml names (as confctl.sh
+# reaches it), with its secret.
+core_api() {
+	local ctl host port secret
+	ctl="$(yaml_top external-controller)"
+	port="${ctl##*:}"
+	host="${ctl%:*}"
+	case "$port" in ''|*[!0-9]*) port="$api_port"; host="" ;; esac
+	case "$host" in ''|0.0.0.0|'[::]'|::|'*') host=127.0.0.1 ;; esac
+	secret="$(yaml_top secret)"
+	curl -s -o /dev/null -f -m 20 -X "$1" ${secret:+-H "Authorization: Bearer $secret"} \
+		"http://$host:$port$2" ${3:+-d "$3"} 2>/dev/null
+}
+
+# Capture on or off at runtime. Off stops the core's tun, which takes its
+# table and policy rules with it; on starts it again from the committed
+# config. Nothing to do when the core is not running: it reads the file.
+core_capture() {
+	local want=true
+	[ "$1" = off ] && want=false
+	core_running || return 0
+	core_api PATCH /configs "{\"tun\":{\"enable\":$want}}" || {
+		log "the core's API refused to switch its capture $1"
+		return 1
+	}
+}
+
+# The table appears a moment after the tun starts.
+core_wait_table() {
+	local i=0
+	while [ "$i" -lt "$tun_wait" ]; do
+		core_table && return 0
+		i=$((i + 1))
+		sleep 1
+	done
+	return 1
+}
+
+# items on stdin as a YAML flow list: ['a', 'b']
+yaml_flow() {
+	awk 'NF { printf "%s\047%s\047", (n++ ? ", " : "["), $0 } END { print (n ? "]" : "[]") }'
+}
+
+cr_get() { echo "$CORE_ROUTES" | sed -n "s/^$1: //p"; }
+
+# The tun keys for capture, one per line without indent.
+core_tun_lines() {
+	local v
+	echo "enable: true"
+	echo "auto-route: true"
+	echo "auto-redirect: true"
+	# LAN lookups go to dnsmasq, and from there to the core when it needs
+	# them (dns_core_on); hijacking port 53 is the separate dns_hijack choice
+	if [ "$dns_hijack" = 1 ]; then
+		echo "dns-hijack: ['any:53']"
+	else
+		echo "dns-hijack: []"
+	fi
+	v="$( { for v in $bypass_net; do echo "$v"; done; cr_get exclude_net; } | awk '!s[$0]++')"
+	[ -n "$v" ] && echo "route-exclude-address: $(echo "$v" | yaml_flow)"
+	v="$(cr_get exclude_set)"; [ -n "$v" ] && echo "route-exclude-address-set: $(echo "$v" | yaml_flow)"
+	v="$(cr_get route_net)"; [ -n "$v" ] && echo "route-address: $(echo "$v" | yaml_flow)"
+	v="$(cr_get route_set)"; [ -n "$v" ] && echo "route-address-set: $(echo "$v" | yaml_flow)"
+	[ "$(cr_get route_dns)" = 1 ] && echo "route-address-dns: true"
+	# DoT and DoH to the well-known resolvers, refused by the core itself
+	# (its own list; dibdot's is not used in this mode), plus doh_extra
+	if [ "$block_dot" = 1 ] || [ "$block_doh" = 1 ]; then
+		echo "block-encrypted-dns: true"
+		v="$(for v in $doh_extra; do echo "$v"; done)"
+		[ -n "$v" ] && echo "block-encrypted-dns-address: $(echo "$v" | yaml_flow)"
+	fi
+	return 0
+}
+
+# What the other modes want back: a tun for UDP that routes nothing itself.
+core_tun_off_lines() {
+	echo "enable: true"
+	echo "auto-route: false"
+	echo "auto-redirect: false"
+}
+
+# config.yaml ($1) with the managed keys of tun: replaced by the lines in $2,
+# after the marker line when $3 is "mark". Indented like the block's own
+# keys; a key's list items (deeper, or "- " at its level) go with it.
+tun_rewrite() {
+	awk -v lf="$2" -v mark="$3" -v markline="$TUN_MARK_LINE" -v keys="$TUN_MANAGED" '
+	BEGIN {
+		n = split(keys, k, " "); for (i = 1; i <= n; i++) managed[k[i]] = 1
+		while ((getline l < lf) > 0) add[++na] = l
+	}
+	function emit(   i, ind) {
+		ind = sprintf("%" (cind ? cind : 2) "s", "")
+		if (mark == "mark") print ind markline
+		for (i = 1; i <= na; i++) print ind add[i]
+		for (i = 1; i <= nb; i++) print blank[i]
+		nb = 0; done = 1
+	}
+	{ sub(/\r$/, "") }
+	/^[A-Za-z0-9_-]+:/ {
+		if (intun) emit()
+		intun = ($0 ~ /^tun:[ \t]*(#.*)?$/)
+		if (intun) seen = 1
+		print; next
+	}
+	intun {
+		if ($0 ~ /^[ \t]*$/) { blank[++nb] = $0; next }
+		match($0, /^[ \t]*/); ind = RLENGTH
+		line = substr($0, ind + 1)
+		if (index($0, markline)) { skip = 0; next }
+		if (cind == 0 && line !~ /^#/) cind = ind
+		if (skip && (ind > cind || (ind == cind && line ~ /^-/))) next
+		skip = 0
+		if (ind == cind) {
+			key = line; sub(/[ \t]*:.*/, "", key)
+			if (key in managed) { skip = 1; next }
+		}
+		for (i = 1; i <= nb; i++) print blank[i]
+		nb = 0
+		print; next
+	}
+	{ print }
+	END {
+		if (intun) emit()
+		else if (!seen && mark == "mark") {
+			print "tun:"
+			print "  device: " ENVIRON["CW_TUN_DEVICE"]
+			print "  stack: system"
+			emit()
+		}
+	}
+	' "$1"
+}
+
+# Writes the managed keys into config.yaml: 'on' for capture, 'off' to give
+# them back to the other modes (only if they were ours). Nothing is written
+# when the file already says it; a change is checked with the core's own
+# test first (confctl.sh) and then reloaded through the API, or by a restart.
+# --no-reload leaves that to the caller (confctl.sh, which reloads anyway).
+core_conf_sync() {
+	local want="$1" reload="${2:-}" lines tmp mark=""
+	[ -f "$MIHOMO_CONF" ] || return 1
+	if [ "$want" = on ]; then
+		mark=mark
+	else
+		core_marked || return 0
+	fi
+	lines="$(mktemp /tmp/clashwrt-tun.XXXXXX)" || return 1
+	if [ "$want" = on ]; then core_tun_lines > "$lines"; else core_tun_off_lines > "$lines"; fi
+	tmp="$(mktemp /tmp/clashwrt-conf.XXXXXX)" || { rm -f "$lines"; return 1; }
+	CW_TUN_DEVICE="$tun_device" tun_rewrite "$MIHOMO_CONF" "$lines" "$mark" > "$tmp"
+	rm -f "$lines"
+	if cmp -s "$tmp" "$MIHOMO_CONF"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	if ! "$CONFCTL" check-file "$tmp" >/dev/null 2>&1; then
+		rm -f "$tmp"
+		log "the core rejected config.yaml with the auto_redirect tun keys; it is left as it was"
+		return 1
+	fi
+	cat "$tmp" > "$MIHOMO_CONF"
+	rm -f "$tmp"
+	log "config.yaml: the core's capture keys $([ "$want" = on ] && echo written || echo taken out)"
+	[ "$reload" = --no-reload ] && return 0
+	core_running || return 0
+	core_api PUT '/configs?force=true' '{"path":"","payload":""}' || "$CORE_INIT" restart >/dev/null 2>&1
+	return 0
+}
+
+# --- dnsmasq to the core, for route-address-dns -----------------------------
+#
+# The core adds an address to its capture set when it answers the lookup, so
+# the LAN's lookups have to reach it: dnsmasq forwards to it, and only to it
+# (noresolv), or the answers of the uplink's resolver would bypass the set and
+# the sites behind them would go direct. What was changed is listed on flash
+# and is all that is ever undone. While the watchdog has DNS on the uplink
+# (DNS_BAK), that arrangement owns the list and this keeps out of it.
+DNS_CORE_STATE="${CLASHWRT_DNS_CORE:-/etc/clashwrt-dns-core.state}"
+
+dns_core_on() {
+	local e changed="" nr
+	[ -e "$DNS_BAK" ] && return 0
+	e="127.0.0.1#$dns_port"
+	if [ -z "$(dns_mihomo_entries)" ]; then
+		uci add_list "$DNSMASQ_SEC.server=$e"
+		echo "server $e" >> "$DNS_CORE_STATE"
+		changed=1
+	fi
+	nr="$(uci -q get "$DNSMASQ_SEC.noresolv")"
+	if [ "$nr" != 1 ]; then
+		echo "noresolv ${nr:--}" >> "$DNS_CORE_STATE"
+		uci set "$DNSMASQ_SEC.noresolv=1"
+		changed=1
+	fi
+	[ -n "$changed" ] || return 0
+	dns_commit
+	log "dnsmasq forwards to the core, which needs to see the LAN's lookups"
+}
+
+dns_core_off() {
+	local k v
+	[ -e "$DNS_CORE_STATE" ] || return 0
+	while read -r k v; do
+		case "$k" in
+		server)
+			uci -q del_list "$DNSMASQ_SEC.server=$v"
+			# taken out by the watchdog meanwhile: not to come back
+			if [ -e "$DNS_BAK" ]; then
+				grep -v -x -F -- "$v" "$DNS_BAK" > "$DNS_BAK.tmp"
+				mv -f "$DNS_BAK.tmp" "$DNS_BAK"
+			fi
+			;;
+		noresolv)
+			if [ "$v" = - ]; then uci -q delete "$DNSMASQ_SEC.noresolv"
+			else uci set "$DNSMASQ_SEC.noresolv=$v"; fi
+			;;
+		esac
+	done < "$DNS_CORE_STATE"
+	rm -f "$DNS_CORE_STATE"
+	dns_commit
+	log "dnsmasq no longer forwards to the core for its capture"
+}
+
+# do_apply for auto_redirect
+apply_core() {
+	CORE_ROUTES="$("$SETCTL" core-routes 2>/dev/null)"
+	core_conf_sync on || die "could not write the auto_redirect keys into $MIHOMO_CONF (see logread); nothing was changed"
+	apply_nft_core
+	flush_rules
+	if [ "$(cr_get route_dns)" = 1 ] && [ "$dns_hijack" != 1 ]; then
+		dns_core_on
+	else
+		dns_core_off
+	fi
+	if core_running && ! core_table; then
+		# switched off by PATCH earlier (proxy off, a bypass): on again; a
+		# tun that died needs off and on, since "on" is what it already says
+		core_capture on
+		core_wait_table || { core_capture off; core_capture on; core_wait_table; } ||
+			log "warning: meow has not installed its capture (table inet meow); see 'logread -e mihomo'"
+	fi
+	[ -n "$(cr_get held)" ] && log "the core captures everything: $(cr_get held)"
+	return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -808,16 +1146,26 @@ apply_block() {
 do_apply() {
 	load_cfg
 	dns_sync
-	[ "$enabled" = 1 ] || { log "disabled in UCI, nothing to do"; do_flush_quiet; exit 0; }
+	[ "$enabled" = 1 ] || { log "disabled in UCI, nothing to do"; do_flush_quiet; dns_core_off; exit 0; }
 	case "$(flag_action)" in
 		direct) log "auto-bypass is active, leaving traffic direct (the watchdog restores it)"; do_flush_quiet; exit 0 ;;
 		block)  log "the kill switch is on, the LAN stays cut off (the watchdog restores it)"; apply_block; exit 0 ;;
 	esac
 	# Whoever asks -- a late watchdog restore, a hand-run start or restart --
 	# a service switched off stays off.
-	svc_enabled || { log "ClashWrt is switched off, nothing to do"; do_flush_quiet; exit 0; }
+	svc_enabled || { log "ClashWrt is switched off, nothing to do"; do_flush_quiet; dns_core_off; exit 0; }
 	resolve_ports
 	check_prereq
+	if [ "$mode" = auto_redirect ]; then
+		apply_core
+		fw_sig > "$SIGFILE"
+		mkdir -p "$RUNDIR" && echo core > "$RUNDIR/bypass.applied"
+		log "applied mode=$mode (the core captures) $(echo "$CORE_ROUTES" | sed -n 's/^direction: /direction=/p')"
+		return 0
+	fi
+	# back from auto_redirect: the core stops capturing, dnsmasq is as before
+	core_conf_sync off || die "could not take the auto_redirect keys out of $MIHOMO_CONF (see logread)"
+	dns_core_off
 	ensure_fw4_zone
 	apply_nft
 	apply_routing
@@ -864,12 +1212,16 @@ do_flush_quiet() {
 	rm -f "$SIGFILE"
 	nft delete table $TABLE 2>/dev/null
 	flush_rules
+	# whatever the mode is now: the file asks the core to capture
+	core_marked && core_capture off
+	return 0
 }
 
 do_flush() {
 	load_cfg
 	do_flush_quiet
 	dns_sync
+	dns_core_off
 	log "flushed"
 }
 
@@ -909,7 +1261,15 @@ do_status() {
 	echo -n "tun_link:     "
 	ip link show "$tun_device" >/dev/null 2>&1 && echo up || echo absent
 	echo -n "tun_route:    "
-	ip route show table "$table_tun" 2>/dev/null | grep -q "dev $tun_device" && echo ok || echo missing
+	if [ "$mode" = auto_redirect ]; then
+		echo "n/a"
+	else
+		ip route show table "$table_tun" 2>/dev/null | grep -q "dev $tun_device" && echo ok || echo missing
+	fi
+	echo -n "core_capture: "
+	if core_table; then echo on
+	elif core_marked; then echo off
+	else echo none; fi
 	echo -n "mihomo:       "
 	pidof mihomo >/dev/null 2>&1 && echo running || echo stopped
 
@@ -942,6 +1302,22 @@ do_check() {
 	resolve_ports
 
 	nft list table $TABLE >/dev/null 2>&1 || { log "nft table missing, re-applying"; do_apply; exit 0; }
+
+	if [ "$mode" = auto_redirect ]; then
+		core_running || exit 0
+		core_table && exit 0
+		# Its tun died, or something deleted the table. Once a minute at
+		# most: a tun that cannot start would otherwise be bounced by every
+		# hotplug event it causes.
+		local stamp="$RUNDIR/core-capture.try" now
+		now="$(cut -d. -f1 /proc/uptime)"
+		[ $((now - $(cat "$stamp" 2>/dev/null || echo -999))) -ge 60 ] || exit 0
+		mkdir -p "$RUNDIR" && echo "$now" > "$stamp"
+		log "meow's capture (table inet meow) is gone, switching its tun off and on"
+		core_capture off
+		core_capture on
+		exit 0
+	fi
 
 	if mode_needs_tun && ip link show "$tun_device" >/dev/null 2>&1; then
 		ip route show table "$table_tun" 2>/dev/null | grep -q "dev $tun_device" || {
@@ -990,6 +1366,38 @@ do_autobypass() {
 	esac
 }
 
+# The tun device appeared: the core (re)started it. With capture wanted,
+# the usual repairs; with the proxy off, switched off or bypassed while the
+# file still asks the core to capture (a core restarted meanwhile), the
+# capture goes off again at once.
+do_hotplug() {
+	load_cfg
+	if [ "$enabled" = 1 ] && [ ! -e "$FLAG" ] && svc_enabled; then
+		if [ "$mode" != auto_redirect ] && core_marked; then
+			do_apply
+			return 0
+		fi
+		do_check
+		return 0
+	fi
+	if core_marked && core_table; then
+		core_capture off && log "the core started capturing while ClashWrt is not; switched that off"
+	fi
+	return 0
+}
+
+# The keys again from the current config.yaml and UCI, for setctl.sh (rules
+# reloaded) and confctl.sh (a new config.yaml installed). Only in
+# auto_redirect mode with the proxy on; the rest is do_apply's.
+do_core_sync() {
+	load_cfg
+	[ "$mode" = auto_redirect ] && [ "$enabled" = 1 ] && [ ! -e "$FLAG" ] && svc_enabled || return 0
+	CORE_ROUTES="$("$SETCTL" core-routes 2>/dev/null)"
+	core_conf_sync on "${1:-}" || return 1
+	if [ "$(cr_get route_dns)" = 1 ] && [ "$dns_hijack" != 1 ]; then dns_core_on; else dns_core_off; fi
+	return 0
+}
+
 # What netifd currently reports, so the UI can show what "auto" resolved to.
 do_detect() {
 	load_cfg
@@ -1006,9 +1414,11 @@ main() {
 		check)      fw_lock; do_check ;;
 		autobypass) fw_lock; do_autobypass "${2:-}" ;;
 		dns-sync)   fw_lock; load_cfg; dns_sync ;;
+		core-sync)  fw_lock; do_core_sync "${2:-}" ;;
+		hotplug)    fw_lock; do_hotplug ;;
 		detect)     do_detect ;;
 		selftest)   exec /usr/libexec/clashwrt/selftest.sh ;;
-		*) echo "usage: $0 apply|reload|flush|status|check|detect|selftest|dns-sync|autobypass on|off" >&2; exit 1 ;;
+		*) echo "usage: $0 apply|reload|flush|status|check|detect|selftest|dns-sync|autobypass on|off|core-sync [--no-reload]|hotplug" >&2; exit 1 ;;
 	esac
 }
 

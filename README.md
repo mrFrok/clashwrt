@@ -220,6 +220,18 @@ Recommended mode: redirect_tun (or tun)
 
 In the tun modes the wizard turns on **GSO** for the kernel stacks (`system`, `mixed`): mihomo gets whole 64 KB segments instead of single packets, which is most of what a fast link costs in TUN mode.
 
+
+### `auto_redirect`: meow-openwrt captures by itself
+
+With the [meow-openwrt](https://github.com/mrFrok/meow-openwrt) core there is a fifth mode, the default with that core (switching the core switches it, unless a mode was picked by hand in the wizard). The core's `tun.auto-redirect` installs its own nftables table (`inet meow`) and policy rules; ClashWrt writes the keys into `config.yaml`'s `tun:` block (after a `# ClashWrt:` comment line; everything from it to the end of `tun:` is rewritten) and switches the capture through the API.
+
+What gets captured follows the routing, as the bypass set does in the other modes:
+
+- **proxy except Russia** (`MATCH,<group>`): everything, except `bypass_net` and the address rules and `ipcidr` rule-sets sent `DIRECT` before the first proxying rule (`route-exclude-address`, `route-exclude-address-set`).
+- **direct except the lists** (`MATCH,DIRECT`): only what the rules proxy. `route-address-dns: true` makes the core add the addresses of every DNS answer whose name its rules send anywhere but `DIRECT`; address rules and `ipcidr` rule-sets go to `route-address(-set)` for connections without a lookup. Everything else never reaches the core and keeps the kernel's flowtable and hardware offload. For the core to see the lookups, dnsmasq forwards to it (`127.0.0.1#1053`, `noresolv`) for as long as the mode is on, and gets its settings back afterwards. A proxying rule that neither can express (a port, `GEOIP`, a classical rule-set, `NOT`) turns the narrowing off and everything is captured; the Overview says why.
+
+`block_dot`/`block_doh` become the core's `block-encrypted-dns` (its own list of resolvers, plus `doh_extra`). The core captures every interface but its own subnets, so `lan_device` and `bypass_src` do not narrow it. `setctl.sh core-routes` prints what the keys come out as, `fw.sh status` shows `core_capture`.
+
 ## Using it
 
 Everything is under **Services → ClashWrt**:

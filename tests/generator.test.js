@@ -167,6 +167,13 @@ t('DNS defaults to DoH, with plain-address bootstrap', function () {
 	assert.ok(/  default-nameserver:\n    - 1\.1\.1\.1\n  nameserver:/.test(custom));
 });
 
+t('proxy servers are resolved over plain DNS when the resolver is encrypted', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' });
+	assert.ok(/'https:\/\/dns\.quad9\.net\/dns-query'\n  proxy-server-nameserver:\n    - 9\.9\.9\.9\n    - 149\.112\.112\.112\n/.test(y));
+	var plain = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', dnsPreset: 'quad9' });
+	assert.ok(!/proxy-server-nameserver/.test(plain), 'plain resolvers need no second list');
+});
+
 t('fakeIp writes fake-ip with a filter, and parseConfig reads it back', function () {
 	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', fakeIp: true });
 	assert.ok(/  enhanced-mode: fake-ip\n  fake-ip-range: 198\.18\.0\.1\/16\n  fake-ip-filter:\n/.test(y));

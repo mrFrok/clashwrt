@@ -374,6 +374,11 @@ return view.extend({
 		o.value('tproxy_tun', _('TPROXY for TCP + tun for UDP'));
 		o.value('tun', _('Tun — TCP + UDP'));
 		o.value('redirect_tun', _('NAT redirect for TCP + tun for UDP'));
+		/* meow-openwrt does this itself (tun.auto-redirect): fw.sh writes
+		 * its keys and switches it, and refuses the mode under mihomo */
+		if (uci.get('clashwrt', 'config', 'core_type') === 'meow' ||
+		    uci.get('clashwrt', 'config', 'mode') === 'auto_redirect')
+			o.value('auto_redirect', _('The core captures by itself (meow-openwrt)'));
 		o.default = 'redirect_tun';
 		/* Joined outside the _() calls, not inside them: concatenating literals
 		 * within one _() makes the runtime msgid the whole joined string,
@@ -386,7 +391,8 @@ return view.extend({
 			_('<strong>TPROXY</strong> is the correct transparent-proxy mechanism and the only one that preserves the original destination of UDP without a tun device — but on some kernels it is silently broken: the rule matches and marks the packet, yet it is never delivered to the transparent socket.') + ' ' +
 			_('<strong>NAT redirect</strong> always works but cannot carry UDP at all (there is no SO_ORIGINAL_DST for datagrams), so it has to be paired with a tun device.') + ' ' +
 			_('<strong>Tun</strong> works everywhere but every packet takes a trip through userspace, which costs throughput.') + ' ' +
-			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.') +
+			_('If unsure, try TPROXY first and fall back to NAT redirect + tun.') + ' ' +
+			_('<strong>The core captures by itself</strong> (meow-openwrt only): meow installs its own nftables rules and, under “direct except the lists”, captures only the addresses its DNS answers name for proxied sites; everything else is forwarded by the kernel, offloading included. It captures every network but its own, LAN DNS goes through dnsmasq to the core, and per-device bypass is not available.') +
 			'</details>';
 
 		/* A list: guest and IoT networks can be intercepted too. Networks are
