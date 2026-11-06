@@ -343,6 +343,8 @@ rules:
 
 **Ваши правила тоже попадают в набор** (`bypass_set_from_config`, по умолчанию с 1.2.2): `IP-CIDR`, `DOMAIN`, `DOMAIN-SUFFIX` и `RULE-SET` — по направлению. Домены идут через dnsmasq (`nftset=`), которому нужен **dnsmasq-full** — его предлагает и установщик, и вкладка «Обход». Набор сам отключается — тогда всё идёт в mihomo, что стоит только скорости, — если конфиг проксирует то, что набор вместить не может (домены без dnsmasq-full, включённый перехват DNS, `GEOSITE`, `DOMAIN-KEYWORD`…). Блок статуса говорит, что именно.
 
+**С meow-openwrt набор заполняет само ядро** ([`dns.nftset`](https://github.com/mrFrok/meow-openwrt/blob/main/docs/nftset.md)): в режиме «напрямую, кроме списков» ClashWrt пишет ключ в `config.yaml` и направляет dnsmasq в ядро, а meow добавляет адрес каждого ответа, который его правила отправляют в прокси, — включая домены `GEOSITE`, keyword и rule-set, без списков доменов в dnsmasq и без dnsmasq-full. Набор отключается только из-за правила, которое адресом не выразить (порт, источник).
+
 ```sh
 /usr/libexec/clashwrt/setctl.sh detect        # направление и откуда оно взято
 /usr/libexec/clashwrt/setctl.sh status        # возраст списка, что загружено в ядро

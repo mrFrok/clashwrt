@@ -1063,6 +1063,78 @@ core_conf_sync() {
 	return 0
 }
 
+# --- dns.nftset: meow fills the include set itself --------------------------
+#
+# With 'include' (only what needs a proxy is intercepted) meow-openwrt adds
+# the address of every DNS answer its rules send to a proxy to bypass4_dns,
+# before the answer leaves it: GEOSITE, keyword and rule-set domains too,
+# with no domain list in dnsmasq. Only the nftset key of dns: is ours; one
+# naming another set is the user's and stays.
+NFTSET_REF="inet#clashwrt#bypass4_dns"
+
+# config.yaml ($1) with dns.nftset set ($2 = on) or taken out (off)
+nftset_rewrite() {
+	awk -v want="$2" -v ref="$NFTSET_REF" '
+	function flush_buf(   i) {
+		if (!(want == "on" || ours)) for (i = 1; i <= nb; i++) print buf[i]
+		nb = 0; ours = 0; skip = 0
+	}
+	function emit(   ind) {
+		if (skip) flush_buf()
+		if (want == "on" && !done) {
+			ind = sprintf("%" (cind ? cind : 2) "s", "")
+			print ind "nftset:"
+			print ind "  ipv4: " ref
+			print ind "  timeout: 86400"
+		}
+		done = 1
+	}
+	{ sub(/\r$/, "") }
+	/^[A-Za-z0-9_-]+:/ {
+		if (indns) emit()
+		indns = ($0 ~ /^dns:[ \t]*(#.*)?$/)
+		print; next
+	}
+	indns {
+		if ($0 ~ /^[ \t]*(#.*)?$/) { if (skip) buf[++nb] = $0; else print; next }
+		match($0, /^[ \t]*/); ind = RLENGTH
+		if (cind == 0) cind = ind
+		if (skip && ind > cind) { buf[++nb] = $0; if (index($0, ref)) ours = 1; next }
+		if (skip) flush_buf()
+		if (ind == cind && $0 ~ /^[ \t]*nftset:/) { skip = 1; buf[++nb] = $0; next }
+		print; next
+	}
+	{ print }
+	END { if (indns) emit() }
+	' "$1"
+}
+
+# Writes or takes out the key, checked by the core and reloaded like
+# core_conf_sync. A config without a dns: block has nothing to fill the set.
+nftset_sync() {
+	local want="$1" tmp
+	[ -f "$MIHOMO_CONF" ] || return 1
+	grep -q '^dns:' "$MIHOMO_CONF" || return 0
+	[ "$want" = off ] && ! grep -qF "$NFTSET_REF" "$MIHOMO_CONF" && return 0
+	tmp="$(mktemp /tmp/clashwrt-conf.XXXXXX)" || return 1
+	nftset_rewrite "$MIHOMO_CONF" "$want" > "$tmp"
+	if cmp -s "$tmp" "$MIHOMO_CONF"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	if ! "$CONFCTL" check-file "$tmp" >/dev/null 2>&1; then
+		rm -f "$tmp"
+		log "the core rejected config.yaml with dns.nftset; it is left as it was"
+		return 1
+	fi
+	cat "$tmp" > "$MIHOMO_CONF"
+	rm -f "$tmp"
+	log "config.yaml: dns.nftset $([ "$want" = on ] && echo "written: meow fills $NFTSET_REF" || echo "taken out")"
+	core_running || return 0
+	core_api PUT '/configs?force=true' '{"path":"","payload":""}' || "$CORE_INIT" restart >/dev/null 2>&1
+	return 0
+}
+
 # --- dnsmasq to the core, for route-address-dns -----------------------------
 #
 # The core adds an address to its capture set when it answers the lookup, so
@@ -1165,7 +1237,15 @@ do_apply() {
 	fi
 	# back from auto_redirect: the core stops capturing, dnsmasq is as before
 	core_conf_sync off || die "could not take the auto_redirect keys out of $MIHOMO_CONF (see logread)"
-	dns_core_off
+	# meow fills the include set from its own DNS answers, so the LAN's
+	# lookups go to it (dnsmasq forwards there unless DNS hijack does it)
+	if [ "$set_mode" = include ] && core_is_meow; then
+		nftset_sync on || log "warning: dns.nftset not written; config.yaml domains reach meow only through dnsmasq lists"
+		if [ "$dns_hijack" = 1 ]; then dns_core_off; else dns_core_on; fi
+	else
+		nftset_sync off
+		dns_core_off
+	fi
 	ensure_fw4_zone
 	apply_nft
 	apply_routing

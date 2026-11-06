@@ -343,6 +343,8 @@ If neither the config nor the wizard's answers say, the list is refused rather t
 
 **Your own rules go in too** (`bypass_set_from_config`, the default since 1.2.2): `IP-CIDR`, `DOMAIN`, `DOMAIN-SUFFIX` and `RULE-SET` rules, by direction. Domains go through dnsmasq (`nftset=`), which needs **dnsmasq-full** — the installer offers it, so does the Bypass tab. The set is held back by itself — everything then goes to mihomo, which only costs speed — whenever the config proxies something it cannot hold (domains without dnsmasq-full, DNS hijack on, `GEOSITE`, `DOMAIN-KEYWORD`…). The status block says which.
 
+**With meow-openwrt the core fills the set itself** ([`dns.nftset`](https://github.com/mrFrok/meow-openwrt/blob/main/docs/nftset.md)): under "direct except the lists" ClashWrt writes the key into `config.yaml` and points dnsmasq at the core, and meow adds the address of every answer its rules send to a proxy — `GEOSITE`, keyword and rule-set domains included, with no domain list in dnsmasq and no dnsmasq-full. Only a rule no address can stand for (a port, a source) still holds the set back.
+
 ```sh
 /usr/libexec/clashwrt/setctl.sh detect        # the direction, and where it came from
 /usr/libexec/clashwrt/setctl.sh status        # list age, what is in the kernel

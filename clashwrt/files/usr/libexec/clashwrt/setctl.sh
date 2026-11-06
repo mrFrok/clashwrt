@@ -602,8 +602,14 @@ dnsmasq_confdir() {
 # domains to be seen. With dns_hijack, port 53 goes to mihomo instead.
 domains_usable() {
 	[ "$set_mode" = "include" ] && [ "$from_config" = 1 ] &&
-		[ "$dns_hijack" != 1 ] && dnsmasq_has_nftset
+		[ "$dns_hijack" != 1 ] && dnsmasq_has_nftset && ! core_fills_set
 }
+
+# meow-openwrt fills bypass4_dns itself (dns.nftset): every DNS answer whose
+# domain its rules send to a proxy, GEOSITE and keyword rules included, with
+# no domain list in dnsmasq. fw.sh writes the key into config.yaml.
+meow_live() { [ "$(readlink "${CLASHWRT_BIN_DIR:-/usr/bin}/mihomo" 2>/dev/null)" = "${CLASHWRT_BIN_DIR:-/usr/bin}/meow" ]; }
+core_fills_set() { meow_live && [ "$set_mode" = "include" ]; }
 
 # Writes nftset= lines for CONF_DOMAINS into dnsmasq's conf dir, or removes
 # them when there is nothing to write. dnsmasq reads them only on start, so
@@ -877,7 +883,9 @@ do_status() {
 		if [ "$set_mode" = "include" ]; then
 			local nd
 			nd="$([ -s "$CONF_DOMAINS" ] && grep -c . "$CONF_DOMAINS" || echo 0)"
-			if [ "$dns_hijack" = 1 ]; then
+			if core_fills_set; then
+				echo "domains:  judged by meow-openwrt itself (dns.nftset): every proxied name it answers is added to $SET4_DNS"
+			elif [ "$dns_hijack" = 1 ]; then
 				echo "domains:  $nd in config.yaml, NOT used: DNS hijack sends LAN lookups to mihomo, not dnsmasq"
 			elif ! dnsmasq_has_nftset; then
 				echo "domains:  $nd in config.yaml, NOT used: this dnsmasq has no nftset support (install dnsmasq-full)"
@@ -930,6 +938,16 @@ hold_reason() {
 # them into the set. A downloaded list is a list on purpose and is not judged.
 coverage_gap() {
 	[ "$set_source" = "config" ] && [ "$set_mode" = "include" ] || return 0
+	# meow judges domains itself; only what no address can name is a gap
+	if core_fills_set; then
+		local recs
+		mkdir -p "$STATE_DIR"
+		recs="$STATE_DIR/.gap.$$"
+		if [ -f "$MIHOMO_CONF" ]; then config_records > "$recs"; else : > "$recs"; fi
+		core_routes_awk include "$recs" | sed -n 's/^held: //p'
+		rm -f "$recs"
+		return 0
+	fi
 	do_from_config
 	if [ -s "$CONF_DOMAINS" ]; then
 		if [ "$dns_hijack" = 1 ]; then
