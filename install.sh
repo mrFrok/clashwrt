@@ -130,6 +130,13 @@ mkdir -p "$TMP"
 # Two channels. "release" installs the newest tag, so a router does not pick
 # up whatever landed on the branch an hour ago; "main" is the rolling one.
 resolve_source() {
+	# a tarball copied to the router by hand, for testing a build that is
+	# not on GitHub; recorded as such, so the update check calls it unknown
+	if [ -n "${SRC_FILE:-}" ]; then
+		[ -f "$SRC_FILE" ] || die "SRC_FILE=$SRC_FILE: no such file"
+		REPO_URL="file://$SRC_FILE"
+		return 0
+	fi
 	[ -n "$REPO_URL" ] && return 0
 	if [ "$CHANNEL" = "main" ]; then
 		REPO_URL="https://github.com/$SLUG/archive/refs/heads/main.tar.gz"
@@ -528,11 +535,18 @@ case "$REPO_URL" in
 		;;
 esac
 
-say "fetching clashwrt"
-# --proto: whatever this fetches is run as root, so a redirect to plain http
-# (or file://) is not followed
-cw_curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$FETCH_URL" || die "could not download $FETCH_URL"
-if [ -n "$SRC_SHA" ]; then
+if [ -n "${SRC_FILE:-}" ]; then
+	say "using the local source $SRC_FILE"
+	cp "$SRC_FILE" "$TMP/src.tar.gz" || die "could not copy $SRC_FILE"
+else
+	say "fetching clashwrt"
+	# --proto: whatever this fetches is run as root, so a redirect to plain
+	# http (or file://) is not followed
+	cw_curl -sSL --fail --proto '=https' -m 120 -o "$TMP/src.tar.gz" "$FETCH_URL" || die "could not download $FETCH_URL"
+fi
+if [ -n "${SRC_FILE:-}" ]; then
+	warn "a local source has no SHA-256 to check against"
+elif [ -n "$SRC_SHA" ]; then
 	_got="$(sha256sum "$TMP/src.tar.gz" | awk '{ print $1 }')"
 	[ "$_got" = "$SRC_SHA" ] || die "SHA-256 mismatch for $FETCH_URL: GitHub says $SRC_SHA, the download is $_got"
 	say "SHA-256 checked"
