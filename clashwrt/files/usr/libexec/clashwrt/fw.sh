@@ -1273,6 +1273,13 @@ dns_core_on() {
 		uci -q del_list "$DNSMASQ_SEC.server=$s"
 		echo "upstream $s" >> "$DNS_CORE_STATE"
 		log "dnsmasq: $s left out while the core has to see every lookup"
+		# a local resolver (AdGuard Home) stays in the chain only if the
+		# core asks it: dnsmasq -> core -> it
+		case "$s" in
+			127.*|::1*)
+				grep -qF "${s%%#*}:${s##*#}" "$MIHOMO_CONF" 2>/dev/null ||
+					log "warning: the core does not ask $s, so it is out of the DNS chain now; make it the core's DNS (wizard -> DNS -> Local resolver)" ;;
+		esac
 		changed=1
 	done
 	nr="$(uci -q get "$DNSMASQ_SEC.noresolv")"
