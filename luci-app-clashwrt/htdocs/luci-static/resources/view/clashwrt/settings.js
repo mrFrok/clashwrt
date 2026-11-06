@@ -10,7 +10,7 @@
 'require clashwrt.generator as gen';
 'require clashwrt.power as power';
 
-var UI_VERSION = '1.7.0';
+var UI_VERSION = '1.8.0';
 
 
 /* fs.exec rejects with an Error when the command fails or is not permitted,
