@@ -103,7 +103,7 @@ The installer shows the router's RAM and free flash, then asks how to install: *
 2. **Which core** — mihomo or meow-openwrt, and which meow build. Asked in the quick mode too, when both are possible; where mihomo does not fit, meow is installed. On the command line: `... | CORE_TYPE=meow MEOW_PROFILE=tiny sh`.
 3. **Where to keep the core** — on flash, packed on flash, or only in RAM. Asked in the quick mode too; only what fits is offered, and what is left out says why. To choose it on the command line instead: `wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | CORE_STORE=ram sh` (`flash`, `gz` or `ram`). Not asked for meow, which stays on flash.
 4. **Dashboard** — metacubexd, zashboard, Yacd-meta or none, and where to keep it.
-5. **dnsmasq-full** — lets the bypass set take your config's domains.
+5. **dnsmasq-full** — lets the bypass set take your config's domains (mihomo only: meow-openwrt fills the set itself, so it is not asked).
 
 It sums up and asks before changing anything. Then it installs, and stops: **nothing is intercepted until you enable it**, so a bad install cannot take the network down. Re-running upgrades in place and keeps your configuration.
 

@@ -408,7 +408,9 @@ if [ "$UI_NAME" != none ] && [ "$RAM_OK" = 1 ]; then
 fi
 
 DNSMASQ_FULL=no
-if ! { dnsmasq --version 2>/dev/null | grep -qw nftset && ! dnsmasq --version 2>/dev/null | grep -qw no-nftset; }; then
+# meow-openwrt fills the set from its own DNS answers (dns.nftset): the stock
+# dnsmasq only forwards to it, so dnsmasq-full is not asked for
+if [ "${CORE_TYPE:-$CUR_TYPE}" != meow ] && ! { dnsmasq --version 2>/dev/null | grep -qw nftset && ! dnsmasq --version 2>/dev/null | grep -qw no-nftset; }; then
 	_rec=no; [ "$LEFT_KB" -ge 4096 ] && _rec=yes
 	[ "$SKIP_CORE" = 1 ] && _rec=no
 	DNSMASQ_FULL="$(ask "$(t "Replace dnsmasq with dnsmasq-full? It lets the bypass set take config.yaml's domains (about 0.5 MB)" 'Заменить dnsmasq на dnsmasq-full? Нужен, чтобы обход брал домены из config.yaml (около 0,5 МБ)')" "$_rec" \
