@@ -1638,7 +1638,7 @@ msgstr ""
 msgid "Not now"
 msgstr ""
 
-msgid "A config written by the wizard serves every mode, so a change here takes effect on Save & Apply."
+msgid "config.yaml keeps only the listeners of the current mode (an idle tun and ports cost the core memory); Save & Apply switches them over, restarting meow-openwrt, which cannot change them in place."
 msgstr ""
 
 msgid "Auto — test this router, TPROXY if it works (recommended)"

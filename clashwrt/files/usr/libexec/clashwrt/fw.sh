@@ -300,7 +300,8 @@ mode_needs_redir_port() {
 	[ "$mode" = redirect_tun ]
 }
 
-check_prereq() {
+# What has to hold before config.yaml is touched for the mode at all.
+check_mode() {
 	case "$mode" in
 		tproxy|tproxy_tun|tun|redirect_tun|auto_redirect) ;;
 		*) die "unknown mode '$mode' (expected: tproxy, tproxy_tun, tun, redirect_tun, auto_redirect)" ;;
@@ -311,12 +312,16 @@ check_prereq() {
 	if [ "$mode" = auto_redirect ] && ! core_is_meow; then
 		die "mode 'auto_redirect' needs the meow-openwrt core, which captures by itself; this router runs mihomo. Switch the core in Settings -> Storage and memory -> Proxy core (or: updctl.sh core-use meow), or pick another interception mode."
 	fi
+}
+
+check_prereq() {
+	check_mode
 
 	if mode_needs_tproxy_port && [ -z "$tproxy_port" ]; then
-		die "mode '$mode' needs 'tproxy-port' in $MIHOMO_CONF (or tproxy_port in UCI); a config from the setup wizard gets every inbound when it is applied again"
+		die "mode '$mode' needs 'tproxy-port' in $MIHOMO_CONF (or tproxy_port in UCI), and it could not be written in (see logread)"
 	fi
 	if mode_needs_redir_port && [ -z "$redir_port" ]; then
-		die "mode '$mode' needs 'redir-port' in $MIHOMO_CONF (or redir_port in UCI); a config from the setup wizard gets every inbound when it is applied again"
+		die "mode '$mode' needs 'redir-port' in $MIHOMO_CONF (or redir_port in UCI), and it could not be written in (see logread)"
 	fi
 	if mode_needs_tun && ! grep -qE '^[[:space:]]*enable:[[:space:]]*true' "$MIHOMO_CONF"; then
 		# Only a hint: the key lives under tun: and a flat grep cannot prove
@@ -968,9 +973,10 @@ core_tun_lines() {
 	return 0
 }
 
-# What the other modes want back: a tun for UDP that routes nothing itself.
+# What the other modes want back: a tun for UDP that routes nothing itself,
+# switched on only where the mode uses it.
 core_tun_off_lines() {
-	echo "enable: true"
+	if mode_needs_tun; then echo "enable: true"; else echo "enable: false"; fi
 	echo "auto-route: false"
 	echo "auto-redirect: false"
 }
@@ -1063,6 +1069,108 @@ core_conf_sync() {
 	return 0
 }
 
+# --- inbounds: only what the mode uses --------------------------------------
+#
+# config.yaml keeps the listeners of the current mode and no others: an idle
+# tun and two idle ports cost the core memory for nothing. A port the mode
+# does not use is commented out with its number kept ("# ClashWrt-off: "),
+# and comes back as it was when a mode needs it again; tun: stays with
+# enable: false. A UCI port override means the config is not ours to read,
+# so then nothing is touched.
+INBOUND_OFF="# ClashWrt-off: "
+
+# "tproxy redir tun" for the current mode: on, off, or keep (auto_redirect's
+# tun belongs to core_conf_sync)
+inbound_wants() {
+	case "$mode" in
+		tproxy)       echo "on off off" ;;
+		tproxy_tun)   echo "on off on" ;;
+		tun)          echo "off off on" ;;
+		redirect_tun) echo "off on on" ;;
+		auto_redirect) echo "off off keep" ;;
+	esac
+}
+
+# config.yaml ($1) with the inbounds of $2 ("tproxy redir tun")
+inbound_rewrite() {
+	awk -v w="$2" -v off="$INBOUND_OFF" -v dev="$tun_device" '
+	BEGIN { split(w, a, " "); want["tproxy-port"] = a[1]; want["redir-port"] = a[2]; tunw = a[3]
+		def["tproxy-port"] = 7894; def["redir-port"] = 7893 }
+	function port_line(key, val) {
+		seen[key] = 1
+		if (want[key] == "on") print key ": " val
+		else print off key ": " val
+	}
+	function tun_end() {
+		if (intun && !tunen && tunw != "keep") print sprintf("%" (cind ? cind : 2) "s", "") "enable: " (tunw == "on" ? "true" : "false")
+		intun = 0
+	}
+	{ sub(/\r$/, "") }
+	/^(tproxy|redir)-port:/ || index($0, off "tproxy-port:") == 1 || index($0, off "redir-port:") == 1 {
+		l = $0; if (index(l, off) == 1) l = substr(l, length(off) + 1)
+		key = l; sub(/:.*/, "", key)
+		val = l; sub(/^[^:]*:[ \t]*/, "", val)
+		if (intun) tun_end()
+		port_line(key, val); next
+	}
+	/^[A-Za-z0-9_-]+:/ {
+		if (intun) tun_end()
+		if ($0 ~ /^tun:[ \t]*(#.*)?$/) { intun = 1; tunseen = 1; tunen = 0; cind = 0 }
+		print; next
+	}
+	intun && $0 !~ /^[ \t]*(#.*)?$/ {
+		match($0, /^[ \t]*/); ind = RLENGTH
+		if (cind == 0) cind = ind
+		if (ind == cind && $0 ~ /^[ \t]*enable:/ && tunw != "keep") {
+			tunen = 1
+			print substr($0, 1, ind) "enable: " (tunw == "on" ? "true" : "false"); next
+		}
+		if (ind == cind && $0 ~ /^[ \t]*enable:/) tunen = 1
+	}
+	{ print }
+	END {
+		if (intun) tun_end()
+		for (k in want) if (want[k] == "on" && !seen[k]) print k ": " def[k]
+		if (tunw == "on" && !tunseen) {
+			print "tun:"; print "  enable: true"; print "  device: " dev
+			print "  stack: system"; print "  auto-route: false"; print "  auto-redirect: false"
+		}
+	}
+	' "$1"
+}
+
+# Writes the current mode's inbounds into config.yaml. The core is told
+# unless --no-reload (confctl.sh, which reloads anyway): mihomo re-creates
+# its listeners on a reload, meow only on a restart.
+inbound_sync() {
+	local reload="${1:-}" tmp
+	[ -f "$MIHOMO_CONF" ] || return 1
+	[ -z "$tproxy_port$redir_port" ] || return 0
+	[ -n "$(inbound_wants)" ] || return 0
+	tmp="$(mktemp /tmp/clashwrt-conf.XXXXXX)" || return 1
+	inbound_rewrite "$MIHOMO_CONF" "$(inbound_wants)" > "$tmp"
+	if cmp -s "$tmp" "$MIHOMO_CONF"; then
+		rm -f "$tmp"
+		return 0
+	fi
+	if ! "$CONFCTL" check-file "$tmp" >/dev/null 2>&1; then
+		rm -f "$tmp"
+		log "the core rejected config.yaml with only the inbounds of mode '$mode'; it is left as it was"
+		return 1
+	fi
+	cat "$tmp" > "$MIHOMO_CONF"
+	rm -f "$tmp"
+	log "config.yaml: inbounds for mode '$mode' ($(grep -E '^(tproxy|redir)-port:' "$MIHOMO_CONF" | tr '\n' ' ')tun $(echo "$(inbound_wants)" | cut -d' ' -f3))"
+	[ "$reload" = --no-reload ] && return 0
+	core_running || return 0
+	if core_is_meow; then
+		"$CORE_INIT" restart >/dev/null 2>&1
+	else
+		core_api PUT '/configs?force=true' '{"path":"","payload":""}' || "$CORE_INIT" restart >/dev/null 2>&1
+	fi
+	return 0
+}
+
 # --- dns.nftset: meow fills the include set itself --------------------------
 #
 # With 'include' (only what needs a proxy is intercepted) meow-openwrt adds
@@ -1112,7 +1220,7 @@ nftset_rewrite() {
 # Writes or takes out the key, checked by the core and reloaded like
 # core_conf_sync. A config without a dns: block has nothing to fill the set.
 nftset_sync() {
-	local want="$1" tmp
+	local want="$1" reload="${2:-}" tmp
 	[ -f "$MIHOMO_CONF" ] || return 1
 	grep -q '^dns:' "$MIHOMO_CONF" || return 0
 	[ "$want" = off ] && ! grep -qF "$NFTSET_REF" "$MIHOMO_CONF" && return 0
@@ -1130,6 +1238,7 @@ nftset_sync() {
 	cat "$tmp" > "$MIHOMO_CONF"
 	rm -f "$tmp"
 	log "config.yaml: dns.nftset $([ "$want" = on ] && echo "written: meow fills $NFTSET_REF" || echo "taken out")"
+	[ "$reload" = --no-reload ] && return 0
 	core_running || return 0
 	core_api PUT '/configs?force=true' '{"path":"","payload":""}' || "$CORE_INIT" restart >/dev/null 2>&1
 	return 0
@@ -1226,6 +1335,13 @@ do_apply() {
 	# Whoever asks -- a late watchdog restore, a hand-run start or restart --
 	# a service switched off stays off.
 	svc_enabled || { log "ClashWrt is switched off, nothing to do"; do_flush_quiet; dns_core_off; exit 0; }
+	check_mode
+	# back from auto_redirect: the core stops capturing (its tun goes back to
+	# what the mode wants), then only the mode's own inbounds are left
+	if [ "$mode" != auto_redirect ]; then
+		core_conf_sync off || die "could not take the auto_redirect keys out of $MIHOMO_CONF (see logread)"
+	fi
+	inbound_sync || log "warning: config.yaml keeps the inbounds it had (see above)"
 	resolve_ports
 	check_prereq
 	if [ "$mode" = auto_redirect ]; then
@@ -1235,8 +1351,6 @@ do_apply() {
 		log "applied mode=$mode (the core captures) $(echo "$CORE_ROUTES" | sed -n 's/^direction: /direction=/p')"
 		return 0
 	fi
-	# back from auto_redirect: the core stops capturing, dnsmasq is as before
-	core_conf_sync off || die "could not take the auto_redirect keys out of $MIHOMO_CONF (see logread)"
 	# meow fills the include set from its own DNS answers, so the LAN's
 	# lookups go to it (dnsmasq forwards there unless DNS hijack does it)
 	if [ "$set_mode" = include ] && core_is_meow; then
@@ -1471,6 +1585,13 @@ do_hotplug() {
 # auto_redirect mode with the proxy on; the rest is do_apply's.
 do_core_sync() {
 	load_cfg
+	# a new config.yaml (confctl.sh) gets the mode's inbounds before the core
+	# reads it, whatever the mode
+	case "$(inbound_wants)" in "") ;; *) inbound_sync "${1:-}" ;; esac
+	# and the dns.nftset key the last apply decided on
+	if [ "$mode" != auto_redirect ] && core_is_meow; then
+		if [ "$set_mode" = include ]; then nftset_sync on "${1:-}"; else nftset_sync off "${1:-}"; fi
+	fi
 	[ "$mode" = auto_redirect ] && [ "$enabled" = 1 ] && [ ! -e "$FLAG" ] && svc_enabled || return 0
 	CORE_ROUTES="$("$SETCTL" core-routes 2>/dev/null)"
 	core_conf_sync on "${1:-}" || return 1

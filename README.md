@@ -401,6 +401,8 @@ tun:                     # every mode except plain tproxy
   auto-redirect: false
 ```
 
+**Only the current mode's inbounds stay on.** On Save & Apply ClashWrt comments out the ports the mode does not use (`# ClashWrt-off: redir-port: 7893`, the number kept for later) and sets `tun.enable: false` where no tun is needed, so the core does not hold idle listeners; switching the mode puts them back. mihomo picks this up with a reload, meow-openwrt restarts. A missing port or tun is added with the defaults above. Setting `tproxy_port`/`redir_port` in UCI leaves the file alone.
+
 `routing-mark` matters more than it looks: mihomo tags its own sockets with it and the marking chain returns early on it. Without it, mihomo's connection to your server is intercepted and fed back into mihomo.
 
 ## How it works

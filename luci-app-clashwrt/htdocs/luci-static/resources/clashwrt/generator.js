@@ -1269,10 +1269,10 @@ return baseclass.extend({
 
 		/* Inbounds must match the firewall mode, which is the whole reason
 		 * this generator lives inside the package that owns the firewall. */
-		/* Every inbound the four modes use, whatever the mode is now, so the
-		 * mode can be switched in Settings without regenerating this file:
-		 * the firewall picks which one traffic goes to. An idle tun costs
-		 * mihomo about 1.5 MB. */
+		/* Every inbound the modes use; fw.sh (inbound_sync) leaves only the
+		 * current mode's before the core reads the file, commenting the
+		 * other ports out with their numbers and switching an unused tun
+		 * off, and switches them over when the mode changes. */
 		L.push('# inbounds for every firewall mode (now: ' + o.mode + ')');
 		L.push('tproxy-port: ' + portOf(o.tproxyPort, 7894));
 		L.push('redir-port: ' + portOf(o.redirPort, 7893));
