@@ -32,6 +32,13 @@ SKIP_CORE="${SKIP_CORE:-0}"
 # or ram (only in RAM, downloaded at every boot).
 WANT_STORE="${CORE_STORE:-}"
 case "$WANT_STORE" in ''|flash|gz|ram) ;; *) echo "[x] CORE_STORE must be flash, gz or ram, not '$WANT_STORE'" >&2; exit 1 ;; esac
+# Which core, likewise: mihomo, or meow-openwrt (a mihomo-compatible core in
+# Rust, 9-14 MB, as an OpenWrt package) in one of its profiles:
+#   wget -qO- .../install.sh | CORE_TYPE=meow MEOW_PROFILE=tiny sh
+WANT_TYPE="${CORE_TYPE:-}"
+case "$WANT_TYPE" in ''|mihomo|meow) ;; *) echo "[x] CORE_TYPE must be mihomo or meow, not '$WANT_TYPE'" >&2; exit 1 ;; esac
+WANT_PROFILE="${MEOW_PROFILE:-}"
+case "$WANT_PROFILE" in ''|tiny|lightweight|full) ;; *) echo "[x] MEOW_PROFILE must be tiny, lightweight or full, not '$WANT_PROFILE'" >&2; exit 1 ;; esac
 SRC_TAG=""
 
 # An upgrade (or the Update button, which runs this) already has a mihomo to
@@ -200,6 +207,8 @@ MEM_KB="$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo 2>/dev/null)"; MEM_KB="$
 FLASH_KB="$(avail_kb /usr/bin)"
 OLD_CORE_KB=0
 [ -f /usr/bin/mihomo ] && [ ! -L /usr/bin/mihomo ] && OLD_CORE_KB="$(du -k /usr/bin/mihomo | cut -f1)"
+# meow-openwrt's binary, which a switch either way replaces too
+[ -f /usr/bin/meow ] && OLD_CORE_KB=$((OLD_CORE_KB + $(du -k /usr/bin/meow | cut -f1)))
 FLASH_KB=$((FLASH_KB + OLD_CORE_KB))
 # The core unpacked is 50-60 MB (arm64 56 MB), packed about 21 MB. Below
 # CORE_MIN_KB no build fits; above it updctl.sh reads the real size off the
@@ -217,14 +226,30 @@ case "$_fs" in overlay\ *)
 	_fs="$(awk -v m="$_mp" '$2 == m { t = $3 " " $4 } END { print t }' /proc/mounts 2>/dev/null)"
 	;;
 esac
+# meow-openwrt's profiles unpacked (the biggest arch, mipsel), plus a margin;
+# a Rust binary packs worse than Go's, so three quarters on such a flash
+MEOW_TINY_KB=9728
+MEOW_LIGHT_KB=10240
+MEOW_FULL_KB=15360
 case "$_fs" in *compr=none*) ;; ubifs\ *|jffs2\ *)
-	CORE_MIN_KB=$((CORE_MIN_KB * 3 / 5)); CORE_EST_KB=$((CORE_EST_KB * 3 / 5)) ;;
+	CORE_MIN_KB=$((CORE_MIN_KB * 3 / 5)); CORE_EST_KB=$((CORE_EST_KB * 3 / 5))
+	MEOW_TINY_KB=$((MEOW_TINY_KB * 3 / 4)); MEOW_LIGHT_KB=$((MEOW_LIGHT_KB * 3 / 4)); MEOW_FULL_KB=$((MEOW_FULL_KB * 3 / 4)) ;;
 esac
+# the OpenWrt arches meow-openwrt publishes packages for (updctl.sh meow_arch)
+MEOW_OK=0
+case "$(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release 2>/dev/null | head -n1)" in
+	aarch64_generic|aarch64_cortex-a53|aarch64_cortex-a72|aarch64_cortex-a76|\
+	arm_cortex-a7_neon-vfpv4|mipsel_24kc|mips_24kc) MEOW_OK=1 ;;
+esac
+[ "$FLASH_KB" -ge "$MEOW_TINY_KB" ] || MEOW_OK=0
 # A "256 MB" router shows less in MemTotal (an AX3000T about 230 MB), so the
 # line is 192 MB, as in updctl.sh.
 RAM_OK=0; [ "$MEM_KB" -ge 196608 ] && RAM_OK=1
 
 CUR_STORE="$(uci -q get clashwrt.config.core_store 2>/dev/null)" || CUR_STORE=""
+CUR_TYPE=mihomo
+[ "$(readlink /usr/bin/mihomo 2>/dev/null)" = /usr/bin/meow ] && CUR_TYPE=meow
+CUR_PROFILE="$(uci -q get clashwrt.config.core_profile 2>/dev/null)" || CUR_PROFILE=""
 CUR_CHANNEL=release
 grep -q '^repo=.*/archive/refs/heads/' /usr/libexec/clashwrt/.install-info 2>/dev/null && CUR_CHANNEL=main
 HAVE_CORE=0; command -v mihomo >/dev/null 2>&1 && HAVE_CORE=1
@@ -246,13 +271,69 @@ CHANNEL="$CUR_CHANNEL"
 	"release|$(t 'the latest release (checked against its SHA-256)' 'последний релиз (с проверкой SHA-256)')" \
 	"main|$(t 'the development branch (newest, unchecked)' 'ветка разработки (самое новое, без проверки)')")"
 
+# Which core. mihomo where it fits on flash; meow-openwrt, a fifth of its
+# size, where it does not and meow has a build. Asked in the quick mode too,
+# like where the core goes: it is the program that carries all the traffic.
+CORE_TYPE=mihomo
+MEOW_PROFILE=""
+if [ "$SKIP_CORE" != 1 ]; then
+	_mihomo_ok=0
+	{ [ "$FLASH_KB" -ge "$CORE_MIN_KB" ] || [ "$RAM_OK" = 1 ]; } && _mihomo_ok=1
+	_rec=mihomo
+	[ "$FLASH_KB" -lt "$CORE_MIN_KB" ] && [ "$MEOW_OK" = 1 ] && _rec=meow
+	[ "$HAVE_CORE" = 1 ] && _rec="$CUR_TYPE"
+	[ "$_rec" = meow ] && [ "$MEOW_OK" != 1 ] && _rec=mihomo
+	if [ -n "$WANT_TYPE" ]; then
+		[ "$WANT_TYPE" = meow ] && [ "$MEOW_OK" != 1 ] &&
+			die "CORE_TYPE=meow is not possible here: meow-openwrt is built for aarch64, arm_cortex-a7_neon-vfpv4, mipsel_24kc and mips_24kc, and needs about $(mb "$MEOW_TINY_KB") of flash"
+		CORE_TYPE="$WANT_TYPE"
+	elif [ "$MEOW_OK" = 1 ] && [ "$_mihomo_ok" = 1 ]; then
+		CORE_TYPE="$(QUICK=0 ask "$(t 'Which proxy core?' 'Какое ядро прокси?')" "$_rec" \
+			"mihomo|$(t 'mihomo: the reference core, every protocol, about 55 MB' 'mihomo: эталонное ядро, все протоколы, около 55 МБ')" \
+			"meow|$(t 'meow-openwrt: mihomo-compatible, in Rust, 9-14 MB and little RAM; new' 'meow-openwrt: совместимо с mihomo, на Rust, 9-14 МБ и мало RAM; новое')")"
+	elif [ "$MEOW_OK" = 1 ]; then
+		[ "$INTERACTIVE" = 1 ] && echo "  $(t 'mihomo does not fit on this router; installing meow-openwrt' 'mihomo не помещается на этот роутер; ставится meow-openwrt')" > /dev/tty
+		CORE_TYPE=meow
+	fi
+fi
+if [ "$CORE_TYPE" = meow ]; then
+	_opts=""; _rec=""
+	[ "$FLASH_KB" -ge "$MEOW_TINY_KB" ] && { _opts="$_opts tiny"; _rec=tiny; }
+	[ "$FLASH_KB" -ge "$MEOW_LIGHT_KB" ] && { _opts="$_opts lightweight"; _rec=lightweight; }
+	[ "$FLASH_KB" -ge "$MEOW_FULL_KB" ] && _opts="$_opts full"
+	[ -n "$CUR_PROFILE" ] && [ "$CUR_TYPE" = meow ] && case " $_opts " in *" $CUR_PROFILE "*) _rec="$CUR_PROFILE" ;; esac
+	if [ -n "$WANT_PROFILE" ]; then
+		case " $_opts " in *" $WANT_PROFILE "*) ;; *) die "MEOW_PROFILE=$WANT_PROFILE does not fit: $(mb "$FLASH_KB") of flash is free" ;; esac
+		MEOW_PROFILE="$WANT_PROFILE"
+	else
+		set --
+		for _o in $_opts; do
+			case "$_o" in
+				tiny)        set -- "$@" "tiny|$(t "tiny: Trojan, VLESS (Vision, Reality), Hysteria2, about $(mb "$MEOW_TINY_KB")" "tiny: Trojan, VLESS (Vision, Reality), Hysteria2, около $(mb "$MEOW_TINY_KB" | sed 's/MB/МБ/')")" ;;
+				lightweight) set -- "$@" "lightweight|$(t "lightweight: tiny plus Shadowsocks, VMess, AnyTLS, ShadowTLS, about $(mb "$MEOW_LIGHT_KB")" "lightweight: tiny и ещё Shadowsocks, VMess, AnyTLS, ShadowTLS, около $(mb "$MEOW_LIGHT_KB" | sed 's/MB/МБ/')")" ;;
+				full)        set -- "$@" "full|$(t "full: every protocol meow has, about $(mb "$MEOW_FULL_KB")" "full: все протоколы meow, около $(mb "$MEOW_FULL_KB" | sed 's/MB/МБ/')")" ;;
+			esac
+		done
+		MEOW_PROFILE="$(ask "$(t 'Which meow-openwrt build? Nodes of a protocol it lacks load as unavailable' 'Какую сборку meow-openwrt? Узлы протоколов, которых в ней нет, будут недоступны')" "$_rec" "$@")"
+	fi
+fi
+
 # where the core goes: only what fits is offered
 CORE_UPDATE=no
 CORE_STORE=""
 if [ "$SKIP_CORE" != 1 ]; then
 	CORE_UPDATE=yes
-	[ "$HAVE_CORE" = 1 ] && CORE_UPDATE="$(ask "$(t 'Update the mihomo core to the latest release?' 'Обновить ядро mihomo до последнего релиза?')" yes \
+	# another core, or another meow, is always installed
+	_same=1
+	[ "$CORE_TYPE" = "$CUR_TYPE" ] || _same=0
+	[ "$CORE_TYPE" = meow ] && [ "$MEOW_PROFILE" != "$CUR_PROFILE" ] && _same=0
+	[ "$HAVE_CORE" = 1 ] && [ "$_same" = 1 ] && CORE_UPDATE="$(ask "$(t 'Update the core to the latest release?' 'Обновить ядро до последнего релиза?')" yes \
 		"yes|$(t yes да)" "no|$(t 'no, keep the one installed' 'нет, оставить установленное')")"
+fi
+if [ "$SKIP_CORE" != 1 ] && [ "$CORE_TYPE" = meow ]; then
+	# a package's file stays on flash
+	CORE_STORE=flash
+elif [ "$SKIP_CORE" != 1 ]; then
 	_opts=""; _rec=""
 	# flash first: no RAM taken and no GitHub needed at boot, and a core that
 	# turns out not to fit goes into RAM instead (below)
@@ -292,9 +373,10 @@ if [ "$SKIP_CORE" != 1 ]; then
 fi
 
 # what is left for the rest
-case "$CORE_STORE" in
-	flash) LEFT_KB=$((FLASH_KB - CORE_EST_KB)) ;;
-	gz)    LEFT_KB=$((FLASH_KB - CORE_GZ_KB)) ;;
+case "$CORE_TYPE:$CORE_STORE" in
+	meow:*) case "$MEOW_PROFILE" in tiny) LEFT_KB=$((FLASH_KB - MEOW_TINY_KB)) ;; full) LEFT_KB=$((FLASH_KB - MEOW_FULL_KB)) ;; *) LEFT_KB=$((FLASH_KB - MEOW_LIGHT_KB)) ;; esac ;;
+	*:flash) LEFT_KB=$((FLASH_KB - CORE_EST_KB)) ;;
+	*:gz)  LEFT_KB=$((FLASH_KB - CORE_GZ_KB)) ;;
 	*)     LEFT_KB="$FLASH_KB" ;;
 esac
 
@@ -332,7 +414,8 @@ if [ "$INTERACTIVE" = 1 ]; then
 		t 'About to install:' 'Будет установлено:'; echo
 		echo "  $(t 'version' 'версия'):   $CHANNEL"
 		if [ "$CORE_UPDATE" = yes ]; then _cu="$(t 'latest release' 'последний релиз')"; else _cu="$(t 'keep the installed one' 'оставить установленное')"; fi
-		[ -n "$CORE_STORE" ] && echo "  $(t 'core' 'ядро'):      $_cu, $(t kept хранится): $CORE_STORE"
+		_cn=mihomo; [ "$CORE_TYPE" = meow ] && _cn="meow-openwrt $MEOW_PROFILE"
+		[ -n "$CORE_STORE" ] && echo "  $(t 'core' 'ядро'):      $_cn, $_cu, $(t kept хранится): $CORE_STORE"
 		echo "  $(t 'dashboard' 'дашборд'): $UI_NAME${UI_STORE:+, $(t kept хранится): $UI_STORE}"
 		echo "  dnsmasq-full: $DNSMASQ_FULL"
 		printf '%s [Y/n]: ' "$(t 'Proceed?' 'Продолжить?')"
@@ -592,13 +675,22 @@ else
 	if [ -n "$CORE_STORE" ]; then
 		uci -q set "clashwrt.config.core_store=$CORE_STORE" && uci -q commit clashwrt
 	fi
-	if ! /usr/libexec/clashwrt/updctl.sh arch >/dev/null 2>&1; then
+	# updctl.sh installs the core chosen above
+	export CORE_TYPE
+	[ -n "$MEOW_PROFILE" ] && export MEOW_PROFILE
+	if [ "$CORE_TYPE" = mihomo ] && ! /usr/libexec/clashwrt/updctl.sh arch >/dev/null 2>&1; then
 		[ "$INTERACTIVE" = 1 ] || die "cannot tell which mihomo build suits this CPU ($(uname -m)); run this installer on a terminal to name it"
 		printf '\nWhich mihomo build suits this CPU (%s)? e.g. arm64, armv7, mipsle-softfloat: ' "$(uname -m)" > /dev/tty
 		read -r MIHOMO_ARCH < /dev/tty || MIHOMO_ARCH=""
 		export MIHOMO_ARCH
 	fi
-	if [ "$CORE_UPDATE" = yes ] || [ "$HAVE_CORE" != 1 ]; then
+	if [ "$CORE_TYPE" = meow ]; then
+		if [ "$CORE_UPDATE" = yes ] || [ "$HAVE_CORE" != 1 ]; then
+			say "installing the meow-openwrt core ($MEOW_PROFILE)"
+			/usr/libexec/clashwrt/updctl.sh core-install ||
+				die "could not install meow-openwrt; mihomo can be installed instead: CORE_TYPE=mihomo sh install.sh"
+		fi
+	elif [ "$CORE_UPDATE" = yes ] || [ "$HAVE_CORE" != 1 ]; then
 		say "installing the mihomo core"
 		# Room is checked against the real size before anything is downloaded,
 		# so a core that does not fit on flash fails in a second; with the RAM
@@ -616,7 +708,7 @@ else
 			fi
 			[ "$_ok" = 1 ] || die "could not install the mihomo core"
 		fi
-	elif [ -n "$CORE_STORE" ] && [ "$CORE_STORE" != "${CUR_STORE:-flash}" ]; then
+	elif [ -n "$CORE_STORE" ] && [ "$CORE_STORE" != "${CUR_STORE:-flash}" ] && [ "$CUR_TYPE" = mihomo ]; then
 		say "moving the mihomo core: $CORE_STORE"
 		/usr/libexec/clashwrt/updctl.sh core-store "$CORE_STORE" || warn "could not move the core; it stays where it was"
 	fi

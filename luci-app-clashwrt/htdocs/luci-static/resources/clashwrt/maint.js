@@ -316,6 +316,8 @@ function buildUpdates() {
 		return fs.exec(UPDCTL, ['core-status']).then(function (res) {
 			var st = parseStatus(res.stdout || '');
 			dom.content(coreVer, [
+				/* the core may be meow-openwrt (Settings -> Storage) */
+				st['core'] === 'meow' ? 'meow-openwrt ' + (st['profile'] || '') + ' ' : '',
 				E('strong', {}, [ st['installed'] || '?' ]),
 				' → ',
 				st['latest'] || '?',

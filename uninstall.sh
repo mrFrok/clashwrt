@@ -181,6 +181,14 @@ if [ "${KEEP_CORE:-0}" != "1" ]; then
 	/etc/init.d/mihomo disable >/dev/null 2>&1 || true
 	rm -f /etc/init.d/mihomo
 	rm -f /usr/bin/mihomo
+	# meow-openwrt came as a package, and goes as one
+	for p in meow-tiny meow meow-full; do
+		if [ -f "/usr/lib/opkg/info/$p.control" ]; then
+			opkg remove "$p" >/dev/null 2>&1 || warn "could not remove the $p package"
+		elif [ -f "/lib/apk/packages/$p.list" ]; then
+			apk del "$p" >/dev/null 2>&1 || warn "could not remove the $p package"
+		fi
+	done
 else
 	say "keeping the mihomo core"
 fi

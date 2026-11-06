@@ -69,7 +69,22 @@ ClashWrt owns the firewall and routing layer only. Your `config.yaml`, your prox
 
 The installer reads the core's exact unpacked size off the release before downloading it. NAND and NOR flash (UBIFS, JFFS2) compress what they store while `df` counts as if they did not, so there the core is counted at three fifths of its size: about 34 MB for arm64, which is why 36 MB "free" on an AX3000T is enough, as it is for SSClash. If the write still runs out of room, the old core is put back, and with the RAM for it the new one is kept packed or in RAM instead. "256 MB" means a 256 MB router: its MemTotal is lower (an AX3000T shows ~230 MB), so the line is drawn at 192 MB.
 
-A router with 128 MB of RAM *and* little flash cannot run mihomo at all — give it the flash with [extroot](https://openwrt.org/docs/guide-user/additional-software/extroot_configuration) on a USB stick.
+A router with 128 MB of RAM *and* little flash cannot run mihomo at all — give it the flash with [extroot](https://openwrt.org/docs/guide-user/additional-software/extroot_configuration) on a USB stick, or use meow-openwrt.
+
+**meow-openwrt instead of mihomo.** [meow-openwrt](https://github.com/mrFrok/meow-openwrt) is a mihomo-compatible core in Rust: the same `config.yaml` and REST API in 9–14 MB of flash and a few MB of RAM. It has builds for `aarch64_*` (Filogic, Rockchip), `arm_cortex-a7_neon-vfpv4` (IPQ40xx), `mipsel_24kc` (MT7621) and `mips_24kc` (ath79). It is new; mihomo stays the default wherever it fits on flash.
+
+| Build | Protocols | Flash |
+|---|---|---|
+| `tiny` | Trojan, VLESS (Vision, Reality), Hysteria2 | ~9 MB |
+| `lightweight` | tiny plus Shadowsocks, VMess, AnyTLS, ShadowTLS | ~9.5 MB |
+| `full` | every protocol meow has | ~14 MB |
+
+Nodes of a protocol the chosen build lacks load as unavailable; the rest work. ClashWrt installs meow as the release's OpenWrt package (`.apk` on 25.x, `.ipk` before), checked against GitHub's SHA-256, and links `/usr/bin/mihomo` to `/usr/bin/meow`, so the rest of ClashWrt runs it as it runs mihomo. It always stays on flash, and the Go memory ceiling does not apply to it. Switch either way in **Settings → Storage and memory → Proxy core**, or:
+
+```sh
+/usr/libexec/clashwrt/updctl.sh core-use meow lightweight   # or tiny, full
+/usr/libexec/clashwrt/updctl.sh core-use mihomo             # back; the meow package is removed
+```
 
 Developed and tested on OpenWrt 25.12 on a BananaPi BPI-R4 (`mediatek/filogic`). The 23.05 and 24.10 feeds and LuCI APIs were checked for compatibility; if something breaks there, please open an issue.
 
@@ -85,9 +100,10 @@ wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | sh
 The installer shows the router's RAM and free flash, then asks how to install: **quickly**, taking every recommended answer, or choosing each of these (Enter takes the recommendation, worked out from those numbers). It speaks Russian when LuCI is set to Russian.
 
 1. **Version** — the latest release (checked against its SHA-256) or the development branch.
-2. **Where to keep the core** — on flash, packed on flash, or only in RAM. Asked in the quick mode too; only what fits is offered, and what is left out says why. To choose it on the command line instead: `wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | CORE_STORE=ram sh` (`flash`, `gz` or `ram`).
-3. **Dashboard** — metacubexd, zashboard, Yacd-meta or none, and where to keep it.
-4. **dnsmasq-full** — lets the bypass set take your config's domains.
+2. **Which core** — mihomo or meow-openwrt, and which meow build. Asked in the quick mode too, when both are possible; where mihomo does not fit, meow is installed. On the command line: `... | CORE_TYPE=meow MEOW_PROFILE=tiny sh`.
+3. **Where to keep the core** — on flash, packed on flash, or only in RAM. Asked in the quick mode too; only what fits is offered, and what is left out says why. To choose it on the command line instead: `wget -qO- https://raw.githubusercontent.com/mrFrok/clashwrt/main/install.sh | CORE_STORE=ram sh` (`flash`, `gz` or `ram`). Not asked for meow, which stays on flash.
+4. **Dashboard** — metacubexd, zashboard, Yacd-meta or none, and where to keep it.
+5. **dnsmasq-full** — lets the bypass set take your config's domains.
 
 It sums up and asks before changing anything. Then it installs, and stops: **nothing is intercepted until you enable it**, so a bad install cannot take the network down. Re-running upgrades in place and keeps your configuration.
 

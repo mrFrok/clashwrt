@@ -208,6 +208,46 @@ function buildStorage() {
 		]);
 	}
 
+	/* mihomo, or meow-openwrt in one of its profiles: updctl.sh core-use
+	 * downloads it and switches, so this is an install, not a setting */
+	function coreRow() {
+		var sel = E('select', { 'class': 'cbi-input-select' }, [
+			E('option', { 'value': 'mihomo' }, _('mihomo')),
+			E('option', { 'value': 'meow:tiny' }, _('meow-openwrt tiny: Trojan, VLESS, Hysteria2')),
+			E('option', { 'value': 'meow:lightweight' }, _('meow-openwrt: tiny plus Shadowsocks, VMess, AnyTLS')),
+			E('option', { 'value': 'meow:full' }, _('meow-openwrt full: every protocol'))
+		]);
+		var now = E('span', {}, E('em', {}, _('checking…')));
+		function refresh() {
+			return fs.exec(UPDCTL, [ 'core-where' ]).then(function (r) {
+				var st = kv(r.stdout);
+				var v = st.core === 'meow' ? 'meow:' + (st.profile || 'lightweight') : 'mihomo';
+				sel.value = v;
+				dom.content(now, st.core === 'meow' ? 'meow-openwrt ' + (st.profile || '') : 'mihomo');
+			}).catch(function () { dom.content(now, _('unknown')); });
+		}
+		var btn = E('button', { 'class': 'cbi-button cbi-button-apply', 'click': function (ev) {
+			ev.preventDefault();
+			if (busy) return;
+			busy = true; btn.disabled = true;
+			dom.content(out, E('em', {}, _('Downloading the core, this takes a while…')));
+			fs.exec(UPDCTL, [ 'core-use' ].concat(sel.value.split(':'))).then(function (r) {
+				dom.content(out, E('div', {
+					'class': r.code === 0 ? 'alert-message success' : 'alert-message warning',
+					'style': 'white-space:pre-wrap' }, [ (r.stdout || '') + (r.stderr || '') ]));
+			}).catch(function (e) {
+				dom.content(out, E('div', { 'class': 'alert-message warning', 'style': 'white-space:pre-wrap' }, [ describe(e) ]));
+			}).finally(function () { busy = false; btn.disabled = false; refresh(); });
+		} }, _('Install'));
+		refresh();
+		return E('div', { 'class': 'cbi-value' }, [
+			E('label', { 'class': 'cbi-value-title' }, _('Proxy core')),
+			E('div', { 'class': 'cbi-value-field' }, [ sel, ' ', btn,
+				E('div', { 'class': 'cbi-value-description' }, [ _('Now: '), now, E('br'),
+					_('meow-openwrt is a mihomo-compatible core in Rust: the same config.yaml and API in 9–14 MB of flash and little RAM, for aarch64, ARMv7 (IPQ40xx), MT7621 and ath79. It is installed as a package and stays on flash. Nodes of a protocol the chosen build lacks load as unavailable.') ]) ])
+		]);
+	}
+
 	var modes = [
 		[ 'flash', _('On flash') ],
 		[ 'gz', _('Packed on flash, unpacked into RAM at boot') ],
@@ -217,6 +257,7 @@ function buildStorage() {
 	return E('div', {}, [
 		E('p', {}, [ _('The mihomo core is about 55 MB, more than many routers have free on flash. Packed it takes about 22 MB of flash; kept only in RAM, none. Either way it then takes about 55 MB of RAM, so this needs a router with 256 MB of RAM or more.') ]),
 		E('p', { 'style': 'opacity:0.85' }, [ _('Only in RAM means downloading it at every boot: while GitHub cannot be reached there is no core, and LAN traffic gets what "When the VPN fails" says. Packed on flash has no such gap.') ]),
+		coreRow(),
 		row(_('mihomo core'), UPDCTL, [ 'core-store' ], modes, [ 'core-where' ]),
 		row(_('Web dashboard'), UICTL, [ 'store' ], modes, [ 'status' ]),
 		out
@@ -307,7 +348,7 @@ return view.extend({
 		customNode(s, 'storage', '_n_storage', function () { return buildStorage(); });
 
 		o = s.taboption('storage', form.Value, 'core_mem_limit', _('Memory ceiling for mihomo'),
-			_('A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts.'));
+			_('A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts. Not used by meow-openwrt, which sizes itself by the RAM.'));
 		o.value('auto', _('Auto'));
 		o.value('off', _('Off'));
 		o.placeholder = 'auto';

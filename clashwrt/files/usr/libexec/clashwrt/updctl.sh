@@ -22,6 +22,7 @@
 # follows the log.
 #
 # Usage: updctl.sh core-status|core-install [version]|core-store flash|gz|ram
+#        updctl.sh core-use mihomo|meow [tiny|lightweight|full]
 #        updctl.sh core-prepare|cores|prune-cores
 #        updctl.sh self-status|self-update|log
 #
@@ -38,6 +39,13 @@ LOG="/tmp/clashwrt-update.log"
 BIN_DIR="${CLASHWRT_BIN_DIR:-/usr/bin}"
 CORE_BIN="$BIN_DIR/mihomo"
 CORE_INIT="${CLASHWRT_CORE_INIT:-/etc/init.d/mihomo}"
+# meow-openwrt, the other core: installed as an OpenWrt package, which puts
+# it in /usr/bin/meow; /usr/bin/mihomo is then a link to it, so everything
+# that starts or looks for "mihomo" by name finds it.
+MEOW_SLUG="mrFrok/meow-openwrt"
+MEOW_BIN="$BIN_DIR/meow"
+# where opkg and apk keep what is installed; overridden only by the tests
+PKG_ROOT="${CLASHWRT_PKG_ROOT:-}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -249,8 +257,12 @@ valid_tag() {
 
 # Where the core is, without asking GitHub anything: for the Storage tab.
 do_core_where() {
+	echo "core:      $(core_live_type)"
+	meow_live && echo "profile:   $(meow_live_profile)"
 	echo "store:     $(core_store)"
-	if [ -L "$CORE_BIN" ]; then
+	if meow_live; then
+		echo "location:  flash $(size_kb "$MEOW_BIN")K"
+	elif [ -L "$CORE_BIN" ]; then
 		echo "location:  ram $(size_kb "$RAM_CORE")K$( [ -f "$STORE_GZ" ] && echo ", packed on flash $(size_kb "$STORE_GZ")K")"
 	elif [ -f "$CORE_BIN" ]; then
 		echo "location:  flash $(size_kb "$CORE_BIN")K"
@@ -263,9 +275,15 @@ do_core_where() {
 
 do_core_status() {
 	local arch installed latest
-	arch="$(map_arch 2>/dev/null)" || arch=""
-	installed="$(core_installed 2>/dev/null)" || installed=""
-	latest="$(core_latest)"
+	if meow_live; then
+		arch="$(meow_arch 2>/dev/null)" || arch=""
+		installed="$(meow_installed 2>/dev/null)" || installed=""
+		latest="$(meow_latest)"
+	else
+		arch="$(map_arch 2>/dev/null)" || arch=""
+		installed="$(core_installed 2>/dev/null)" || installed=""
+		latest="$(core_latest)"
+	fi
 
 	echo "arch:      ${arch:-unknown}"
 	echo "installed: ${installed:-none}"
@@ -450,8 +468,9 @@ gz_unpacked_kb() {
 # a Go binary compresses to roughly a third, so three times the .gz is a
 # ceiling; with neither, 64 MB covers every build mihomo publishes today.
 estimate_core_kb() {
-	local gz="$1" cur
-	cur="$(size_kb "$CORE_BIN")"
+	local gz="$1" cur=0
+	# meow is a fifth of mihomo's size, no guide to it
+	meow_live || cur="$(size_kb "$CORE_BIN")"
 	if [ "$cur" -gt 0 ]; then
 		echo $(( cur + cur / 8 ))
 	elif [ -n "$gz" ]; then
@@ -585,7 +604,12 @@ install_core_binary() {
 		;;
 	esac
 
-	# a link into RAM is replaced, not written through
+	# meow's room is only had back by removing its package
+	if meow_live; then
+		echo "removing meow-openwrt to make room"
+		meow_remove_pkgs || { echo "ERROR: could not remove the meow-openwrt package; the old core is untouched" >&2; return 1; }
+	fi
+	# a link into RAM (or to meow) is replaced, not written through
 	[ -L "$CORE_BIN" ] && rm -f "$CORE_BIN"
 	# On a compressing flash the room was an estimate. A copy of the old core
 	# in RAM, where there is room for one, brings it back if the write runs
@@ -650,8 +674,10 @@ list_cores() {
 		sz=$(( $(wc -c < "$r") / 1024 ))
 		ver=""
 		is_elf "$r" && ver="$("$r" -v 2>&1 | head -n1 | grep -o 'v[0-9][^[:space:]]*' | head -n1)"
+		# the live core may be meow-openwrt, which says "Meow Meta 0.29.0"
+		[ "$f" = "$CORE_BIN" ] && meow_live && ver="$(meow_installed)"
 
-		if is_elf "$r" && "$r" -v 2>&1 | head -n1 | grep -qi mihomo; then
+		if is_elf "$r" && "$r" -v 2>&1 | head -n1 | grep -qiE 'mihomo|meow meta'; then
 			if [ "$f" = "$CORE_BIN" ]; then
 				what="live"
 				core_in_use "$f" && what="live, running"
@@ -775,9 +801,12 @@ link_core() {
 	[ "$(readlink "$CORE_BIN" 2>/dev/null)" = "$RAM_CORE" ] || ln -sf "$RAM_CORE" "$CORE_BIN"
 }
 
-# The core on flash, as a regular file, or nothing.
+# The core on flash, as a regular file, or nothing. meow counts: a mihomo
+# that replaces it removes its package first if that is what the room takes.
 flash_core_kb() {
-	if [ -f "$CORE_BIN" ] && [ ! -L "$CORE_BIN" ]; then size_kb "$CORE_BIN"; else echo 0; fi
+	if [ -f "$CORE_BIN" ] && [ ! -L "$CORE_BIN" ]; then size_kb "$CORE_BIN"
+	elif meow_live; then size_kb "$MEOW_BIN"
+	else echo 0; fi
 }
 
 version_of() {
@@ -856,6 +885,13 @@ restart_if_running() {
 do_core_install() {
 	local want="$1"
 	local arch ver url tmp running need work plan asset want_sha mode keep="" gzkb gzb why
+
+	if [ "$(core_type)" = meow ]; then
+		do_meow_install "$want"
+		return
+	fi
+	# a version named for the other core is a mistake, not a mihomo release
+	case "$want" in owrt-*) die "$want is a meow-openwrt release; switch with: $0 core-use meow" ;; esac
 
 	arch="$(map_arch)" || die "unsupported CPU architecture: $(uname -m) -- set MIHOMO_ARCH to name a build"
 	mode="$(core_store)"
@@ -955,6 +991,13 @@ do_core_install() {
 	# Only once the new core is in place and known good. A download that
 	# failed must never have cost anyone the binaries they were keeping.
 	prune_old_cores
+	# mihomo replaced meow-openwrt: its package goes too
+	if meow_pkgs_present; then
+		echo "removing meow-openwrt, which mihomo replaced"
+		meow_remove_pkgs || echo "WARNING: could not remove the meow-openwrt package; remove it by hand" >&2
+	fi
+	rm -f "$MEOW_NOTE"
+	set_core_type mihomo
 
 	# The old binary keeps serving until the daemon is restarted, so leaving
 	# it running would report a version nothing is actually using. A core
@@ -1032,6 +1075,8 @@ do_core_boot() {
 # a number of MiB.
 do_core_env() {
 	local v total
+	# meow is not a Go program and sizes itself by the router's RAM
+	meow_live && return 0
 	v="$(uci -q get clashwrt.config.core_mem_limit)"
 	case "$v" in
 		off) return 0 ;;
@@ -1084,6 +1129,11 @@ do_core_retry() {
 do_core_store() {
 	local new="$1" old running src ver arch asset sha="-" gzsha="-" kb est tmp plan why _v="" _a _g=""
 	case "$new" in flash|gz|ram) ;; *) die "usage: core-store flash|gz|ram" ;; esac
+	# a package's files are where the package manager put them
+	if meow_live; then
+		[ "$new" = flash ] && { echo "the core is already on flash"; return 0; }
+		die "meow-openwrt is installed as a package and stays on flash (it takes about $(size_kb "$MEOW_BIN")K there)"
+	fi
 	old="$(core_store)"
 	running=0
 	pidof mihomo >/dev/null 2>&1 && running=1
@@ -1152,6 +1202,336 @@ do_core_store() {
 		echo "WARNING: GitHub gave no SHA-256 for $asset; the download at boot needs one unless core_verify is '0'" >&2
 	echo "the core is kept as '$new' now"
 	restart_if_running "$running"
+}
+
+# --------------------------------------------------------------------------
+# meow-openwrt
+# --------------------------------------------------------------------------
+#
+# meow-openwrt (github.com/mrFrok/meow-openwrt) reads the same config.yaml and
+# answers the same REST API as mihomo, in 9-14 MB instead of 55. Its releases
+# carry OpenWrt packages, one per profile -- meow-tiny, meow, meow-full, which
+# conflict with each other -- and a package is what is installed, so opkg or
+# apk knows the file and can take it away again. The package puts the binary
+# at /usr/bin/meow and /usr/bin/mihomo becomes a link to it; started by that
+# name, the process is "mihomo" to pidof as well. A package's file stays on
+# flash: core_store does not apply.
+#
+# core_type in /etc/config/clashwrt says which core is installed, and
+# core_profile which meow; both are written once an install has succeeded.
+
+# "<tag> <package>" of the meow installed here
+MEOW_NOTE="$STORE_DIR/meow.note"
+
+core_type() {
+	case "${CORE_TYPE:-$(uci -q get clashwrt.config.core_type)}" in
+		meow) echo meow ;; *) echo mihomo ;;
+	esac
+}
+
+set_core_type() {
+	uci -q set "clashwrt.config.core_type=$1"
+	[ -n "${2:-}" ] && uci -q set "clashwrt.config.core_profile=$2"
+	uci -q commit clashwrt
+}
+
+meow_profile() {
+	case "${MEOW_PROFILE:-$(uci -q get clashwrt.config.core_profile)}" in
+		tiny) echo tiny ;; full) echo full ;; *) echo lightweight ;;
+	esac
+}
+
+meow_pkg() {
+	case "$1" in tiny) echo meow-tiny ;; full) echo meow-full ;; *) echo meow ;; esac
+}
+
+# /usr/bin/mihomo is the link to meow's binary
+meow_live() { [ -L "$CORE_BIN" ] && [ "$(readlink "$CORE_BIN")" = "$MEOW_BIN" ]; }
+
+core_live_type() { if meow_live; then echo meow; else echo mihomo; fi; }
+
+# opkg keeps a .control per installed package, apk on OpenWrt a .list
+meow_pkg_present() {
+	[ -f "$PKG_ROOT/usr/lib/opkg/info/$1.control" ] || [ -f "$PKG_ROOT/lib/apk/packages/$1.list" ]
+}
+
+meow_pkgs_present() {
+	local p
+	for p in meow-tiny meow meow-full; do meow_pkg_present "$p" && return 0; done
+	return 1
+}
+
+meow_live_profile() {
+	local p
+	for p in tiny lightweight full; do
+		meow_pkg_present "$(meow_pkg "$p")" && { echo "$p"; return 0; }
+	done
+	echo unknown
+}
+
+# apk on OpenWrt 25 and later, opkg before
+pkg_kind() {
+	case "${CLASHWRT_PKG:-}" in apk|ipk) echo "$CLASHWRT_PKG"; return 0 ;; esac
+	if command -v apk >/dev/null 2>&1; then echo apk
+	elif command -v opkg >/dev/null 2>&1; then echo ipk
+	else return 1
+	fi
+}
+
+pkg_add() {
+	# unsigned: the SHA-256 GitHub keeps for the file is what was checked
+	if [ "$(pkg_kind)" = apk ]; then apk add --allow-untrusted "$1"
+	else opkg install --force-reinstall "$1"
+	fi
+}
+
+meow_remove_pkgs() {
+	local p rc=0
+	for p in meow-tiny meow meow-full; do
+		meow_pkg_present "$p" || continue
+		if [ "$(pkg_kind)" = apk ]; then apk del "$p" >/dev/null 2>&1 || rc=1
+		else opkg remove "$p" >/dev/null 2>&1 || rc=1
+		fi
+	done
+	return "$rc"
+}
+
+# The OpenWrt arch meow has a package for: the packages are named by it, so
+# DISTRIB_ARCH is the whole answer. MEOW_ARCH overrides it.
+meow_arch() {
+	local a="${MEOW_ARCH:-}"
+	if [ -z "$a" ] && [ -f /etc/openwrt_release ]; then
+		a="$(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release | head -n1)"
+	fi
+	if [ -n "${MEOW_ARCH:-}" ]; then valid_tag "$a" && echo "$a"; return; fi
+	case "$a" in
+		aarch64_generic|aarch64_cortex-a53|aarch64_cortex-a72|aarch64_cortex-a76|\
+		arm_cortex-a7_neon-vfpv4|mipsel_24kc|mips_24kc) echo "$a" ;;
+		*) return 1 ;;
+	esac
+}
+
+# owrt-v<version>-<release>, as meow-openwrt tags its releases
+meow_tag() {
+	valid_tag "$1" || return 1
+	case "$1" in owrt-v[0-9]*-[0-9]*) return 0 ;; esac
+	return 1
+}
+
+meow_latest() {
+	local t
+	t="$(cw_curl -sSL -m 30 "https://api.github.com/repos/$MEOW_SLUG/releases/latest" 2>/dev/null \
+		| sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+	meow_tag "$t" && echo "$t"
+}
+
+# The release's file for tag $1, profile $2, OpenWrt arch $3, package kind $4:
+# meow_0.29.0-1_mipsel_24kc.ipk, or meow-0.29.0-r1_mipsel_24kc.apk.
+meow_asset() {
+	local v="${1#owrt-v}" name
+	name="$(meow_pkg "$2")"
+	if [ "$4" = apk ]; then echo "${name}-${v%-*}-r${v##*-}_$3.apk"
+	else echo "${name}_${v}_$3.ipk"
+	fi
+}
+
+# The release installed, as its tag; one installed by hand, by the version
+# the binary reports.
+meow_installed() {
+	local t p
+	[ -x "$MEOW_BIN" ] || return 1
+	if [ -f "$MEOW_NOTE" ] && read -r t p < "$MEOW_NOTE" && meow_tag "$t"; then
+		echo "$t"
+		return 0
+	fi
+	"$MEOW_BIN" -v 2>&1 | head -n1 | sed -n 's/^Meow Meta \([0-9][^[:space:]]*\).*/v\1/p'
+}
+
+# What $1 kB of meow takes on a compressing flash. A Rust binary packs worse
+# than Go's: JFFS2 keeps meow-tiny in about half of itself, UBIFS in two
+# thirds, so three quarters.
+meow_disk_kb() {
+	if flash_compresses; then echo $(( $1 * 3 / 4 )); else echo "$1"; fi
+}
+
+# Downloads $1 to $2, through the proxy first and directly second, and checks
+# it against SHA-256 $3 (unless empty). Dies on failure.
+fetch_file() {
+	local url="$1" out="$2" want="$3" route proxy ok=0 got why
+	for route in proxy direct; do
+		proxy=""
+		if [ "$route" = proxy ]; then
+			proxy="$(cw_proxy_url)" || continue
+			echo "downloading ${url##*/} through the proxy"
+		else
+			echo "downloading ${url##*/}"
+		fi
+		rm -f "$out"
+		if curl ${proxy:+--proxy "$proxy"} -sSL --fail --proto '=https' -m 300 -o "$out" "$url" 2>"$out.err"; then
+			ok=1; break
+		fi
+		[ "$route" = proxy ] && echo "that failed; trying directly"
+	done
+	if [ "$ok" != 1 ]; then
+		why="$(awk 'NF { print; exit }' "$out.err" 2>/dev/null)"
+		rm -f "$out" "$out.err"
+		die "download failed: $url${why:+ ($why)}"
+	fi
+	rm -f "$out.err"
+	got="$(sha256_of "$out")"
+	if [ -n "$want" ] && [ "$got" != "$want" ]; then
+		rm -f "$out"
+		die "SHA-256 mismatch for ${url##*/}: GitHub says $want, the download is ${got:-unreadable}; nothing was installed"
+	fi
+	[ -n "$want" ] && echo "SHA-256 checked: $got"
+	return 0
+}
+
+# Kilobytes the package unpacks to: an .ipk says so in its control file; for
+# an .apk, three times the download is the ceiling.
+pkg_unpacked_kb() {
+	local n
+	case "$1" in *.ipk)
+		n="$(tar -xzOf "$1" ./control.tar.gz 2>/dev/null | tar -xzOf - ./control 2>/dev/null |
+			sed -n 's/^Installed-Size:[[:space:]]*\([0-9][0-9]*\).*/\1/p')"
+		[ -n "$n" ] && [ "$n" -gt 0 ] && { echo $(( (n + 1023) / 1024 )); return 0; }
+		;;
+	esac
+	echo $(( $(size_kb "$1") * 3 ))
+}
+
+stop_core() {
+	local i=0
+	"$CORE_INIT" stop >/dev/null 2>&1
+	while pidof mihomo >/dev/null 2>&1 && [ "$i" -lt 10 ]; do
+		sleep 1
+		i=$((i + 1))
+	done
+	! pidof mihomo >/dev/null 2>&1
+}
+
+do_meow_install() {
+	local want="$1"
+	local arch kind profile pkg tag asset url sha work tmp f kb need have spare running=0 stopped=0 p
+
+	arch="$(meow_arch)" || die "meow-openwrt has no build for this router ($(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release 2>/dev/null | head -n1)); it is built for aarch64, arm_cortex-a7_neon-vfpv4, mipsel_24kc and mips_24kc. Keep mihomo: $0 core-use mihomo"
+	kind="$(pkg_kind)" || die "neither apk nor opkg found"
+	profile="$(meow_profile)"
+	pkg="$(meow_pkg "$profile")"
+
+	tag="${want:-${MEOW_VERSION:-}}"
+	case "$tag" in ""|owrt-*) ;; *) tag="owrt-v${tag#v}" ;; esac
+	if [ -z "$tag" ]; then
+		echo "looking up the latest meow-openwrt release"
+		tag="$(meow_latest)"
+	fi
+	[ -n "$tag" ] || die "could not determine the meow-openwrt version (pass it as an argument, e.g. owrt-v0.29.0-1)"
+	meow_tag "$tag" || die "not a meow-openwrt release tag: $tag"
+
+	asset="$(meow_asset "$tag" "$profile" "$arch" "$kind")"
+	url="https://github.com/$MEOW_SLUG/releases/download/$tag/$asset"
+	sha="$(asset_digest "$MEOW_SLUG" "$tag" "$asset")"
+	if [ -z "$sha" ]; then
+		[ "$(uci -q get clashwrt.config.core_verify)" = 0 ] ||
+			die "GitHub did not give the SHA-256 of $asset (no such file in $tag, or GitHub is out of reach), so the download cannot be checked (set core_verify to '0' in /etc/config/clashwrt to install it unchecked)"
+		echo "WARNING: installing $asset without a SHA-256 check (core_verify is '0')" >&2
+	fi
+
+	# the package is a few MB and waits in RAM, or wherever there is room
+	work="$(pick_workdir 8192)" || exit 1
+	tmp="$work/.clashwrt-meow.$$"
+	rm -rf "$tmp"; mkdir -p "$tmp" || die "cannot create $tmp"
+	f="$tmp/$asset"
+	echo "meow-openwrt $tag ($pkg) for $arch"
+	( fetch_file "$url" "$f" "$sha" ) || { rm -rf "$tmp"; exit 1; }
+
+	# Room on flash, with what the switch frees counted: the meow it
+	# replaces, a mihomo on flash, its packed copy and spare cores. Nothing
+	# is touched when even that is not enough.
+	kb="$(pkg_unpacked_kb "$f")"
+	need=$(( $(meow_disk_kb "$kb") + 1024 ))
+	have="$(usable_kb "$BIN_DIR")"
+	spare=0
+	meow_pkgs_present && spare=$(( spare + $(meow_disk_kb "$(size_kb "$MEOW_BIN")") ))
+	[ -f "$CORE_BIN" ] && [ ! -L "$CORE_BIN" ] && spare=$(( spare + $(disk_kb "$(size_kb "$CORE_BIN")") ))
+	spare=$(( spare + $(size_kb "$STORE_GZ") + $(disk_kb "$(spare_cores_kb)") ))
+	if [ $(( have + spare )) -lt "$need" ]; then
+		rm -rf "$tmp"
+		die "not enough room on flash for meow-openwrt: it needs about ${need}K, there is ${have}K free and the switch frees ${spare}K. Try the tiny profile, or free some space on the overlay"
+	fi
+
+	pidof mihomo >/dev/null 2>&1 && running=1
+	# a running meow is not replaced under itself; nor is anything, when its
+	# room has to be had back first
+	if [ "$running" = 1 ] && { meow_live || [ "$have" -lt "$need" ]; }; then
+		echo "stopping the core while it is replaced"
+		stop_core || { rm -rf "$tmp"; die "the core did not stop; nothing was changed"; }
+		stopped=1
+	fi
+	if [ "$have" -lt "$need" ]; then
+		echo "the overlay is short of room; removing the old core first"
+		prune_old_cores
+		rm -f "$STORE_GZ"
+		[ -f "$CORE_BIN" ] && [ ! -L "$CORE_BIN" ] && rm -f "$CORE_BIN"
+	fi
+
+	# the profiles conflict: another one goes first
+	for p in meow-tiny meow meow-full; do
+		[ "$p" = "$pkg" ] && continue
+		meow_pkg_present "$p" || continue
+		echo "removing $p"
+		if [ "$kind" = apk ]; then apk del "$p" >/dev/null 2>&1; else opkg remove "$p" >/dev/null 2>&1; fi ||
+			echo "WARNING: could not remove $p" >&2
+	done
+
+	echo "installing $asset"
+	if ! pkg_add "$f" || ! "$MEOW_BIN" -v 2>&1 | head -n1 | grep -q '^Meow'; then
+		rm -rf "$tmp"
+		if [ -x "$CORE_BIN" ]; then
+			[ "$stopped" = 1 ] && "$CORE_INIT" start >/dev/null 2>&1
+			die "could not install $asset; the old core is still in place"
+		fi
+		die "could not install $asset, and the old core is gone; install one again: $0 core-use mihomo"
+	fi
+	rm -rf "$tmp"
+
+	# /usr/bin/mihomo becomes the link; a core in RAM goes with it
+	if ! meow_live; then
+		rm -f "$CORE_BIN"
+		ln -s "$MEOW_BIN" "$CORE_BIN" || die "could not link $CORE_BIN to $MEOW_BIN"
+	fi
+	rm -f "$RAM_CORE" "$STORE_GZ" "$STORE_NOTE"
+	mkdir -p "$STORE_DIR"
+	echo "$tag $pkg" > "$MEOW_NOTE"
+	uci -q set clashwrt.config.core_store=flash
+	set_core_type meow "$profile"
+
+	echo "installed $("$MEOW_BIN" -v 2>&1 | head -n1) ($pkg $tag)"
+	prune_old_cores
+
+	if [ "$stopped" = 1 ]; then
+		echo "starting the core"
+		"$CORE_INIT" start >/dev/null 2>&1 || echo "WARNING: the core did not come back up -- check the logs" >&2
+	else
+		restart_if_running "$running"
+	fi
+}
+
+# Switches the core: mihomo, or meow-openwrt in one of its profiles.
+do_core_use() {
+	case "$1" in
+		mihomo)
+			[ -z "${2:-}" ] || die "mihomo has no profiles"
+			CORE_TYPE=mihomo
+			;;
+		meow)
+			case "${2:-}" in ""|tiny|lightweight|full) ;; *) die "a meow-openwrt profile is tiny, lightweight or full" ;; esac
+			CORE_TYPE=meow
+			[ -n "${2:-}" ] && MEOW_PROFILE="$2"
+			;;
+		*) die "usage: $0 core-use mihomo|meow [tiny|lightweight|full]" ;;
+	esac
+	do_core_install ""
 }
 
 # --------------------------------------------------------------------------
@@ -1281,13 +1661,14 @@ case "${1:-}" in
 	arch)         map_arch ;;
 	core-retry)   do_core_retry ;;
 	core-store)   do_core_store "${2:-}" ;;
+	core-use)     do_core_use "${2:-}" "${3:-}" ;;
 	cores)        list_cores ;;
 	prune-cores)  prune_old_cores ;;
 	self-status)  do_self_status ;;
 	self-update)  do_self_update ;;
 	log)          do_log ;;
 	*)
-		echo "usage: $0 core-status|core-install [version]|core-store flash|gz|ram|core-prepare|cores|prune-cores|self-status|self-update|log" >&2
+		echo "usage: $0 core-status|core-install [version]|core-use mihomo|meow [profile]|core-store flash|gz|ram|core-prepare|cores|prune-cores|self-status|self-update|log" >&2
 		exit 1
 		;;
 esac

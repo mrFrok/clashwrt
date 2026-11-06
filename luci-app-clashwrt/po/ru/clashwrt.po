@@ -1488,8 +1488,8 @@ msgstr "Хранение и память"
 msgid "Memory ceiling for mihomo"
 msgstr "Предел памяти для mihomo"
 
-msgid "A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts."
-msgstr "Мягкий предел для среды Go: у этой границы mihomo чаще освобождает память, а не растёт; за ней ничего не убивается. Авто: 48 МБ при RAM меньше 256 МБ, 96 МБ — меньше 512 МБ, выше — без предела. Применяется при перезапуске mihomo."
+msgid "A soft limit for the Go runtime: near it mihomo frees memory more often instead of growing; nothing is killed past it. Auto: 48 MB under 256 MB of RAM, 96 MB under 512 MB, none above. Takes effect when mihomo restarts. Not used by meow-openwrt, which sizes itself by the RAM."
+msgstr "Мягкий предел для среды Go: у этой границы mihomo чаще освобождает память, а не растёт; за ней ничего не убивается. Авто: 48 МБ при RAM меньше 256 МБ, 96 МБ — меньше 512 МБ, выше — без предела. Применяется при перезапуске mihomo. Для meow-openwrt не используется: оно само подстраивается под объём RAM."
 
 msgid "Auto"
 msgstr "Авто"
@@ -1710,3 +1710,21 @@ msgstr "В названиях узлов нет стран: самый быст�
 
 msgid "Looking for countries…"
 msgstr "Ищу страны…"
+
+msgid "mihomo"
+msgstr "mihomo"
+
+msgid "meow-openwrt tiny: Trojan, VLESS, Hysteria2"
+msgstr "meow-openwrt tiny: Trojan, VLESS, Hysteria2"
+
+msgid "meow-openwrt: tiny plus Shadowsocks, VMess, AnyTLS"
+msgstr "meow-openwrt: tiny и ещё Shadowsocks, VMess, AnyTLS"
+
+msgid "meow-openwrt full: every protocol"
+msgstr "meow-openwrt full: все протоколы"
+
+msgid "Proxy core"
+msgstr "Ядро прокси"
+
+msgid "meow-openwrt is a mihomo-compatible core in Rust: the same config.yaml and API in 9–14 MB of flash and little RAM, for aarch64, ARMv7 (IPQ40xx), MT7621 and ath79. It is installed as a package and stays on flash. Nodes of a protocol the chosen build lacks load as unavailable."
+msgstr "meow-openwrt — совместимое с mihomo ядро на Rust: тот же config.yaml и API в 9–14 МБ флеша и с малым расходом RAM, для aarch64, ARMv7 (IPQ40xx), MT7621 и ath79. Ставится пакетом и хранится на флеше. Узлы протоколов, которых нет в выбранной сборке, будут недоступны."
