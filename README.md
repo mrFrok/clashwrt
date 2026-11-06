@@ -359,6 +359,7 @@ mihomo rewrites its providers on every refresh — tens of MB a day with Re-filt
 - **Configuration** edits `config.yaml` with syntax checks, backups and one-click restore; *Rule files* manages the lists file-backed providers point at. Nothing is installed until `mihomo -t` accepts it.
 - **Settings backup** (Maintenance) downloads one archive with `/etc/config/clashwrt`, `config.yaml` and your rule files, and restores it — after checking it. Restoring a different storage mode moves the core and the dashboard, with the same room checks.
 - **Logs**: mihomo's own log streamed from its API (which rule matched, which node carried it), and the system log around it.
+- **Proxies**: the groups of `config.yaml`, the node each one uses and a delay test, right in LuCI — enough to switch nodes on a router with no room for a web dashboard (meow-openwrt tiny on 16 MB of flash). The router asks the core, so its API may listen on `127.0.0.1` only.
 - **Web dashboard**: metacubexd, zashboard, Yacd, or any `.tar.gz` with an `index.html`. The API listens on every interface, so every config the wizard writes has a random `secret:` — enter it in the panel.
 
 ## Configuration

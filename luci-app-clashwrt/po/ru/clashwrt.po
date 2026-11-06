@@ -1737,3 +1737,30 @@ msgstr "Авто — ядро перехватывает само (рекоме�
 
 msgid "<strong>The core captures by itself</strong> (meow-openwrt only): meow installs its own nftables rules and, under “direct except the lists”, captures only the addresses its DNS answers name for proxied sites; everything else is forwarded by the kernel, offloading included. It captures every network but its own, LAN DNS goes through dnsmasq to the core, and per-device bypass is not available."
 msgstr "<strong>Ядро перехватывает само</strong> (только meow-openwrt): meow ставит свои правила nftables и в режиме «напрямую, кроме списков» перехватывает только адреса, которые его DNS выдал для сайтов через прокси; всё остальное ядро Linux пересылает само, с offload. Перехватываются все сети, кроме собственных сетей роутера, DNS из LAN идёт через dnsmasq в ядро, обход прокси для отдельных устройств недоступен."
+
+msgid "Proxies"
+msgstr "Прокси"
+
+msgid "Test delay"
+msgstr "Проверить задержку"
+
+msgid "Testing…"
+msgstr "Проверяю…"
+
+msgid "timeout"
+msgstr "нет ответа"
+
+msgid "the core did not answer"
+msgstr "ядро не ответило"
+
+msgid "The core does not answer: %s"
+msgstr "Ядро не отвечает: %s"
+
+msgid "Start it on the Overview page."
+msgstr "Запустите его на странице «Обзор»."
+
+msgid "This configuration has no proxy groups."
+msgstr "В этой конфигурации нет групп прокси."
+
+msgid "The node each group uses, picked here instead of in a web dashboard. A choice lasts until the core restarts, unless config.yaml keeps it (profile: store-selected: true)."
+msgstr "Какой узел использует каждая группа — выбор прямо здесь, без веб-дашборда. Выбор действует до перезапуска ядра, если config.yaml его не сохраняет (profile: store-selected: true)."

@@ -1731,3 +1731,30 @@ msgstr ""
 
 msgid "<strong>The core captures by itself</strong> (meow-openwrt only): meow installs its own nftables rules and, under “direct except the lists”, captures only the addresses its DNS answers name for proxied sites; everything else is forwarded by the kernel, offloading included. It captures every network but its own, LAN DNS goes through dnsmasq to the core, and per-device bypass is not available."
 msgstr ""
+
+msgid "Proxies"
+msgstr ""
+
+msgid "Test delay"
+msgstr ""
+
+msgid "Testing…"
+msgstr ""
+
+msgid "timeout"
+msgstr ""
+
+msgid "the core did not answer"
+msgstr ""
+
+msgid "The core does not answer: %s"
+msgstr ""
+
+msgid "Start it on the Overview page."
+msgstr ""
+
+msgid "This configuration has no proxy groups."
+msgstr ""
+
+msgid "The node each group uses, picked here instead of in a web dashboard. A choice lasts until the core restarts, unless config.yaml keeps it (profile: store-selected: true)."
+msgstr ""

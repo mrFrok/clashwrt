@@ -22,6 +22,14 @@
 			"path": "clashwrt/overview"
 		}
 	},
+	"admin/services/clashwrt/proxies": {
+		"title": "Proxies",
+		"order": 15,
+		"action": {
+			"type": "view",
+			"path": "clashwrt/proxies"
+		}
+	},
 	"admin/services/clashwrt/wizard": {
 		"title": "Setup wizard",
 		"order": 20,

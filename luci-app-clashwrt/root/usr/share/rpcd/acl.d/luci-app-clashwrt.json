@@ -48,6 +48,9 @@
 				"/usr/libexec/clashwrt/updctl.sh": [
 					"exec"
 				],
+				"/usr/libexec/clashwrt/apictl.sh": [
+					"exec"
+				],
 				"/usr/libexec/clashwrt/setctl.sh": [
 					"exec"
 				],
