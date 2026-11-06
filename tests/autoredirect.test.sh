@@ -201,5 +201,18 @@ grep -q '^server' "$TMP/dns-core.state" && fail "already forwarding: the entry i
 dns_core_off
 eq "a forward that was there stays" "/lan.example/192.168.1.2 127.0.0.1#1053" "$(uci get "$S.server")"
 
+# another general upstream (AdGuard Home) would get some of the lookups
+uci -q del_list "$S.server=127.0.0.1#1053"
+uci add_list "$S.server=127.0.0.1#5335"
+dns_core_on
+eq "the other upstream is left out meanwhile" "/lan.example/192.168.1.2 127.0.0.1#1053" "$(uci get "$S.server")"
+dns_core_off
+eq "and comes back" "/lan.example/192.168.1.2 127.0.0.1#5335" "$(uci get "$S.server")"
+dns_core_on
+touch "$TMP/dns.bak"
+dns_core_off
+grep -qx '127.0.0.1#5335' "$TMP/dns.bak" && pass "while the watchdog owns the list, it comes back with the list" || fail "upstream back into DNS_BAK ($(cat "$TMP/dns.bak"))"
+rm -f "$TMP/dns.bak"
+
 [ -s "$TMP/err" ] && fail "setctl.sh said: $(head -n3 "$TMP/err")"
 finish

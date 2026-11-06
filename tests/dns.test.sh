@@ -69,6 +69,15 @@ rm -f "$FLAG"
 dns_sync
 eq "noresolv: restored exactly" "127.0.0.1#1053" "$(servers)"
 
+# a server for one domain is no upstream for the rest: still borrows
+uci add_list "$SRV=/lan.example/192.168.1.2"
+: > "$FLAG"
+dns_sync
+eq "a per-domain server does not count as an upstream" "/lan.example/192.168.1.2 9.9.9.9" "$(servers)"
+rm -f "$FLAG"
+dns_sync
+uci -q del_list "$SRV=/lan.example/192.168.1.2"
+
 # nothing to fall back to: leave DNS alone and say so
 : > "$TMP/resolv.auto"
 : > "$FLAG"

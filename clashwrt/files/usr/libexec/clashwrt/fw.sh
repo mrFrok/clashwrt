@@ -732,9 +732,10 @@ dns_fallback_on() {
 
 	have="$(uci -q get "$DNSMASQ_SEC.server" 2>/dev/null)"
 	up=""
-	# with nothing left in the list and the uplink's resolvers switched off,
-	# dnsmasq would have no upstream at all: borrow the uplink's own
-	if [ "$(echo "$have" | tr ' ' '\n' | grep -c -v -F -x "$mine")" -eq 0 ] &&
+	# with no general server left (one for a single domain does not count)
+	# and the uplink's resolvers switched off, dnsmasq would have no upstream
+	# at all: borrow the uplink's own
+	if [ "$(echo "$have" | tr ' ' '\n' | grep -v -F -x "$mine" | grep -c -v -e '^/' -e '^$')" -eq 0 ] &&
 		[ "$(uci -q get "$DNSMASQ_SEC.noresolv")" = 1 ]; then
 		up="$(dns_uplink_resolvers)"
 		if [ -z "$up" ]; then
@@ -1248,14 +1249,16 @@ nftset_sync() {
 #
 # The core adds an address to its capture set when it answers the lookup, so
 # the LAN's lookups have to reach it: dnsmasq forwards to it, and only to it
-# (noresolv), or the answers of the uplink's resolver would bypass the set and
-# the sites behind them would go direct. What was changed is listed on flash
+# (noresolv, and any other general server= -- an AdGuard Home, a stubby --
+# taken out meanwhile; dnsmasq would send some lookups there), or those
+# answers would bypass the set and the sites behind them would go direct.
+# Servers for one domain (/lan.example/...) stay. What was changed is listed on flash
 # and is all that is ever undone. While the watchdog has DNS on the uplink
 # (DNS_BAK), that arrangement owns the list and this keeps out of it.
 DNS_CORE_STATE="${CLASHWRT_DNS_CORE:-/etc/clashwrt-dns-core.state}"
 
 dns_core_on() {
-	local e changed="" nr
+	local e s changed="" nr
 	[ -e "$DNS_BAK" ] && return 0
 	e="127.0.0.1#$dns_port"
 	if [ -z "$(dns_mihomo_entries)" ]; then
@@ -1263,6 +1266,15 @@ dns_core_on() {
 		echo "server $e" >> "$DNS_CORE_STATE"
 		changed=1
 	fi
+	for s in $(uci -q get "$DNSMASQ_SEC.server" 2>/dev/null); do
+		case "$s" in
+			/*|*"#$dns_port"|*":$dns_port") continue ;;
+		esac
+		uci -q del_list "$DNSMASQ_SEC.server=$s"
+		echo "upstream $s" >> "$DNS_CORE_STATE"
+		log "dnsmasq: $s left out while the core has to see every lookup"
+		changed=1
+	done
 	nr="$(uci -q get "$DNSMASQ_SEC.noresolv")"
 	if [ "$nr" != 1 ]; then
 		echo "noresolv ${nr:--}" >> "$DNS_CORE_STATE"
@@ -1286,6 +1298,11 @@ dns_core_off() {
 				grep -v -x -F -- "$v" "$DNS_BAK" > "$DNS_BAK.tmp"
 				mv -f "$DNS_BAK.tmp" "$DNS_BAK"
 			fi
+			;;
+		upstream)
+			# while the watchdog owns the list, it comes back with the list
+			if [ -e "$DNS_BAK" ]; then echo "$v" >> "$DNS_BAK"
+			else uci add_list "$DNSMASQ_SEC.server=$v"; fi
 			;;
 		noresolv)
 			if [ "$v" = - ]; then uci -q delete "$DNSMASQ_SEC.noresolv"
