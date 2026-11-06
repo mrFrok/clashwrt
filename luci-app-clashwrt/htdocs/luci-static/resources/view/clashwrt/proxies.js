@@ -9,7 +9,7 @@
  * groups, the node each one uses, and a delay test. The router asks the core
  * (apictl.sh), so the controller may listen on 127.0.0.1 only. */
 var APICTL = '/usr/libexec/clashwrt/apictl.sh';
-var UI_VERSION = '1.8.0';
+var UI_VERSION = '1.9.0';
 
 var GROUPS = [ 'Selector', 'URLTest', 'Fallback', 'LoadBalance', 'Relay' ];
 
