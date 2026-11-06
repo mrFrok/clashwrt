@@ -223,7 +223,7 @@ In the tun modes the wizard turns on **GSO** for the kernel stacks (`system`, `m
 
 ### `auto_redirect`: meow-openwrt captures by itself
 
-With the [meow-openwrt](https://github.com/mrFrok/meow-openwrt) core there is a fifth mode, the default with that core (switching the core switches it, unless a mode was picked by hand in the wizard). The core's `tun.auto-redirect` installs its own nftables table (`inet meow`) and policy rules; ClashWrt writes the keys into `config.yaml`'s `tun:` block (after a `# ClashWrt:` comment line; everything from it to the end of `tun:` is rewritten) and switches the capture through the API.
+With the [meow-openwrt](https://github.com/mrFrok/meow-openwrt) core there is a fifth mode, picked by hand: Auto chooses `tproxy` with meow too when the kernel honours it (meow's `tproxy-port` is mihomo's, TCP and UDP), and switching the core keeps the mode; going back to mihomo turns `auto_redirect` into the mode the wizard's test chose. The core's `tun.auto-redirect` installs its own nftables table (`inet meow`) and policy rules; ClashWrt writes the keys into `config.yaml`'s `tun:` block (after a `# ClashWrt:` comment line; everything from it to the end of `tun:` is rewritten) and switches the capture through the API.
 
 What gets captured follows the routing, as the bypass set does in the other modes:
 

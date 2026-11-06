@@ -223,7 +223,7 @@ Recommended mode: redirect_tun (or tun)
 
 ### `auto_redirect`: meow-openwrt перехватывает сам
 
-С ядром [meow-openwrt](https://github.com/mrFrok/meow-openwrt) есть пятый режим, и с этим ядром он по умолчанию: смена ядра переключает и режим, если режим не выбран в мастере вручную. `tun.auto-redirect` ядра ставит свою таблицу nftables (`inet meow`) и policy rules; ClashWrt пишет ключи в блок `tun:` файла `config.yaml` (после строки-комментария `# ClashWrt:` — всё от неё до конца `tun:` переписывается) и включает-выключает перехват через API.
+С ядром [meow-openwrt](https://github.com/mrFrok/meow-openwrt) есть пятый режим, он выбирается вручную: «Авто» и с meow выбирает `tproxy`, если ядро Linux его поддерживает (`tproxy-port` у meow-openwrt такой же, как у mihomo: TCP и UDP), а смена ядра режим не меняет; при возврате на mihomo `auto_redirect` сменяется режимом, который выбрал тест мастера. `tun.auto-redirect` ядра ставит свою таблицу nftables (`inet meow`) и policy rules; ClashWrt пишет ключи в блок `tun:` файла `config.yaml` (после строки-комментария `# ClashWrt:` — всё от неё до конца `tun:` переписывается) и включает-выключает перехват через API.
 
 Что перехватывать, решает маршрутизация — как набор обхода в остальных режимах:
 

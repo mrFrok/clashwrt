@@ -1238,18 +1238,15 @@ set_core_type() {
 	uci -q commit clashwrt
 }
 
-# The interception mode follows the core, unless it was picked by hand in the
-# wizard (wizard.mode_choice): meow-openwrt captures by itself
-# (auto_redirect), which mihomo does not do here, so mihomo gets back the
-# mode the wizard's test chose. Applied at once when the firewall is up.
+# meow-openwrt serves every mode mihomo does (its tproxy-port is mihomo's:
+# TCP and UDP through TPROXY), so the mode stays as it is. Only the mode
+# mihomo cannot serve, auto_redirect, gives way when mihomo comes back: to
+# the mode the wizard's test chose. Applied at once when the firewall is up.
 follow_core_mode() {
-	local cur want pinned
+	local cur want
 	cur="$(uci -q get clashwrt.config.mode)"
-	pinned="$(uci -q get clashwrt.wizard.mode_choice)"
 	case "$1" in
-		meow)
-			case "$pinned" in ""|auto) ;; *) return 0 ;; esac
-			want=auto_redirect ;;
+		meow) return 0 ;;
 		*)
 			[ "$cur" = auto_redirect ] || return 0
 			want="$(uci -q get clashwrt.config.mode_auto)"
