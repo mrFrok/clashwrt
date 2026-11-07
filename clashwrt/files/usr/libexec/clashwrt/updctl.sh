@@ -1361,11 +1361,29 @@ meow_asset() {
 	fi
 }
 
-# The release installed, as its tag; one installed by hand, by the version
-# the binary reports.
+# The release package $1 is, as its tag, from the package database: opkg's
+# "Version: 0.29.0-7", apk's "V:0.29.0-r7". Nothing when it is not installed.
+meow_pkg_tag() {
+	local v=""
+	if [ -f "$PKG_ROOT/usr/lib/opkg/info/$1.control" ]; then
+		v="$(sed -n 's/^Version:[[:space:]]*//p' "$PKG_ROOT/usr/lib/opkg/info/$1.control" | head -n1)"
+	elif [ -f "$PKG_ROOT/lib/apk/packages/$1.list" ] && [ -f "$PKG_ROOT/lib/apk/db/installed" ]; then
+		v="$(awk -v p="P:$1" '/^P:/ { c = ($0 == p) } c && /^V:/ { print substr($0, 3); exit }' \
+			"$PKG_ROOT/lib/apk/db/installed")"
+		case "$v" in *-r[0-9]*) v="${v%-r*}-${v##*-r}" ;; esac
+	fi
+	[ -n "$v" ] && meow_tag "owrt-v$v" && echo "owrt-v$v"
+}
+
+# The release installed, as its tag: what the package database says, which
+# is right however it got there; else the note of the last install; one
+# installed by hand without a package, by the version the binary reports.
 meow_installed() {
 	local t p
 	[ -x "$MEOW_BIN" ] || return 1
+	for p in meow-tiny meow meow-full; do
+		t="$(meow_pkg_tag "$p")" && { echo "$t"; return 0; }
+	done
 	if [ -f "$MEOW_NOTE" ] && read -r t p < "$MEOW_NOTE" && meow_tag "$t"; then
 		echo "$t"
 		return 0
@@ -1438,7 +1456,7 @@ stop_core() {
 
 do_meow_install() {
 	local want="$1"
-	local arch kind profile pkg tag asset url sha work tmp f kb need have spare running=0 stopped=0 p rel
+	local arch kind profile pkg tag asset url sha work tmp f kb need have spare running=0 stopped=0 p rel ok rc got
 
 	arch="$(meow_arch)" || die "meow-openwrt has no build for this router ($(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release 2>/dev/null | head -n1)); it is built for aarch64, ARMv7 (Cortex-A7, A9, A15), mipsel_24kc and mips_24kc. Keep mihomo: $0 core-use mihomo"
 	kind="$(pkg_kind)" || die "neither apk nor opkg found"
@@ -1522,7 +1540,18 @@ do_meow_install() {
 	done
 
 	echo "installing $asset"
-	if ! pkg_add "$f" || ! "$MEOW_BIN" -v 2>&1 | head -n1 | grep -q '^Meow'; then
+	# Judged by what got installed, not by the exit status: apk 3 fails every
+	# run while any package in the database is broken (a failed script of
+	# something unrelated, with no message beyond "1 error"), even when this
+	# one went in. Without a database entry to read, the status decides.
+	ok=0
+	pkg_add "$f"; rc=$?
+	got="$(meow_pkg_tag "$pkg")"
+	if [ -n "$got" ]; then [ "$got" = "$tag" ] && ok=1; else [ "$rc" = 0 ] && ok=1; fi
+	"$MEOW_BIN" -v 2>&1 | head -n1 | grep -q '^Meow' || ok=0
+	[ "$ok" = 1 ] && [ "$rc" != 0 ] &&
+		echo "WARNING: $kind reported an error, but $pkg $tag is installed: the error is elsewhere in the package database ('apk fix' or 'opkg' shows what)" >&2
+	if [ "$ok" != 1 ]; then
 		rm -rf "$tmp"
 		if [ -x "$CORE_BIN" ]; then
 			[ "$stopped" = 1 ] && "$CORE_INIT" start >/dev/null 2>&1

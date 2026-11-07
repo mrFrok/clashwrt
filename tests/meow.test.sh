@@ -111,6 +111,20 @@ rm -f "$TMP/srv/urls"
 out="$(upd core-install)"
 grep -q 'meow-tiny_0.29.0-1' "$TMP/srv/urls" && pass "core-install updates meow" || fail "core-install updates meow ($out)"
 
+# the package database says which release is installed, whatever the note
+echo "owrt-v0.28.0-5 meow-tiny" > "$TMP/store/meow.note"
+eq "status: installed, from the package database" owrt-v0.29.0-1 "$(st installed)"
+eq "status: so still current" current "$(st update)"
+
+# a package manager that fails over something unrelated (apk 3 with a broken
+# package elsewhere) while this one went in: installed, with a warning
+mv "$TMP/bin/opkg" "$TMP/bin/opkg.real"
+printf '#!/bin/sh\n"$(dirname "$0")/opkg.real" "$@"\necho "1 error; 194.9 MiB in 514 packages"\nexit 1\n' > "$TMP/bin/opkg"; chmod +x "$TMP/bin/opkg"
+out="$(upd core-install)"
+case "$out" in *"reported an error, but meow-tiny owrt-v0.29.0-1 is installed"*) pass "an unrelated package error does not fail the install" ;; *) fail "an unrelated package error does not fail the install ($out)" ;; esac
+eq "and the release is noted" "owrt-v0.29.0-1 meow-tiny" "$(cat "$TMP/store/meow.note")"
+mv "$TMP/bin/opkg.real" "$TMP/bin/opkg"
+
 # another profile replaces the one installed
 out="$(upd core-use meow full)"
 [ -f "$TMP/pkg/usr/lib/opkg/info/meow-full.control" ] && [ ! -f "$TMP/pkg/usr/lib/opkg/info/meow-tiny.control" ] &&
