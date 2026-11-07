@@ -119,7 +119,7 @@ eq "and the link still holds" "$TMP/core/meow" "$(readlink "$TMP/core/mihomo")"
 
 # an .apk is named the apk way (this release lists none, so it stops there)
 out="$(CLASHWRT_PKG=apk upd core-use meow tiny)"
-case "$out" in *"SHA-256 of meow-tiny-0.29.0-r1_aarch64_cortex-a53.apk"*) pass "the apk file name" ;; *) fail "the apk file name ($out)" ;; esac
+case "$out" in *"has no package for aarch64_cortex-a53 (meow-tiny-0.29.0-r1_aarch64_cortex-a53.apk)"*) pass "the apk file name; a release without it says so" ;; *) fail "the apk file name ($out)" ;; esac
 eq "a file the release lacks changes nothing" meow-full "$(cut -d' ' -f2 "$TMP/store/meow.note")"
 
 # a router meow has no build for

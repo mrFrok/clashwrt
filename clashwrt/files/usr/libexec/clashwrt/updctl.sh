@@ -1438,9 +1438,9 @@ stop_core() {
 
 do_meow_install() {
 	local want="$1"
-	local arch kind profile pkg tag asset url sha work tmp f kb need have spare running=0 stopped=0 p
+	local arch kind profile pkg tag asset url sha work tmp f kb need have spare running=0 stopped=0 p rel
 
-	arch="$(meow_arch)" || die "meow-openwrt has no build for this router ($(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release 2>/dev/null | head -n1)); it is built for aarch64, arm_cortex-a7_neon-vfpv4, mipsel_24kc and mips_24kc. Keep mihomo: $0 core-use mihomo"
+	arch="$(meow_arch)" || die "meow-openwrt has no build for this router ($(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release 2>/dev/null | head -n1)); it is built for aarch64, ARMv7 (Cortex-A7, A9, A15), mipsel_24kc and mips_24kc. Keep mihomo: $0 core-use mihomo"
 	kind="$(pkg_kind)" || die "neither apk nor opkg found"
 	profile="$(meow_profile)"
 	pkg="$(meow_pkg "$profile")"
@@ -1457,6 +1457,17 @@ do_meow_install() {
 	asset="$(meow_asset "$tag" "$profile" "$arch" "$kind")"
 	url="https://github.com/$MEOW_SLUG/releases/download/$tag/$asset"
 	sha="$(asset_digest "$MEOW_SLUG" "$tag" "$asset")"
+	# a release that is reachable but has no package for this arch (one built
+	# before the arch was added): said as such, before the SHA-256 question
+	if [ -z "$sha" ]; then
+		rel="$(cw_curl -sSL --fail --proto '=https' -m 30 \
+			"https://api.github.com/repos/$MEOW_SLUG/releases/tags/$tag" 2>/dev/null)"
+		case "$rel" in
+			*'"name"'*) case "$rel" in *"\"$asset\""*) ;; *)
+				die "meow-openwrt $tag has no package for $arch ($asset); a later release may. Nothing was changed. Keep mihomo: $0 core-use mihomo" ;;
+			esac ;;
+		esac
+	fi
 	if [ -z "$sha" ]; then
 		[ "$(uci -q get clashwrt.config.core_verify)" = 0 ] ||
 			die "GitHub did not give the SHA-256 of $asset (no such file in $tag, or GitHub is out of reach), so the download cannot be checked (set core_verify to '0' in /etc/config/clashwrt to install it unchecked)"
