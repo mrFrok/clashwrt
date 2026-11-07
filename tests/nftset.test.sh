@@ -37,9 +37,15 @@ direction() { sh "$LIBEXEC/setctl.sh" direction 2>/dev/null; }
 
 gen '{"proxies":[],"mode":"tproxy","routing":"direct_except_list","ruleSets":["telegram","youtube"]}' > "$CONF"
 
+sed -i 's/^  - MATCH,DIRECT$/  - DOMAIN-SUFFIX,example.com,Proxy\n  - MATCH,DIRECT/' "$CONF"
 eq "mihomo, no dnsmasq-full: domains cannot be filled, the set is held" off "$(direction)"
+sh "$LIBEXEC/setctl.sh" from-config >/dev/null 2>&1
+eq "mihomo: the config's domains are kept for dnsmasq" 1 "$(cat "$TMP/state/config-domains.list" 2>/dev/null | grep -c .)"
 ln -s "$TMP/usrbin/meow" "$TMP/usrbin/mihomo"
 eq "meow fills them itself: include" include "$(direction)"
+sh "$LIBEXEC/setctl.sh" from-config >/dev/null 2>&1
+[ -f "$TMP/state/config4.list" ] && pass "the config was parsed" || fail "the config was parsed"
+eq "no domain list kept: the core judges them" 0 "$(cat "$TMP/state/config-domains.list" 2>/dev/null | grep -c .)"
 out="$(sh "$LIBEXEC/setctl.sh" status 2>/dev/null)"
 case "$out" in *"judged by meow-openwrt itself"*) pass "status says who fills it" ;; *) fail "status says who fills it ($out)" ;; esac
 

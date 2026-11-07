@@ -476,7 +476,7 @@ pick_rules() {
 # providers are only stat'ed.
 config_sig() {
 	{
-		echo "$set_mode $mihomo_dir $(command -v mihomo)"
+		echo "$set_mode $mihomo_dir $(command -v mihomo) $(core_fills_set && echo core-fills)"
 		[ -f "$MIHOMO_CONF" ] || { echo none; return; }
 		cat "$MIHOMO_CONF"
 		config_records | awk -F '\t' '$1 == "P" { print $4 }' | while read -r path; do
@@ -511,7 +511,8 @@ do_from_config() {
 	while IFS="$tab" read -r kind val extra; do
 		case "$kind" in
 		IP)     echo "$val" | parse_list >> "$ips" ;;
-		DOMAIN) echo "$val" | parse_domains >> "$doms" ;;
+		# meow-openwrt judges domains itself (dns.nftset): none are kept
+		DOMAIN) core_fills_set || echo "$val" | parse_domains >> "$doms" ;;
 		SKIP)   echo "skipped: $val rules have no fixed addresses or domains" >> "$notes" ;;
 		SET)
 			line="$(awk -F '\t' -v n="$val" '$1 == "P" && $2 == n' "$recs" | head -n1)"
@@ -520,6 +521,7 @@ do_from_config() {
 			path="$(echo "$line" | cut -f4)"
 			fmt="$(echo "$line" | cut -f5)"
 			[ "$extra" = "ip-only" ] && [ "$beh" != "ipcidr" ] && continue
+			[ "$beh" = "domain" ] && core_fills_set && continue
 			# mihomo keeps providers under its own directory; so does this
 			case "$path" in
 				""|*..*) echo "skipped: rule-set $val has no usable path" >> "$notes"; continue ;;
@@ -545,7 +547,7 @@ do_from_config() {
 	# written aside and renamed: status runs this too, and a load reading
 	# the files at the same moment must see a whole list, old or new
 	parse_list < "$ips" > "$CONF_LIST.$$"
-	if [ "$set_mode" = "include" ]; then
+	if [ "$set_mode" = "include" ] && ! core_fills_set; then
 		parse_domains < "$doms" | drop_covered > "$CONF_DOMAINS.$$"
 	else
 		: > "$CONF_DOMAINS.$$"
