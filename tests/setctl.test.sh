@@ -243,6 +243,29 @@ grep -q '9.9.9.9' "$NFT_LOADED" && pass "doh_extra added" || fail "doh_extra add
 grep -q 'bad' "$NFT_LOADED" && fail "a bad extra is dropped" || pass "a bad extra is dropped"
 rm -f "$TMP/bin/curl"
 
+# a refresh that fails keeps the list, and status says so instead of only
+# showing the list getting older
+export CLASHWRT_RUNDIR="$TMP/run"
+printf '#!/bin/sh\nexit 22\n' > "$TMP/bin/curl"; chmod +x "$TMP/bin/curl"
+uci set clashwrt.config.bypass_set_source=refilter
+uci set clashwrt.config.bypass_set_mode=include
+awk 'BEGIN { for (i = 1; i <= 12; i++) printf "10.%d.0.0/16\n", i }' > "$TMP/state/bypass4.list"
+echo $(( $(date +%s) - 3 * 86400 )) > "$TMP/state/bypass4.stamp"
+sh "$SETCTL" update >/dev/null 2>&1
+eq "the previous list is kept" "12" "$(grep -c . "$TMP/state/bypass4.list")"
+case "$(sh "$SETCTL" status 2>/dev/null)" in
+	*"WARNING:  the last refresh, 0 minutes ago, failed: download of"*) pass "status names the failed refresh" ;;
+	*) fail "status names the failed refresh ($(sh "$SETCTL" status 2>&1 | grep -i -e updated -e refresh))" ;;
+esac
+# a stamp from the future does not hold the list back
+echo $(( $(date +%s) + 86400 )) > "$TMP/state/bypass4.stamp"
+rm -f "$TMP/run/bypass4.fail"
+sh "$SETCTL" update >/dev/null 2>&1
+[ -s "$TMP/run/bypass4.fail" ] && pass "a stamp from the future is refetched" || fail "a stamp from the future is refetched"
+rm -f "$TMP/bin/curl" "$TMP/state/bypass4.list" "$TMP/state/bypass4.stamp"
+uci set clashwrt.config.bypass_set_source=config
+uci set clashwrt.config.bypass_set_mode=auto
+
 # flow offloading is fw4's setting, read and set from here
 printf '#!/bin/sh\necho "$1" >> "%s/fwinit.log"\n' "$TMP" > "$TMP/fwinit"; chmod +x "$TMP/fwinit"
 export CLASHWRT_FW_INIT="$TMP/fwinit"

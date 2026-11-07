@@ -67,6 +67,8 @@ STAMP="$STATE_DIR/bypass4.stamp"
 CONF_LIST="$STATE_DIR/config4.list"
 CONF_DOMAINS="$STATE_DIR/config-domains.list"
 CONF_NOTES="$STATE_DIR/config.notes"
+# the last refresh that did not happen, and why; in RAM, as status reads it
+FAIL="${CLASHWRT_RUNDIR:-/var/run/clashwrt}/bypass4.fail"
 DOH_LIST="$STATE_DIR/doh4.list"
 DOH_STAMP="$STATE_DIR/doh4.stamp"
 DOH_URL="https://raw.githubusercontent.com/dibdot/DoH-IP-blocklists/master/doh-ipv4.txt"
@@ -697,6 +699,11 @@ do_doh_load() {
 	return 0
 }
 
+update_failed() {
+	mkdir -p "${FAIL%/*}" 2>/dev/null
+	echo "$(date +%s) $*" > "$FAIL" 2>/dev/null
+}
+
 do_update() {
 	# the daily run: providers into or out of RAM as the room now allows
 	"${CLASHWRT_LIBEXEC:-/usr/libexec/clashwrt}/provctl.sh" place >/dev/null 2>&1
@@ -729,7 +736,9 @@ do_update() {
 		local age now
 		now="$(date +%s)"
 		age=$((now - $(cat "$STAMP" 2>/dev/null || echo 0)))
-		if [ "$age" -lt "$set_interval" ]; then
+		# a stamp from the future (written before the clock was set back)
+		# would hold the list back for good
+		if [ "$age" -ge 0 ] && [ "$age" -lt "$set_interval" ]; then
 			log "list is ${age}s old, below the ${set_interval}s interval; not refetching"
 			return 0
 		fi
@@ -747,6 +756,7 @@ do_update() {
 	if ! cw_curl -sSL --fail --proto '=http,https' --proto-redir '=https' -m 180 \
 		--max-filesize "$MAX_LIST_BYTES" -o "$tmp" "$url"; then
 		rm -f "$tmp"
+		update_failed "download of $url failed"
 		# keep whatever we had: an empty set would silently proxy everything
 		[ -s "$LIST" ] && { log "download failed, keeping the previous list"; return 0; }
 		die "download failed and no previous list exists"
@@ -759,17 +769,20 @@ do_update() {
 	n="$(grep -c . "$tmp.parsed" 2>/dev/null || echo 0)"
 	if [ "$n" -gt "$MAX_LIST_ENTRIES" ]; then
 		rm -f "$tmp.parsed"
+		update_failed "more than $MAX_LIST_ENTRIES networks in the list"
 		[ -s "$LIST" ] && { log "more than $MAX_LIST_ENTRIES networks in $url, keeping the previous list"; return 0; }
 		die "more than $MAX_LIST_ENTRIES networks in $url -- not a list this router should load"
 	fi
 	if [ "$n" -lt 10 ]; then
 		rm -f "$tmp.parsed"
+		update_failed "only $n networks parsed"
 		[ -s "$LIST" ] && { log "only $n networks parsed, keeping the previous list"; return 0; }
 		die "only $n networks parsed from $url -- wrong format?"
 	fi
 
 	mv "$tmp.parsed" "$LIST"
 	date +%s > "$STAMP"
+	rm -f "$FAIL"
 	log "stored $n networks in $LIST"
 	do_load
 }
@@ -872,6 +885,11 @@ do_status() {
 			echo "updated:  $(( ( $(date +%s) - $(cat "$STAMP") ) / 60 )) minutes ago"
 		else
 			echo "updated:  never"
+		fi
+		if [ -s "$FAIL" ]; then
+			local ft fwhy
+			read -r ft fwhy < "$FAIL"
+			echo "WARNING:  the last refresh, $(( ( $(date +%s) - ft ) / 60 )) minutes ago, failed: $fwhy; the list above is what is loaded"
 		fi
 	fi
 	if [ -n "$set_mode" ]; then
@@ -979,7 +997,7 @@ do_detect() {
 }
 
 do_clear() {
-	rm -f "$LIST" "$STAMP" "$CONF_LIST" "$CONF_DOMAINS" "$CONF_NOTES" "$STATE_DIR/config.sig"
+	rm -f "$LIST" "$STAMP" "$FAIL" "$CONF_LIST" "$CONF_DOMAINS" "$CONF_NOTES" "$STATE_DIR/config.sig"
 	nft flush set $TABLE $SET4 2>/dev/null
 	nft flush set $TABLE $SET4_DNS 2>/dev/null
 	# set_mode is unset here, so this takes the dnsmasq rules away
