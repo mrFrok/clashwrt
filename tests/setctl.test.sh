@@ -12,7 +12,7 @@ cp "$T"/shim/uci "$T"/shim/logger "$TMP/bin/"
 cat > "$TMP/bin/nft" <<'X'
 #!/bin/sh
 case "$1" in
-	list) exit 0 ;;
+	list) [ "$2" = tables ] && printf 'table inet clashwrt\ntable inet meow\n'; exit 0 ;;
 	-f) cp "$2" "$NFT_LOADED" ;;
 esac
 X

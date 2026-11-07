@@ -63,7 +63,11 @@ die() {
 take_lock() { cw_lock "$LOCKFILE" 10 switch; }
 
 proxy_enabled() { [ "$(uci -q get "$NAME.config.enabled")" = "1" ]; }
-rules_present() { nft list table inet clashwrt >/dev/null 2>&1; }
+# Whether an nft table exists, from the list of table names. 'nft list table'
+# would answer too, but it prints every element of every set in it -- the
+# bypass list is thousands of networks -- and the Overview asks every 5 s.
+nft_has_table() { nft list tables 2>/dev/null | grep -qxF "table $1"; }
+rules_present() { nft_has_table "inet clashwrt"; }
 core_running()  { pidof mihomo >/dev/null 2>&1; }
 core_installed() { [ -x "$CORE_INIT" ] && { command -v mihomo >/dev/null 2>&1 || [ -x /usr/bin/mihomo ]; }; }
 core_boot()     { [ -x "$CORE_INIT" ] && "$CORE_INIT" enabled >/dev/null 2>&1; }
@@ -91,15 +95,23 @@ wait_core() {
 	return 1
 }
 
+# Asked every 5 s by the Overview, so each probe runs once: the table and
+# the watchdog's report feed both the lines of their own and svc_live.
 do_status() {
+	local rules=absent wd=""
+	rules_present && rules=present
+	[ -x "$WATCHDOG" ] && wd="$("$WATCHDOG" status 2>/dev/null)"
 	echo -n "service:         "
 	svc_enabled && echo on || echo off
 	echo -n "svc_live:        "
-	svc_live && echo yes || echo no
+	if [ "$rules" = present ] || echo "$wd" | grep -q '^wd_running:[[:space:]]*yes'; then
+		echo yes
+	else
+		echo no
+	fi
 	echo -n "proxy:           "
 	proxy_enabled && echo on || echo off
-	echo -n "rules:           "
-	rules_present && echo present || echo absent
+	echo "rules:           $rules"
 	echo -n "core:            "
 	if ! core_installed; then
 		echo missing
@@ -116,7 +128,7 @@ do_status() {
 	if [ ! -e "$FLAG" ]; then echo none
 	elif [ "$(cat "$FLAG" 2>/dev/null)" = block ]; then echo block
 	else echo direct; fi
-	[ -x "$WATCHDOG" ] && "$WATCHDOG" status 2>/dev/null
+	[ -n "$wd" ] && echo "$wd"
 	return 0
 }
 

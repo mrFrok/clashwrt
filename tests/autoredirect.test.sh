@@ -14,10 +14,11 @@ cp "$T"/shim/uci "$T"/shim/logger "$TMP/bin/"
 cat > "$TMP/bin/nft" <<'X'
 #!/bin/sh
 echo "nft $*" >> "$NFT_LOG"
-case "$1 $2 $3 $4" in
-	"list table inet meow") [ -e "$MEOW_TABLE" ] ;;
-	"list table inet clashwrt") [ -e "$NFT_TABLE" ] ;;
-esac
+if [ "$1 $2" = "list tables" ]; then
+	[ -e "$MEOW_TABLE" ] && echo "table inet meow"
+	[ -e "$NFT_TABLE" ] && echo "table inet clashwrt"
+fi
+exit 0
 X
 cat > "$TMP/bin/curl" <<'X'
 #!/bin/sh

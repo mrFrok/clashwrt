@@ -71,7 +71,7 @@ function buildWatchdogToggle(map, flag) {
 
 	paint();
 	poll.add(function () {
-		if (busy) return Promise.resolve();
+		if (busy || document.hidden) return Promise.resolve();
 		return power.status().then(function (st) {
 			if (st['wd_enabled'] !== 'on' && st['wd_enabled'] !== 'off') return;
 			on = st['wd_enabled'] === 'on';

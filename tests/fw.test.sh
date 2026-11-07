@@ -11,6 +11,7 @@ mkdir -p "$TMP/bin"
 cat > "$TMP/bin/nft" <<'X'
 #!/bin/sh
 [ "$1" = -f ] && cp "$2" "$NFT_BATCH_COPY"
+[ "$1 $2" = "list tables" ] && printf 'table inet clashwrt\ntable inet meow\n'
 exit 0
 X
 chmod +x "$TMP/bin/nft"

@@ -59,6 +59,10 @@ fi
 
 NAME="clashwrt"
 TABLE="inet clashwrt"
+# Whether an nft table exists, from the list of table names. 'nft list table'
+# would answer too, but it prints every element of every set in it -- the
+# bypass list is thousands of networks -- and the Overview asks every 5 s.
+nft_has_table() { nft list tables 2>/dev/null | grep -qxF "table $1"; }
 SET4="bypass4"
 SET4_DNS="bypass4_dns"
 STATE_DIR="${CLASHWRT_STATE_DIR:-/etc/clashwrt}"
@@ -817,7 +821,7 @@ do_load() {
 	fi
 	dns_sync_domains
 
-	nft list table $TABLE >/dev/null 2>&1 || { log "table not present yet; nothing to load into"; return 0; }
+	nft_has_table "$TABLE" || { log "table not present yet; nothing to load into"; return 0; }
 
 	local all="$STATE_DIR/.load.$$" f="$STATE_DIR/.load.$$.nft"
 	{
@@ -917,9 +921,11 @@ do_status() {
 		[ -s "$CONF_NOTES" ] && sed 's/^/note:     /' "$CONF_NOTES"
 	fi
 	echo -n "in_kernel: "
-	nft list set $TABLE $SET4 2>/dev/null | grep -c "elements" >/dev/null 2>&1 \
-		&& nft list set $TABLE $SET4 2>/dev/null | tr -cd ',' | wc -c | awk '{print $1+1" entries"}' \
-		|| echo "set not present"
+	# one listing, counted as it goes by: the set is the long one
+	nft list set $TABLE $SET4 2>/dev/null | awk '
+		/elements/ { e = 1 }
+		{ n += gsub(/,/, ",") }
+		END { print e ? n + 1 " entries" : "set not present" }'
 }
 
 # Just the answer, for fw.sh, which builds the nft rule from it and has no
@@ -1250,7 +1256,7 @@ do_core_status() {
 		exclude) n="$(nft list set inet meow exclude4 2>/dev/null | sed -n '/elements/,/}/p' | tr -cd ',' | wc -c)"; n=$((n + 1)) ;;
 		*) n="" ;;
 	esac
-	if nft list table inet meow >/dev/null 2>&1; then
+	if nft_has_table "inet meow"; then
 		echo "in_kernel: ${n:-0} entries"
 	else
 		echo "in_kernel: set not present"

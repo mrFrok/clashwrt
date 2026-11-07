@@ -12,7 +12,8 @@ cp "$T"/shim/uci "$T"/shim/logger "$TMP/bin/"
 cat > "$TMP/bin/nft" <<'X'
 #!/bin/sh
 echo "nft $*" >> "$NFT_LOG"
-case "$1 $2" in "list table") [ -e "$NFT_TABLE" ] ;; esac
+case "$1 $2" in "list tables") [ -e "$NFT_TABLE" ] && echo "table inet clashwrt" ;; esac
+exit 0
 X
 cat > "$TMP/bin/dnsmasq-init" <<'X'
 #!/bin/sh

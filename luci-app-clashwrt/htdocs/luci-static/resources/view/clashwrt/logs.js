@@ -170,7 +170,7 @@ return view.extend({
 			}).catch(function () { dom.content(sourceNote, ''); });
 
 			loadSyslog();
-			sysPoll = function () { if (!paused) return loadSyslog(); };
+			sysPoll = function () { if (!paused && !document.hidden) return loadSyslog(); };
 			poll.add(sysPoll, 5);
 		}
 

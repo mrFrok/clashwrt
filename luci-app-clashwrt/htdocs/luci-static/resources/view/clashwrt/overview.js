@@ -526,7 +526,9 @@ return view.extend({
 		paint(cur);
 		var ticks = 0;
 		poll.add(function () {
-			if (busy) return Promise.resolve();
+			/* a tab left open in the background would otherwise keep the
+			 * router running these scripts every 5 s for nobody */
+			if (busy || document.hidden) return Promise.resolve();
 			/* the bypass state changes rarely and costs an exec: every 30 s */
 			var slow = (ticks++ % 6 === 0) ? refreshBypass() : Promise.resolve();
 			return Promise.all([

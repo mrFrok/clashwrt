@@ -896,7 +896,11 @@ TUN_MANAGED="enable auto-route auto-redirect dns-hijack route-address route-addr
 
 core_is_meow() { [ -L "$CORE_BIN" ] && [ "$(readlink "$CORE_BIN")" = "$MEOW_BIN" ]; }
 core_running() { pidof mihomo >/dev/null 2>&1 || pidof meow >/dev/null 2>&1; }
-core_table() { nft list table inet meow >/dev/null 2>&1; }
+# Whether an nft table exists, from the list of table names. 'nft list table'
+# would answer too, but it prints every element of every set in it -- the
+# bypass list is thousands of networks -- and the Overview asks every 5 s.
+nft_has_table() { nft list tables 2>/dev/null | grep -qxF "table $1"; }
+core_table() { nft_has_table "inet meow"; }
 # config.yaml asks the core to capture (core-sync wrote the keys)
 core_marked() { [ -f "$MIHOMO_CONF" ] && grep -qF "$TUN_MARK_LINE" "$MIHOMO_CONF"; }
 
@@ -1421,7 +1425,7 @@ fw_sig() {
 do_reload() {
 	load_cfg
 	if [ "$enabled" = 1 ] && [ ! -e "$FLAG" ] && svc_enabled &&
-		nft list table $TABLE >/dev/null 2>&1 &&
+		nft_has_table "$TABLE" &&
 		[ "$(cat "$SIGFILE" 2>/dev/null)" = "$(fw_sig)" ]; then
 		return 0
 	fi
@@ -1477,7 +1481,7 @@ do_status() {
 	echo "tproxy_port:  ${tproxy_port:-none}"
 	echo "redir_port:   ${redir_port:-none}"
 	echo -n "nft_table:    "
-	nft list table $TABLE >/dev/null 2>&1 && echo present || echo absent
+	nft_has_table "$TABLE" && echo present || echo absent
 	echo -n "tun_link:     "
 	ip link show "$tun_device" >/dev/null 2>&1 && echo up || echo absent
 	echo -n "tun_route:    "
@@ -1521,7 +1525,7 @@ do_check() {
 	svc_enabled || exit 0
 	resolve_ports
 
-	nft list table $TABLE >/dev/null 2>&1 || { log "nft table missing, re-applying"; do_apply; exit 0; }
+	nft_has_table "$TABLE" || { log "nft table missing, re-applying"; do_apply; exit 0; }
 
 	if [ "$mode" = auto_redirect ]; then
 		core_running || exit 0

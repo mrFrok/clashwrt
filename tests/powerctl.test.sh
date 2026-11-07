@@ -11,7 +11,8 @@ mkdir -p "$TMP/bin" "$TMP/db" "$TMP/run" "$TMP/rcd"
 cp "$T"/shim/uci "$T"/shim/logger "$TMP/bin/"
 cat > "$TMP/bin/nft" <<'X'
 #!/bin/sh
-[ "$1 $2" = "list table" ] && [ -e "$NFT_TABLE" ]
+[ "$1 $2" = "list tables" ] && [ -e "$NFT_TABLE" ] && echo "table inet clashwrt"
+exit 0
 X
 cat > "$TMP/bin/pidof" <<'X'
 #!/bin/sh
