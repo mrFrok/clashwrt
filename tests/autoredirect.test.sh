@@ -211,6 +211,21 @@ eq "and comes back" "/lan.example/192.168.1.2 127.0.0.1#5335" "$(uci get "$S.ser
 dns_core_on
 touch "$TMP/dns.bak"
 dns_core_off
+rm -f "$TMP/dns.bak"
+
+# forwards for single domains to the core's port are not the general one
+uci -q del_list "$S.server=127.0.0.1#5335"
+uci add_list "$S.server=/gemini.google.com/127.0.0.1#1053"
+dns_core_on
+eq "a domain forward to the core does not stand in for the general one" \
+	"/lan.example/192.168.1.2 /gemini.google.com/127.0.0.1#1053 127.0.0.1#1053" "$(uci get "$S.server")"
+dns_core_off
+eq "and only the general one is taken back" "/lan.example/192.168.1.2 /gemini.google.com/127.0.0.1#1053" "$(uci get "$S.server")"
+uci -q del_list "$S.server=/gemini.google.com/127.0.0.1#1053"
+uci add_list "$S.server=127.0.0.1#5335"
+dns_core_on
+touch "$TMP/dns.bak"
+dns_core_off
 grep -qx '127.0.0.1#5335' "$TMP/dns.bak" && pass "while the watchdog owns the list, it comes back with the list" || fail "upstream back into DNS_BAK ($(cat "$TMP/dns.bak"))"
 rm -f "$TMP/dns.bak"
 

@@ -1261,7 +1261,9 @@ dns_core_on() {
 	local e s changed="" nr
 	[ -e "$DNS_BAK" ] && return 0
 	e="127.0.0.1#$dns_port"
-	if [ -z "$(dns_mihomo_entries)" ]; then
+	# a forward for one domain (/x/127.0.0.1#1053) is not the general one:
+	# with only those, noresolv below would leave every other name REFUSED
+	if [ -z "$(dns_mihomo_entries | grep -v '^/')" ]; then
 		uci add_list "$DNSMASQ_SEC.server=$e"
 		echo "server $e" >> "$DNS_CORE_STATE"
 		changed=1
