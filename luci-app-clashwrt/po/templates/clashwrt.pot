@@ -1629,7 +1629,7 @@ msgstr ""
 msgid "Your configuration can be updated"
 msgstr ""
 
-msgid "This version of ClashWrt writes better configs: proxy servers are found even where the ISP blocks encrypted DNS, AI services (ChatGPT, Claude, Gemini) go through one server, less memory, faster TUN. Your answers are saved, so updating changes nothing else."
+msgid "This version of ClashWrt writes better configs: the router fetches its updates and lists through the VPN with either core, proxy servers are found even where the ISP blocks encrypted DNS, AI services (ChatGPT, Claude, Gemini) go through one server, less memory, faster TUN. Your answers are saved, so updating changes nothing else."
 msgstr ""
 
 msgid "Update the configuration"

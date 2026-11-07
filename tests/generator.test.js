@@ -69,6 +69,12 @@ t('addSiteRules brings Telegram\'s data-centre addresses along', function () {
 	assert.strictEqual(gen.addSiteRules(BASE, ['example.com'], { group: 'Proxy' }).indexOf('IP-CIDR'), -1);
 });
 
+t('generate sends the fetch listener to Proxy by rule, first', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' });
+	assert.ok(/\nrules:\n  - IN-NAME,clashwrt-fetch,Proxy\n/.test(y));
+	assert.ok(y.indexOf('  - name: clashwrt-fetch') >= 0);
+});
+
 t('generate emits Telegram\'s addresses with its suffixes', function () {
 	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list',
 		extraDomains: gen.siteDomains('telegram'), extraGroup: 'Proxy' });

@@ -107,6 +107,17 @@ Y
 sh "$SETCTL" load
 eq "exclude: a proxied compound rule closes the DIRECT run" "77.88.0.0/18" "$(loaded)"
 
+# the rule for the router's own downloads says nothing about the LAN: it
+# must not close the DIRECT run at the top
+cat > "$TMP/mihomo/config.yaml" <<'Y'
+rules:
+  - IN-NAME,clashwrt-fetch,Proxy
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - MATCH,Proxy
+Y
+sh "$SETCTL" load
+eq "exclude: the fetch listener's rule is not a proxied rule" "77.88.0.0/18 10.0.0.0/8" "$(loaded)"
+
 # providers outside mihomo's directory are not read
 cat > "$TMP/mihomo/config.yaml" <<'Y'
 rule-providers:

@@ -1635,8 +1635,8 @@ msgstr "Три коротких шага: ваш VPN, что идёт через
 msgid "Your configuration can be updated"
 msgstr "Конфигурацию можно обновить"
 
-msgid "This version of ClashWrt writes better configs: proxy servers are found even where the ISP blocks encrypted DNS, AI services (ChatGPT, Claude, Gemini) go through one server, less memory, faster TUN. Your answers are saved, so updating changes nothing else."
-msgstr "Эта версия ClashWrt пишет конфиг лучше: серверы прокси находятся, даже когда провайдер блокирует шифрованный DNS, нейросети (ChatGPT, Claude, Gemini) идут через один сервер, меньше памяти, быстрее TUN. Ваши ответы сохранены, так что обновление больше ничего не меняет."
+msgid "This version of ClashWrt writes better configs: the router fetches its updates and lists through the VPN with either core, proxy servers are found even where the ISP blocks encrypted DNS, AI services (ChatGPT, Claude, Gemini) go through one server, less memory, faster TUN. Your answers are saved, so updating changes nothing else."
+msgstr "Эта версия ClashWrt пишет конфиг лучше: роутер скачивает обновления и списки через VPN с любым ядром, серверы прокси находятся, даже когда провайдер блокирует шифрованный DNS, нейросети (ChatGPT, Claude, Gemini) идут через один сервер, меньше памяти, быстрее TUN. Ваши ответы сохранены, так что обновление больше ничего не меняет."
 
 msgid "Update the configuration"
 msgstr "Обновить конфигурацию"

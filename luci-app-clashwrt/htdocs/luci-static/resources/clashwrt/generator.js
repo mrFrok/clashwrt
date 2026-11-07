@@ -348,9 +348,10 @@ var TUN_STACKS = ['system', 'gvisor', 'mixed', 'mips'];
 /* What a generated config looks like, as a number in its first line. Raised
  * when the generator starts writing something a config should have (1.5.1:
  * mrs geo sets, GSO, no GEOIP, find-process-mode, dns-mode; 6:
- * proxy-server-nameserver), so the Overview can offer once to regenerate an
- * older one. Configs before it have none. */
-var GEN_FORMAT = 6;
+ * proxy-server-nameserver; 7: IN-NAME rule for the fetch listener), so the
+ * Overview can offer once to regenerate an older one. Configs before it have
+ * none. */
+var GEN_FORMAT = 7;
 var FAKE_IP_RANGE = '198.18.0.1/16';
 var FAKE_IP_FILTER = [
 	'*.lan', '*.local', '*.localdomain', '*.home.arpa', 'localhost.ptlink.net',
@@ -1555,6 +1556,9 @@ return baseclass.extend({
 
 		/* rules */
 		L.push('rules:');
+		/* The fetch listener's own proxy: key says the same, but not every
+		 * core reads it (meow-openwrt ignored it): a rule does it in any. */
+		L.push('  - IN-NAME,' + FETCH_LISTENER + ',Proxy');
 		var extra = normDomains(o.extraDomains);
 		var extraGroup = o.extraGroup || 'Proxy';
 		/* AI services, both TCP and UDP (QUIC), to the AI group, ahead of

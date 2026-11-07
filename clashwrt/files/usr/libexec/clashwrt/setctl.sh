@@ -383,6 +383,10 @@ config_records() {
 			next
 		}
 		n = split(line, f, ",")
+		# the downloads of the router itself (net.sh), on a loopback listener no LAN
+		# traffic reaches: it says nothing about the LAN, and taken as a
+		# rule like any other it would close the exclude set at the top
+		if (unq(f[1]) == "IN-NAME" && unq(f[2]) == "clashwrt-fetch") next
 		if (unq(f[1]) == "MATCH" && n >= 2) { print "R\tMATCH\t\t" unq(f[2]); next }
 		if (n >= 3) print "R\t" unq(f[1]) "\t" unq(f[2]) "\t" unq(f[3])
 	}
