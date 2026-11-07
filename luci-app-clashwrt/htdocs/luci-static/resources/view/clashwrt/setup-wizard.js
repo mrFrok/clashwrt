@@ -136,7 +136,9 @@ return view.extend({
 			/* configs from before the AI group get it, as new ones do */
 			aiGroup: cfg.genFormat >= 3 ? cfg.aiGroup : true,
 			aiCountry: cfg.aiCountry || '',
-			yandexDns: cfg.yandexDns,
+			/* on unless a config of ours says it was turned off: one written
+			 * elsewhere, or before the format number, gets it as new ones do */
+			yandexDns: cfg.generatedByUs && cfg.genFormat ? cfg.yandexDns : true,
 			udpFilter: cfg.udpFilter || DEFAULT_UDP_FILTER,
 			tcpFilter: cfg.tcpFilter,
 			extraDomains: cfg.extraDomains,

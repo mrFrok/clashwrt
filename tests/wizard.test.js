@@ -82,6 +82,15 @@ var view = L.load('view/clashwrt/setup-wizard.js', {
 var n = 0;
 function t(name, fn) { fn(); n++; console.log('ok - ' + name); }
 
+t('Yandex DNS for RU sites is on unless a config of ours turned it off', function () {
+	var hand = 'proxies: []\nrules:\n  - MATCH,DIRECT\n';
+	assert.strictEqual(view.answersFromConfig(gen.parseConfig(hand)).yandexDns, true, 'a config written elsewhere');
+	var off = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', yandexDns: false });
+	assert.strictEqual(view.answersFromConfig(gen.parseConfig(off)).yandexDns, false, 'ours, turned off');
+	var on = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list', yandexDns: true });
+	assert.strictEqual(view.answersFromConfig(gen.parseConfig(on)).yandexDns, true, 'ours, on');
+});
+
 var page = view.render([ null, { code: 0, stdout: '# Placeholder written by the clashwrt installer.\nmode: rule\n' } ]);
 var steps = page.find(function (e) { return e.attrs['data-step']; });
 var shown = function () { return steps.filter(function (s) { return s.style.display !== 'none'; }).map(function (s) { return s.attrs['data-step']; }); };
