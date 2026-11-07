@@ -36,9 +36,10 @@ config clashwrt 'config'
 	option dns_port '1053'
 	option api_port '9090'
 
-	# Reject QUIC (UDP/443) so browsers fall back to TCP. Only worth enabling
-	# when UDP is not proxied well.
-	option block_quic '0'
+	# Reject QUIC (UDP/443) so browsers fall back to TCP, which the proxy carries
+	# more reliably where UDP is throttled. On by default; turn off when UDP is
+	# proxied well.
+	option block_quic '1'
 
 	# Force LAN DNS into mihomo's resolver. Leave off if dnsmasq already
 	# forwards to mihomo.
@@ -110,7 +111,7 @@ config clashwrt 'config'
 	# public resolvers from dibdot's DoH-IP-blocklists (refreshed daily, plus
 	# doh_extra). Devices fall back to the router's DNS.
 	option block_dot '1'
-	option block_doh '0'
+	option block_doh '1'
 	# list doh_extra '203.0.113.53'
 
 	# Keep mihomo's rule and proxy providers in RAM, so their refreshes do not

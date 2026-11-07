@@ -933,7 +933,7 @@ msgstr ""
 msgid "Sends LAN DNS queries to mihomo. Default: off. Leave off if dnsmasq already forwards to mihomo."
 msgstr ""
 
-msgid "Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well."
+msgid "Makes browsers fall back to TCP, which the proxy carries more reliably where UDP is throttled. Default: on. Turn off when UDP is proxied well."
 msgstr ""
 
 msgid "VPN watchdog"
@@ -1347,7 +1347,7 @@ msgstr ""
 msgid "Block DNS-over-HTTPS"
 msgstr ""
 
-msgid "The same for browsers' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off."
+msgid "The same for browsers' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: on."
 msgstr ""
 
 msgid "More DoH resolvers"

@@ -412,8 +412,8 @@ return view.extend({
 		o.default = '0';
 
 		o = adv(form.Flag, 'block_quic', _('Block QUIC'),
-			_('Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well.'));
-		o.default = '0';
+			_('Makes browsers fall back to TCP, which the proxy carries more reliably where UDP is throttled. Default: on. Turn off when UDP is proxied well.'));
+		o.default = '1';
 
 		o = basic(form.Flag, 'block_ipv6', _('Block IPv6 past the proxy'),
 			_('The proxy handles IPv4 only, so IPv6 from your devices would reach the internet directly, with your real address. Devices fall back to IPv4. Default: on. Turn off only if you need IPv6 and accept it goes direct.'));
@@ -426,8 +426,8 @@ return view.extend({
 		o.rmempty = false;
 
 		o = adv(form.Flag, 'block_doh', _('Block DNS-over-HTTPS'),
-			_('The same for browsers\' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off.'));
-		o.default = '0';
+			_('The same for browsers\' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: on.'));
+		o.default = '1';
 		o.rmempty = false;
 
 		o = adv(form.DynamicList, 'doh_extra', _('More DoH resolvers'),

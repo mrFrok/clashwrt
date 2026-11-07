@@ -939,8 +939,8 @@ msgstr "Перехватывается только трафик, приходя
 msgid "Sends LAN DNS queries to mihomo. Default: off. Leave off if dnsmasq already forwards to mihomo."
 msgstr "Отправляет DNS-запросы локальной сети в mihomo. По умолчанию: выкл. Оставьте выключенным, если dnsmasq уже пересылает запросы в mihomo."
 
-msgid "Makes browsers fall back to TCP. Default: off. Only useful when UDP is not proxied well."
-msgstr "Заставляет браузеры переходить на TCP. По умолчанию: выкл. Нужно, только если UDP проксируется плохо."
+msgid "Makes browsers fall back to TCP, which the proxy carries more reliably where UDP is throttled. Default: on. Turn off when UDP is proxied well."
+msgstr "Заставляет браузеры переходить на TCP, который прокси передаёт надёжнее там, где UDP замедляют. По умолчанию: вкл. Выключите, если UDP проксируется хорошо."
 
 msgid "VPN watchdog"
 msgstr "Сторож VPN"
@@ -1353,8 +1353,8 @@ msgstr "Устройства со своим шифрованным DNS (час�
 msgid "Block DNS-over-HTTPS"
 msgstr "Блокировать DNS-over-HTTPS"
 
-msgid "The same for browsers' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: off."
-msgstr "То же для встроенного в браузеры DoH: HTTPS к известным публичным DoH-серверам запрещается, по списку, который обновляется ежедневно. По умолчанию: выключено."
+msgid "The same for browsers' built-in DoH: HTTPS to known public DoH resolvers is refused, from a list refreshed daily. Default: on."
+msgstr "То же для встроенного в браузеры DoH: HTTPS к известным публичным DoH-серверам запрещается, по списку, который обновляется ежедневно. По умолчанию: включено."
 
 msgid "More DoH resolvers"
 msgstr "Дополнительные DoH-серверы"

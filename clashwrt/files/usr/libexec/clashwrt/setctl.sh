@@ -650,7 +650,7 @@ dns_sync_domains() {
 
 do_doh_update() {
 	local tmp n now
-	[ "$(uci -q get clashwrt.config.block_doh)" = 1 ] || return 0
+	[ "$(uci -q get clashwrt.config.block_doh || echo 1)" = 1 ] || return 0
 	if [ "${1:-}" != force ] && [ -s "$DOH_LIST" ] && [ -f "$DOH_STAMP" ]; then
 		now="$(date +%s)"
 		[ $((now - $(cat "$DOH_STAMP" 2>/dev/null || echo 0))) -lt 86400 ] && { do_doh_load; return 0; }
@@ -676,7 +676,7 @@ do_doh_update() {
 
 do_doh_load() {
 	local f extra
-	[ "$(uci -q get clashwrt.config.block_doh)" = 1 ] || return 0
+	[ "$(uci -q get clashwrt.config.block_doh || echo 1)" = 1 ] || return 0
 	nft list set $TABLE doh4 >/dev/null 2>&1 || return 0
 	f="$(mktemp /tmp/clashwrt-doh-load.XXXXXX)" || return 1
 	extra="$(uci -q get clashwrt.config.doh_extra | tr ' ' '\n' | parse_list)"

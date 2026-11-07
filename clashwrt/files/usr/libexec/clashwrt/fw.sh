@@ -120,10 +120,10 @@ load_cfg() {
 	config_get block_ipv6    config block_ipv6    1
 	config_get block_dot     config block_dot     1
 	config_get wd_action     config watchdog_action direct
-	config_get block_doh     config block_doh     0
+	config_get block_doh     config block_doh     1
 	config_get doh_extra     config doh_extra     ""
 	config_get api_port      config api_port      9090
-	config_get block_quic    config block_quic    0
+	config_get block_quic    config block_quic    1
 	config_get dns_hijack    config dns_hijack    0
 	config_get manage_zone   config manage_zone   1
 	config_get tun_wait      config tun_wait      10
@@ -503,7 +503,7 @@ build_bypass() {
 	esac
 
 	# QUIC carries HTTP/3 over UDP/443. Rejecting it makes browsers fall back
-	# to TCP, which is worth doing only when UDP is not proxied well.
+	# to TCP, which the proxy carries more reliably where UDP is throttled.
 	[ "$block_quic" = 1 ] && nb add rule $TABLE mangle meta l4proto udp udp dport 443 reject
 
 	# Send LAN DNS at mihomo's resolver instead of whatever the client asked

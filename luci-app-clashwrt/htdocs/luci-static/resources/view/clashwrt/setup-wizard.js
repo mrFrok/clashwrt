@@ -93,7 +93,7 @@ return view.extend({
 				autoBest: g('auto_best', '1') === '1',
 				aiGroup: g('ai_group', '1') === '1',
 				aiCountry: g('ai_country', ''),
-				yandexDns: g('yandex_dns', '0') === '1',
+				yandexDns: g('yandex_dns', '1') === '1',
 				udpFilter: g('udp_filter', DEFAULT_UDP_FILTER),
 				tcpFilter: g('tcp_filter', ''),
 				extraDomains: extra.length ? extra : cfg.extraDomains,
@@ -108,7 +108,7 @@ return view.extend({
 			source: 'none',
 			subs: '', links: '', dnsPreset: gen.DEFAULT_DNS, dnsCustom: '', fakeIp: false, tunStack: 'system',
 			routing: 'direct_except_list', ruleSets: [], udpSplit: false, autoBest: true, aiGroup: true, aiCountry: '',
-			yandexDns: false, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
+			yandexDns: true, udpFilter: DEFAULT_UDP_FILTER, tcpFilter: '',
 			extraDomains: [], extraGroup: 'Proxy'
 		};
 	},
@@ -1013,7 +1013,7 @@ return view.extend({
 					label(_('Fake-IP DNS'), _('Off by default.')),
 					E('label', {}, [ fakeCb, ' ', _('Answer lookups with addresses from mihomo\'s own range') ]),
 					more(_('What it changes'), _('Connections start without waiting for a real lookup, and proxied names are never resolved on the router. In exchange the kernel bypass set stops working (it is held back automatically), and while the proxy is switched off or bypassed by the watchdog, devices keep using the fake addresses they cached and cannot reach sites until that cache expires.')),
-					label(_('Russian sites through Yandex DNS'), _('Off by default.')),
+					label(_('Russian sites through Yandex DNS'), _('On by default.')),
 					E('label', {}, [ yandexCb, ' ', _('Use Yandex DNS for the Russian domain set') ]),
 					more(_('Why use it?'), _('Resolves Russian domains with Yandex over DoH, and everything else with the resolver chosen above. A resolver abroad returns whichever CDN node is closest to itself, so RU sites end up pointed at distant edges — and those answers are the ones least in need of hiding.')),
 

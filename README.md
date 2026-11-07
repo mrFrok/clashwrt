@@ -44,7 +44,7 @@ An alternative to ssclash, written because transparent proxying fails in ways th
 | 💾 **Fits small routers** | The 55 MB core can be kept **packed on flash** (22 MB) or **only in RAM**; the dashboard too. The installer works out what fits. |
 | 🔐 **Checked downloads** | The core and ClashWrt's own updates must match the SHA-256 GitHub lists for them. |
 | 🚀 **Kernel bypass** | What goes direct anyway skips mihomo in the kernel, so **flow offloading** and **SQM** work for it. |
-| 🛡️ **Leak protection** | IPv6, DNS-over-TLS and (optionally) DNS-over-HTTPS are refused while the proxy is on. |
+| 🛡️ **Leak protection** | IPv6, DNS-over-TLS and DNS-over-HTTPS are refused while the proxy is on. |
 | 🤖 **AI in one country** | ChatGPT, Claude, Gemini and others go through the fastest node of one country, and are blocked rather than sent direct when the VPN dies. |
 | 🔀 **TCP/UDP split** | UDP through Hysteria2/TUIC, the rest through Reality/VLESS — one button, on any config. |
 | 🧯 **Kill switches & watchdog** | Proxy, core or both off in one click; an opt-in watchdog goes direct — or blocks — when the VPN dies. |
@@ -284,13 +284,14 @@ If the router's dnsmasq forwards to mihomo's DNS port, a bypass takes that forwa
 
 ### Leak protection
 
-While the proxy is on (Settings → Basic):
+While the proxy is on (Settings):
 
 | Option | Default | Refuses |
 |---|:-:|---|
 | `block_ipv6` | on | LAN IPv6 leaving the LAN. Interception is IPv4 only, so IPv6 would show your real address; devices fall back to IPv4. |
 | `block_dot` | on | DNS-over-TLS (port 853), e.g. Android Private DNS. |
-| `block_doh` | off | HTTPS to public DoH resolvers ([dibdot's list](https://github.com/dibdot/DoH-IP-blocklists), refreshed daily, plus `doh_extra`). |
+| `block_doh` | on | HTTPS to public DoH resolvers ([dibdot's list](https://github.com/dibdot/DoH-IP-blocklists), refreshed daily, plus `doh_extra`). |
+| `block_quic` | on | QUIC (UDP/443): browsers fall back to TCP, which the proxy carries more reliably where UDP is throttled. |
 
 All are rejected rather than dropped, so devices fall back at once. **Several LAN networks:** `lan_device` is a list — add `guest`, `iot` or a device name, and each is intercepted and protected.
 
@@ -304,7 +305,7 @@ The form opens pre-filled — from the last answers, or read back from the insta
 
 **Adding a site.** Type a URL, a hostname or a service name (`youtube`, `claude`, `netflix`, …) and press *Add*: it becomes `DOMAIN-SUFFIX` rules ahead of the lists, sent to the group you pick. Known services expand to their handful of domains, so no big geosite list is loaded for one website. **Add to current config only** inserts just those rules into a hand-written config.
 
-- **DNS.** Quad9 over DoH by default: with `redir-host` mihomo resolves every name itself, and over plain UDP the ISP would see — and could rewrite — each lookup. **Fake-IP** is optional: connections start sooner, but the bypass set is held back.
+- **DNS.** Quad9 over DoH by default: with `redir-host` mihomo resolves every name itself, and over plain UDP the ISP would see — and could rewrite — each lookup. **Fake-IP** is optional: connections start sooner, but the bypass set is held back. **Russian sites through Yandex DNS** (on by default): the `category-ru` domains are resolved by Yandex over DoH, so they point at nearby CDN nodes rather than the ones closest to a resolver abroad; the set is used for DNS only, never for routing.
 - **TUN stack.** `system` (fastest, default), `gvisor` or `mixed` for kernels where it misbehaves, `mips` for slow MIPS routers.
 - **Fastest node.** A `url-test` group `Auto` follows the fastest node with a 50 ms tolerance; it is the first member of `Proxy`, which stays a `select` group.
 - **AI services in one country** (on by default). ChatGPT, Claude, Gemini, Perplexity and Grok flag or block accounts whose address keeps changing country, which is exactly what `Auto` does. A `url-test` group `AI` picks the fastest node — any protocol, Hysteria2 included, over TCP and UDP, whatever the routing strategy — but only among the nodes of **one country**, so the address may change provider but never country; pin a node in the dashboard to choose it yourself. The services are matched by the small [meta-rules-dat](https://github.com/MetaCubeX/meta-rules-dat) sets `openai`, `anthropic`, `google-gemini`, `xai` and `perplexity` (a few hundred bytes each). Nodes in countries the services refuse (Russia, Belarus, China, Hong Kong, Macau, Iran, North Korea, Cuba, Syria) cannot be chosen. The country is read from the flag or name in the node's name: the wizard downloads the subscription on the router, lists the countries it finds and picks the one with most nodes. Only when no node name says a country does `AI` take every node outside those countries. If the watchdog lets traffic go direct, the AI services are **blocked** by name (dnsmasq answers NXDOMAIN) instead of going out from the home address; a device that resolved them shortly before may still reach them until its DNS cache expires. Other sites can be sent to `AI` with *Add a site*.
