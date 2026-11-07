@@ -484,7 +484,10 @@ function parseRule(line, target) {
  *
  * `keys` are what a user may type instead of a URL, `hosts` are hostnames
  * that identify the service when a URL is pasted (matched as equal-or-
- * subdomain), `suffixes` is what gets emitted.
+ * subdomain), `suffixes` is what gets emitted. `cidrs` are for a service
+ * whose clients also connect to bare addresses, with no lookup and no SNI
+ * for a domain rule to match (Telegram's data centres): emitted as IP-CIDR
+ * rules next to the suffixes, whenever the suffixes are there.
  */
 var SITE_PRESETS = {
 	youtube: {
@@ -535,7 +538,12 @@ var SITE_PRESETS = {
 		title: 'Telegram', keys: ['telegram', 'tg'],
 		hosts: ['telegram.org', 'telegram.me', 't.me', 'telegra.ph', 'telesco.pe'],
 		suffixes: ['telegram.org', 'telegram.me', 'telegram.dog', 't.me', 'telegra.ph', 'telesco.pe',
-			'tdesktop.com', 'cdn-telegram.org', 'tg.dev']
+			'tdesktop.com', 'cdn-telegram.org', 'tg.dev'],
+		/* core.telegram.org/resources/cidr.txt */
+		cidrs: ['91.108.4.0/22', '91.108.8.0/22', '91.108.12.0/22', '91.108.16.0/22',
+			'91.108.20.0/22', '91.108.56.0/22', '91.105.192.0/23', '149.154.160.0/20',
+			'185.76.151.0/24', '2001:b28:f23c::/48', '2001:b28:f23d::/48',
+			'2001:b28:f23f::/48', '2001:67c:4e8::/48', '2a0a:f280::/32']
 	},
 	gemini: {
 		title: 'Google Gemini', keys: ['gemini'],
@@ -765,6 +773,21 @@ function siteDomains(input) {
 	var p = presetOf(null, s);
 	if (p) return p.suffixes.slice();
 	return [s];
+}
+
+/* The IP-CIDR rules (type and value, without the target) that go with these
+ * suffixes: a preset's addresses come along once any of its suffixes is in. */
+function siteCidrRules(domains) {
+	var have = {}, out = [];
+	(domains || []).forEach(function (d) { have[d] = true; });
+	Object.keys(SITE_PRESETS).forEach(function (k) {
+		var p = SITE_PRESETS[k];
+		if (!p.cidrs || !p.suffixes.some(function (d) { return have[d]; })) return;
+		p.cidrs.forEach(function (c) {
+			out.push((c.indexOf(':') >= 0 ? 'IP-CIDR6,' : 'IP-CIDR,') + c);
+		});
+	});
+	return out;
 }
 
 function detectSplit(text) {
@@ -1008,13 +1031,16 @@ function addSiteRules(text, domains, opts) {
 		var t = pr.parts[0];
 		if (t === 'DOMAIN-SUFFIX' && pr.parts.length >= 3)
 			have[pr.parts[1].toLowerCase() + ',' + pr.parts[2]] = true;
+		if ((t === 'IP-CIDR' || t === 'IP-CIDR6') && pr.parts.length >= 3)
+			have[t + ',' + pr.parts[1] + ',' + pr.parts[2]] = true;
 		if (anchor < 0 && (t === 'GEOIP' || t === 'MATCH' ||
 			(t === 'RULE-SET' && pr.parts[pr.parts.length - 1] === 'DIRECT')))
 			anchor = i;
 	}
 
 	var fresh = doms.filter(function (d) { return !have[d + ',' + group]; });
-	if (!fresh.length) return text;
+	var cidrs = siteCidrRules(doms).filter(function (c) { return !have[c + ',' + group]; });
+	if (!fresh.length && !cidrs.length) return text;
 
 	var at = anchor >= 0 ? anchor : last + 1;
 	var ref = anchor >= 0 ? lines[anchor] : (last >= 0 ? lines[last] : '');
@@ -1026,6 +1052,10 @@ function addSiteRules(text, domains, opts) {
 	fresh.forEach(function (d) {
 		if (split) add.push(indent + '- AND,((NETWORK,udp),(DOMAIN-SUFFIX,' + d + ')),' + UDP_GROUP + cr);
 		add.push(indent + '- DOMAIN-SUFFIX,' + d + ',' + group + cr);
+	});
+	cidrs.forEach(function (c) {
+		if (split) add.push(indent + '- AND,((NETWORK,udp),(' + c + ')),' + UDP_GROUP + cr);
+		add.push(indent + '- ' + c + ',' + group + ',no-resolve' + cr);
 	});
 
 	var out = lines.slice(0, at).concat(add, lines.slice(at));
@@ -1053,6 +1083,7 @@ return baseclass.extend({
 	SITE_PRESETS: SITE_PRESETS,
 
 	siteDomains: siteDomains,
+	siteCidrRules: siteCidrRules,
 	normDomains: normDomains,
 	parseConfig: parseConfig,
 	groupNames: groupNames,
@@ -1538,6 +1569,11 @@ return baseclass.extend({
 				if (udpSplit && extraGroup === 'Proxy')
 					L.push('  - AND,((NETWORK,udp),(DOMAIN-SUFFIX,' + d + ')),ProxyUDP');
 				L.push('  - DOMAIN-SUFFIX,' + d + ',' + extraGroup);
+			});
+			siteCidrRules(extra).forEach(function (c) {
+				if (udpSplit && extraGroup === 'Proxy')
+					L.push('  - AND,((NETWORK,udp),(' + c + ')),ProxyUDP');
+				L.push('  - ' + c + ',' + extraGroup + ',no-resolve');
 			});
 		};
 		if (o.routing === 'proxy_except_ru') {

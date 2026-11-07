@@ -58,6 +58,24 @@ t('addSiteRules is idempotent', function () {
 	assert.strictEqual(gen.addSiteRules(once, ['example.com'], { group: 'Proxy' }), once);
 });
 
+t('addSiteRules brings Telegram\'s data-centre addresses along', function () {
+	var out = gen.addSiteRules(BASE, gen.siteDomains('telegram'), { group: 'Proxy' });
+	assert.ok(out.indexOf('  - DOMAIN-SUFFIX,telegram.org,Proxy\n') >= 0);
+	assert.ok(out.indexOf('  - IP-CIDR,149.154.160.0/20,Proxy,no-resolve\n') >= 0);
+	assert.ok(out.indexOf('  - IP-CIDR6,2001:67c:4e8::/48,Proxy,no-resolve\n') >= 0);
+	assert.ok(out.indexOf('149.154.160.0/20') < out.indexOf('RULE-SET,ru,DIRECT'));
+	assert.strictEqual(gen.addSiteRules(out, gen.siteDomains('t.me'), { group: 'Proxy' }), out);
+	/* a site with no addresses brings none */
+	assert.strictEqual(gen.addSiteRules(BASE, ['example.com'], { group: 'Proxy' }).indexOf('IP-CIDR'), -1);
+});
+
+t('generate emits Telegram\'s addresses with its suffixes', function () {
+	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list',
+		extraDomains: gen.siteDomains('telegram'), extraGroup: 'Proxy' });
+	assert.ok(y.indexOf('  - IP-CIDR,91.108.56.0/22,Proxy,no-resolve\n') >= 0);
+	assert.ok(y.indexOf('  - DOMAIN-SUFFIX,telegram.org,Proxy') < y.indexOf('IP-CIDR,91.108.56.0/22'));
+});
+
 t('parseConfig ignores DOMAIN-SUFFIX,local,DIRECT', function () {
 	var c = gen.parseConfig(BASE);
 	assert.strictEqual(c.extraGroup, 'Proxy');
