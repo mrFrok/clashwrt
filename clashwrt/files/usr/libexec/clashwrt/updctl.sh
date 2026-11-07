@@ -1330,7 +1330,9 @@ meow_arch() {
 	if [ -n "${MEOW_ARCH:-}" ]; then valid_tag "$a" && echo "$a"; return; fi
 	case "$a" in
 		aarch64_generic|aarch64_cortex-a53|aarch64_cortex-a72|aarch64_cortex-a76|\
-		arm_cortex-a7_neon-vfpv4|mipsel_24kc|mips_24kc) echo "$a" ;;
+		arm_cortex-a7_neon-vfpv4|arm_cortex-a15_neon-vfpv4|\
+		arm_cortex-a9|arm_cortex-a9_neon|arm_cortex-a9_vfpv3-d16|\
+		mipsel_24kc|mips_24kc) echo "$a" ;;
 		*) return 1 ;;
 	esac
 }

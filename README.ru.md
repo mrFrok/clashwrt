@@ -71,7 +71,7 @@ ClashWrt отвечает только за файрвол и маршрутиз
 
 Роутер со 128 МБ RAM *и* маленьким флешем не потянет mihomo вовсе — дайте ему флеш через [extroot](https://openwrt.org/docs/guide-user/additional-software/extroot_configuration) на USB-флешке — или поставьте meow-openwrt.
 
-**meow-openwrt вместо mihomo.** [meow-openwrt](https://github.com/mrFrok/meow-openwrt) — совместимое с mihomo ядро на Rust: тот же `config.yaml` и REST API в 9–14 МБ флеша и нескольких МБ RAM. Есть сборки для `aarch64_*` (Filogic, Rockchip), `arm_cortex-a7_neon-vfpv4` (IPQ40xx), `mipsel_24kc` (MT7621) и `mips_24kc` (ath79). Оно новое; там, где mihomo помещается на флеш, по умолчанию остаётся mihomo.
+**meow-openwrt вместо mihomo.** [meow-openwrt](https://github.com/mrFrok/meow-openwrt) — совместимое с mihomo ядро на Rust: тот же `config.yaml` и REST API в 9–14 МБ флеша и нескольких МБ RAM. Есть сборки для `aarch64_*` (Filogic, Rockchip), ARMv7 — `arm_cortex-a7_neon-vfpv4` (IPQ40xx), `arm_cortex-a15_neon-vfpv4` (IPQ806x), `arm_cortex-a9_vfpv3-d16` (mvebu), `arm_cortex-a9_neon` и `arm_cortex-a9` (BCM53xx, без FPU) — `mipsel_24kc` (MT7621) и `mips_24kc` (ath79). Оно новое; там, где mihomo помещается на флеш, по умолчанию остаётся mihomo.
 
 | Сборка | Протоколы | Флеш |
 |---|---|---|

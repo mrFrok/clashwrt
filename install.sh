@@ -246,7 +246,9 @@ esac
 MEOW_OK=0
 case "$(sed -n "s/^DISTRIB_ARCH='\\(.*\\)'\$/\\1/p" /etc/openwrt_release 2>/dev/null | head -n1)" in
 	aarch64_generic|aarch64_cortex-a53|aarch64_cortex-a72|aarch64_cortex-a76|\
-	arm_cortex-a7_neon-vfpv4|mipsel_24kc|mips_24kc) MEOW_OK=1 ;;
+	arm_cortex-a7_neon-vfpv4|arm_cortex-a15_neon-vfpv4|\
+	arm_cortex-a9|arm_cortex-a9_neon|arm_cortex-a9_vfpv3-d16|\
+	mipsel_24kc|mips_24kc) MEOW_OK=1 ;;
 esac
 [ "$FLASH_KB" -ge "$MEOW_TINY_KB" ] || MEOW_OK=0
 # A "256 MB" router shows less in MemTotal (an AX3000T about 230 MB), so the
@@ -292,7 +294,7 @@ if [ "$SKIP_CORE" != 1 ]; then
 	[ "$_rec" = meow ] && [ "$MEOW_OK" != 1 ] && _rec=mihomo
 	if [ -n "$WANT_TYPE" ]; then
 		[ "$WANT_TYPE" = meow ] && [ "$MEOW_OK" != 1 ] &&
-			die "CORE_TYPE=meow is not possible here: meow-openwrt is built for aarch64, arm_cortex-a7_neon-vfpv4, mipsel_24kc and mips_24kc, and needs about $(mb "$MEOW_TINY_KB") of flash"
+			die "CORE_TYPE=meow is not possible here: meow-openwrt is built for aarch64, ARMv7 (Cortex-A7, A9, A15), mipsel_24kc and mips_24kc, and needs about $(mb "$MEOW_TINY_KB") of flash"
 		CORE_TYPE="$WANT_TYPE"
 	elif [ "$MEOW_OK" = 1 ] && [ "$_mihomo_ok" = 1 ]; then
 		CORE_TYPE="$(QUICK=0 ask "$(t 'Which proxy core?' 'Какое ядро прокси?')" "$_rec" \

@@ -71,7 +71,7 @@ The installer reads the core's exact unpacked size off the release before downlo
 
 A router with 128 MB of RAM *and* little flash cannot run mihomo at all — give it the flash with [extroot](https://openwrt.org/docs/guide-user/additional-software/extroot_configuration) on a USB stick, or use meow-openwrt.
 
-**meow-openwrt instead of mihomo.** [meow-openwrt](https://github.com/mrFrok/meow-openwrt) is a mihomo-compatible core in Rust: the same `config.yaml` and REST API in 9–14 MB of flash and a few MB of RAM. It has builds for `aarch64_*` (Filogic, Rockchip), `arm_cortex-a7_neon-vfpv4` (IPQ40xx), `mipsel_24kc` (MT7621) and `mips_24kc` (ath79). It is new; mihomo stays the default wherever it fits on flash.
+**meow-openwrt instead of mihomo.** [meow-openwrt](https://github.com/mrFrok/meow-openwrt) is a mihomo-compatible core in Rust: the same `config.yaml` and REST API in 9–14 MB of flash and a few MB of RAM. It has builds for `aarch64_*` (Filogic, Rockchip), ARMv7 — `arm_cortex-a7_neon-vfpv4` (IPQ40xx), `arm_cortex-a15_neon-vfpv4` (IPQ806x), `arm_cortex-a9_vfpv3-d16` (mvebu), `arm_cortex-a9_neon` and `arm_cortex-a9` (BCM53xx, no FPU) — `mipsel_24kc` (MT7621) and `mips_24kc` (ath79). It is new; mihomo stays the default wherever it fits on flash.
 
 | Build | Protocols | Flash |
 |---|---|---|
