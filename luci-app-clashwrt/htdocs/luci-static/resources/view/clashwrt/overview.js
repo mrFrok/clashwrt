@@ -10,7 +10,7 @@
 'require clashwrt.power as power';
 'require clashwrt.maint as maint';
 
-var UI_VERSION = '1.9.5';
+var UI_VERSION = '1.9.6';
 var SETCTL = '/usr/libexec/clashwrt/setctl.sh';
 
 var CONFCTL = '/usr/libexec/clashwrt/confctl.sh';

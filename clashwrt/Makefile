@@ -2,7 +2,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashwrt
-PKG_VERSION:=1.9.5
+PKG_VERSION:=1.9.6
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-or-later
