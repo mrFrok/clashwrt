@@ -96,7 +96,7 @@ config clashwrt 'config'
 
 	# Fail-open watchdog. When the proxy path stops working but the internet
 	# itself is fine, traffic goes direct until the path is healthy again,
-	# instead of the whole network going down with the VPN. Off by default;
+	# instead of the whole network going down with the VPN. On by default;
 	# it never switches the proxy on, and switching the proxy off always wins.
 	# The router's own downloads (mihomo core, ClashWrt updates, dashboards,
 	# bypass lists) go through the proxy first and directly only if that
@@ -138,7 +138,9 @@ config clashwrt 'config'
 	# RAM), 'off', or a number of MB. Applies when mihomo restarts.
 	option core_mem_limit 'auto'
 
-	option watchdog '0'
+	option watchdog '1'
+	# set once the default above has been applied; see uci-defaults
+	option watchdog_defaulted '1'
 
 	# What the watchdog does when the proxy path dies but the internet is fine:
 	# 'direct' lets traffic out past the proxy (fail-open), 'block' cuts the

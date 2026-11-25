@@ -939,7 +939,7 @@ msgstr ""
 msgid "VPN watchdog"
 msgstr ""
 
-msgid "Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off."
+msgid "Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: on."
 msgstr ""
 
 msgid "It tests the proxy every few seconds. After repeated failures with the internet itself up, LAN traffic goes direct until the proxy answers again. Switching the proxy off yourself always wins."

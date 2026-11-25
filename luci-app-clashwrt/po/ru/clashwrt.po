@@ -945,8 +945,8 @@ msgstr "Заставляет браузеры переходить на TCP, к�
 msgid "VPN watchdog"
 msgstr "Сторож VPN"
 
-msgid "Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off."
-msgstr "Сам выключает прокси, если VPN перестал работать, и включает обратно, когда он восстановится. По умолчанию: выкл."
+msgid "Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: on."
+msgstr "Сам выключает прокси, если VPN перестал работать, и включает обратно, когда он восстановится. По умолчанию: вкл."
 
 msgid "It tests the proxy every few seconds. After repeated failures with the internet itself up, LAN traffic goes direct until the proxy answers again. Switching the proxy off yourself always wins."
 msgstr "Он проверяет прокси каждые несколько секунд. После повторных сбоев при работающем интернете трафик сети идёт напрямую, пока прокси не ответит снова. Если вы сами выключили прокси, это решение главнее."

@@ -47,7 +47,7 @@ An alternative to ssclash, written because transparent proxying fails in ways th
 | 🛡️ **Leak protection** | IPv6, DNS-over-TLS and DNS-over-HTTPS are refused while the proxy is on. |
 | 🤖 **AI in one country** | ChatGPT, Claude, Gemini and others go through the fastest node of one country, and are blocked rather than sent direct when the VPN dies. |
 | 🔀 **TCP/UDP split** | UDP through Hysteria2/TUIC, the rest through Reality/VLESS — one button, on any config. |
-| 🧯 **Kill switches & watchdog** | Proxy, core or both off in one click; an opt-in watchdog goes direct — or blocks — when the VPN dies. |
+| 🧯 **Kill switches & watchdog** | Proxy, core or both off in one click; a watchdog goes direct — or blocks — when the VPN dies. |
 | 📝 **Editors that validate** | Config and rule lists are checked with `mihomo -t` before anything is installed, with backups. |
 | 🌐 **English and Russian** | The whole interface. |
 
@@ -265,7 +265,7 @@ Switching the core off while the proxy is on asks first, since the LAN would be 
 
 ### Fail-open watchdog
 
-Off by default (Settings → Basic). A procd daemon asks mihomo to time a request through the proxy group. After `watchdog_fail` failures in a row (3) it checks that the WAN itself works, and only then **bypasses** the proxy. If the WAN is down too, nothing changes — bypassing would not help. Before a failure counts, it asks mihomo to time the nodes of every `url-test` and `fallback` group again and probes once more: those groups check their nodes only every few minutes, so one dead node would otherwise keep `Auto` on it and look like a dead VPN. In a bypass it does the same at most once a minute, once the hold is over.
+On by default (Settings → Basic, where it can be switched off). A procd daemon asks mihomo to time a request through the proxy group. After `watchdog_fail` failures in a row (3) it checks that the WAN itself works, and only then **bypasses** the proxy. If the WAN is down too, nothing changes — bypassing would not help. Before a failure counts, it asks mihomo to time the nodes of every `url-test` and `fallback` group again and probes once more: those groups check their nodes only every few minutes, so one dead node would otherwise keep `Auto` on it and look like a dead VPN. In a bypass it does the same at most once a minute, once the hold is over.
 
 A bypass is held for at least `watchdog_hold` seconds (120) and lifted after `watchdog_ok` good probes (3). If it flaps again within 10 minutes the hold doubles, up to `watchdog_hold_max` (900). For `watchdog_grace` seconds after start (90) it only watches, so a slow boot is not mistaken for an outage. Your switch always wins.
 
@@ -379,7 +379,7 @@ config clashwrt 'config'
 	option mihomo_dir '/etc/mihomo'
 	option self_mark '2'
 	option block_ipv6 '1'
-	option watchdog '0'
+	option watchdog '1'
 	option core_store 'flash'     # flash | gz | ram
 	option ui_store 'flash'
 	option core_mem_limit 'auto'  # auto | off | MB

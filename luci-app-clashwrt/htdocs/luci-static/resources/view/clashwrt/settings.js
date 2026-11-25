@@ -436,12 +436,12 @@ return view.extend({
 		o.depends('block_doh', '1');
 
 		o = basic(form.Flag, 'watchdog', _('VPN watchdog'),
-			_('Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: off.') +
+			_('Turns the proxy off for you if the VPN stops working, and back on when it recovers. Default: on.') +
 			'<details><summary>' + _('How it works') + '</summary>' +
 			_('It tests the proxy every few seconds. After repeated failures with the internet itself up, LAN traffic goes direct until the proxy answers again. Switching the proxy off yourself always wins.') + ' ' +
 			_('While it is bypassed, DNS is switched to your uplink resolver, and switched back when the proxy returns.') +
 			'</details>');
-		o.default = '0';
+		o.default = '1';
 		o.rmempty = false;
 		var wdFlag = o;
 		customNode(s, 'basic', '_n_wdtoggle', function () { return buildWatchdogToggle(m, wdFlag); });

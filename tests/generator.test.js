@@ -191,6 +191,13 @@ t('DNS defaults to DoH, with plain-address bootstrap', function () {
 	assert.ok(/  default-nameserver:\n    - 1\.1\.1\.1\n  nameserver:/.test(custom));
 });
 
+t('parseConfig marks the installer placeholder and leaves real configs alone', function () {
+	var ph = '# Placeholder written by the clashwrt installer.\nmode: rule\ndns:\n  nameserver:\n    - 9.9.9.9\n';
+	assert.strictEqual(gen.parseConfig(ph).placeholder, true);
+	assert.strictEqual(gen.parseConfig(gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' })).placeholder, false);
+	assert.strictEqual(gen.parseConfig(BASE).placeholder, false);
+});
+
 t('proxy servers are resolved over plain DNS when the resolver is encrypted', function () {
 	var y = gen.generate({ proxies: [], mode: 'tproxy', routing: 'direct_except_list' });
 	assert.ok(/'https:\/\/dns\.quad9\.net\/dns-query'\n  proxy-server-nameserver:\n    - 9\.9\.9\.9\n    - 149\.112\.112\.112\n/.test(y));

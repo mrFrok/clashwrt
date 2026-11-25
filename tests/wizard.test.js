@@ -91,6 +91,16 @@ t('Yandex DNS for RU sites is on unless a config of ours turned it off', functio
 	assert.strictEqual(view.answersFromConfig(gen.parseConfig(on)).yandexDns, true, 'ours, on');
 });
 
+t('the installer placeholder does not pin its old DNS in the wizard', function () {
+	var ph = '# Placeholder written by the clashwrt installer.\nmode: rule\ndns:\n  enable: true\n' +
+		'  nameserver:\n    - 9.9.9.9\n    - 149.112.112.112\nrules:\n  - MATCH,DIRECT\n';
+	var p = view.render([ null, { code: 0, stdout: ph } ]);
+	var sel = p.find(function (e) {
+		return e.tagName === 'select' && e.options.some(function (o) { return o.value === 'quad9-doh'; });
+	})[0];
+	assert.strictEqual(sel.value, gen.DEFAULT_DNS);
+});
+
 var page = view.render([ null, { code: 0, stdout: '# Placeholder written by the clashwrt installer.\nmode: rule\n' } ]);
 var steps = page.find(function (e) { return e.attrs['data-step']; });
 var shown = function () { return steps.filter(function (s) { return s.style.display !== 'none'; }).map(function (s) { return s.attrs['data-step']; }); };

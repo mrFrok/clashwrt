@@ -120,14 +120,20 @@ return view.extend({
 			if (k !== 'custom' && sv.length && sv.join('\n') === cfg.dnsServers.join('\n'))
 				preset = k;
 		});
+		/* The installer's placeholder is not a config anybody chose: its DNS
+		 * was whatever shipped that day (plain Quad9, once), not today's
+		 * default, so do not let it pin the preset. */
+		var dnsPreset = cfg.placeholder
+			? gen.DEFAULT_DNS
+			: (preset || (cfg.dnsServers.length ? 'custom' : gen.DEFAULT_DNS));
 		return {
 			source: 'config',
 			subs: cfg.subs.join('\n'),
 			links: '',
-			dnsPreset: preset || (cfg.dnsServers.length ? 'custom' : gen.DEFAULT_DNS),
+			dnsPreset: dnsPreset,
 			fakeIp: cfg.fakeIp,
 			tunStack: cfg.tunStack || 'system',
-			dnsCustom: preset ? '' : cfg.dnsServers.join('\n'),
+			dnsCustom: (cfg.placeholder || preset) ? '' : cfg.dnsServers.join('\n'),
 			routing: cfg.routing || 'direct_except_list',
 			ruleSets: cfg.ruleSets,
 			udpSplit: cfg.udpSplit,

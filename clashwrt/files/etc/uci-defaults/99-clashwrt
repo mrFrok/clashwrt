@@ -42,4 +42,21 @@ if [ -f /etc/config/clashwrt ] && [ -z "$(uci -q get clashwrt.config.bypass_set_
 	fi
 fi
 
+# The watchdog is on by default. A router whose config predates that default
+# gets it switched on here, once: the marker keeps a later "off" from being
+# undone by the next upgrade. It is fail-open by default and never switches
+# the proxy on, so this cannot leave the LAN without a way out.
+if [ -f /etc/config/clashwrt ] && [ -z "$(uci -q get clashwrt.config.watchdog_defaulted)" ]; then
+	if [ "$(uci -q get clashwrt.config.watchdog)" != "1" ]; then
+		uci -q set clashwrt.config.watchdog=1
+		WATCHDOG_NEW=1
+	fi
+	uci -q set clashwrt.config.watchdog_defaulted=1
+	uci -q commit clashwrt
+	# a running service starts the daemon now rather than at the next reboot
+	if [ -n "${WATCHDOG_NEW:-}" ] && [ -x /etc/init.d/clashwrt ]; then
+		/etc/init.d/clashwrt running >/dev/null 2>&1 && /etc/init.d/clashwrt reload >/dev/null 2>&1
+	fi
+fi
+
 exit 0

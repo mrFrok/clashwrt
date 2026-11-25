@@ -767,9 +767,11 @@ dns:
   ipv6: false
   listen: 0.0.0.0:1053
   enhanced-mode: redir-host
-  nameserver:
+  default-nameserver:
     - 9.9.9.9
     - 149.112.112.112
+  nameserver:
+    - https://dns.quad9.net/dns-query
 rules:
   - MATCH,DIRECT
 EOF
